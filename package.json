@@ -1,0 +1,24 @@
+{
+  "name": "biscrm",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,web -c blue,green \"npm run dev -w @biscrm/backend\" \"npm run dev -w @biscrm/web\"",
+    "build": "npm run build -w @biscrm/backend && npm run build -w @biscrm/web",
+    "lint": "npm run lint -ws --if-present",
+    "format": "npm run format -ws --if-present"
+  },
+  "version": "1.0.0",
+  "description": "Working CRM (admin/manager) with multi-business (multi-tenant) support.",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

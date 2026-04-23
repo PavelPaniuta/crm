@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM System — MVP</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-body: #F4F3F0;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #1C1B22;
+  --bg-sidebar-hover: #2A2933;
+  --bg-sidebar-active: #36354A;
+  --bg-input: #F7F6F3;
+  --bg-metric: #F7F6F3;
+  --text-primary: #1C1B22;
+  --text-secondary: #6E6D78;
+  --text-tertiary: #9C9BA6;
+  --text-sidebar: #A8A7B3;
+  --text-sidebar-active: #FFFFFF;
+  --border: #E8E7E4;
+  --border-light: #F0EFEC;
+  --accent: #6C5CE7;
+  --accent-light: #EEEDFE;
+  --accent-dark: #4A3DB5;
+  --green: #1D9E75;
+  --green-bg: #E1F5EE;
+  --green-text: #085041;
+  --amber: #BA7517;
+  --amber-bg: #FAEEDA;
+  --amber-text: #633806;
+  --blue: #185FA5;
+  --blue-bg: #E6F1FB;
+  --blue-text: #0C447C;
+  --red: #D85A30;
+  --red-bg: #FCEBEB;
+  --red-text: #791F1F;
+  --coral-bg: #FAECE7;
+  --coral-text: #712B13;
+  --purple-bg: #EEEDFE;
+  --purple-text: #3C3489;
+  --teal-bg: #E1F5EE;
+  --teal-text: #085041;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  background: var(--bg-body);
+  color: var(--text-primary);
+  display: flex;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.sidebar-logo {
+  padding: 24px 24px 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-logo .logo-icon {
+  width: 36px; height: 36px;
+  background: var(--accent);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px; color: white;
+}
+
+.sidebar-logo span { font-size: 18px; font-weight: 600; color: white; letter-spacing: -0.3px; }
+
+.sidebar-nav { flex: 1; padding: 0 12px; display: flex; flex-direction: column; gap: 2px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: var(--radius);
+  color: var(--text-sidebar); cursor: pointer;
+  transition: var(--transition); font-size: 14px; font-weight: 500;
+  user-select: none; text-decoration: none;
+}
+
+.nav-item:hover { background: var(--bg-sidebar-hover); color: #D0CFD8; }
+.nav-item.active { background: var(--bg-sidebar-active); color: var(--text-sidebar-active); }
+.nav-item svg { width: 20px; height: 20px; flex-shrink: 0; opacity: 0.7; }
+.nav-item.active svg { opacity: 1; }
+
+.nav-section {
+  padding: 20px 14px 8px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1px; color: #55545F;
+}
+
+.sidebar-footer { padding: 16px 12px; border-top: 1px solid #2E2D38; }
+.sidebar-footer .nav-item { color: #6E6D78; }
+
+/* MAIN */
+.main { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* HEADER */
+.header {
+  height: 64px; min-height: 64px;
+  background: var(--bg-card); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px;
+}
+
+.header-title { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.header-search { position: relative; }
+
+.header-search input {
+  width: 260px; height: 36px; padding: 0 12px 0 36px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: inherit; font-size: 13px; background: var(--bg-input);
+  outline: none; transition: var(--transition);
+}
+
+.header-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,92,231,0.1); }
+
+.header-search svg {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--text-tertiary);
+}
+
+.avatar-header {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 600; font-size: 13px; cursor: pointer;
+}
+
+/* CONTENT */
+.content { flex: 1; overflow-y: auto; padding: 28px 32px; }
+
+/* METRICS */
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+
+.metric-card {
+  background: var(--bg-card); border-radius: var(--radius-lg); padding: 20px;
+  border: 1px solid var(--border-light); transition: var(--transition);
+}
+.metric-card:hover { box-shadow: var(--shadow-sm); border-color: var(--border); }
+
+.metric-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric-value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; font-family: 'JetBrains Mono', monospace; }
+.metric-change { font-size: 12px; margin-top: 6px; font-weight: 500; }
+.metric-change.up { color: var(--green); }
+.metric-change.down { color: var(--red); }
+
+/* CARDS */
+.card { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-light); overflow: hidden; }
+.card-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--border-light); }
+.card-title { font-size: 15px; font-weight: 600; }
+.card-body { padding: 0; }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.data-table thead th {
+  text-align: left; padding: 10px 16px; font-weight: 500; color: var(--text-secondary);
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px;
+  background: var(--bg-input); border-bottom: 1px solid var(--border-light);
+}
+
+.data-table tbody tr { border-bottom: 1px solid var(--border-light); transition: var(--transition); cursor: pointer; }
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: #FAFAF8; }
+.data-table td { padding: 12px 16px; vertical-align: middle; }
+
+/* BADGES */
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; letter-spacing: 0.2px; }
+.badge-green { background: var(--green-bg); color: var(--green-text); }
+.badge-amber { background: var(--amber-bg); color: var(--amber-text); }
+.badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+.badge-red { background: var(--red-bg); color: var(--red-text); }
+.badge-purple { background: var(--purple-bg); color: var(--purple-text); }
+
+/* AVATAR */
+.avatar-stack { display: flex; }
+.avatar-sm {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; border: 2px solid var(--bg-card);
+}
+.avatar-stack .avatar-sm + .avatar-sm { margin-left: -8px; }
+
+/* BUTTONS */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border-radius: var(--radius);
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: var(--transition); border: none; outline: none;
+}
+
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(108,92,231,0.3); }
+.btn-secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--bg-input); }
+.btn-ghost { background: transparent; color: var(--accent); border: none; padding: 6px 12px; }
+.btn-ghost:hover { background: var(--accent-light); }
+.btn-danger { background: var(--red-bg); color: var(--red-text); border: none; }
+.btn-danger:hover { background: #F7C1C1; }
+.btn-success { background: var(--green); color: white; }
+.btn-success:hover { background: #168A65; }
+
+.btn-lg { padding: 12px 24px; font-size: 14px; border-radius: var(--radius-lg); }
+
+/* FILTER PILLS */
+.filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.filter-pill {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: var(--transition);
+  background: var(--bg-input); color: var(--text-secondary);
+  border: 1px solid transparent; user-select: none;
+}
+.filter-pill:hover { background: var(--border); }
+.filter-pill.active { background: var(--accent-light); color: var(--accent-dark); border-color: rgba(108,92,231,0.15); }
+
+/* WORKER / CLIENT CARDS */
+.worker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.client-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+
+.worker-card, .client-card {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg); padding: 20px; transition: var(--transition);
+}
+.worker-card:hover, .client-card:hover { box-shadow: var(--shadow-md); border-color: var(--border); transform: translateY(-2px); }
+
+.worker-avatar {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px;
+}
+
+.worker-info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+.worker-info-label { color: var(--text-secondary); }
+
+/* MODAL */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(28,27,34,0.5); backdrop-filter: blur(4px);
+  z-index: 100; align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+
+.modal {
+  background: var(--bg-card); border-radius: var(--radius-xl);
+  width: 600px; max-height: 85vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg); animation: modalIn 0.25s ease-out;
+}
+
+.modal-wide { width: 720px; }
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--border-light);
+  position: sticky; top: 0; background: var(--bg-card); z-index: 2;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.modal-header h3 { font-size: 17px; font-weight: 600; }
+
+.modal-close {
+  width: 32px; height: 32px; border-radius: 8px; border: none;
+  background: var(--bg-input); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary); font-size: 18px; transition: var(--transition);
+}
+.modal-close:hover { background: var(--border); }
+
+.modal-body { padding: 24px; }
+
+.modal-footer {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 16px 24px; border-top: 1px solid var(--border-light);
+  position: sticky; bottom: 0; background: var(--bg-card);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+/* FORMS */
+.form-group { margin-bottom: 18px; }
+.form-label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: var(--text-secondary); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+
+.form-input, .form-select, .form-textarea {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: inherit; font-size: 14px; background: var(--bg-input);
+  outline: none; transition: var(--transition);
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,92,231,0.1);
+}
+.form-textarea { min-height: 80px; resize: vertical; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+
+/* INLINE CREATE PANEL */
+.inline-create {
+  background: var(--accent-light); border: 1px dashed rgba(108,92,231,0.3);
+  border-radius: var(--radius); padding: 16px; margin-top: 10px;
+  animation: fadeSlideDown 0.2s ease;
+}
+
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* STEPPER */
+.stepper { display: flex; gap: 0; margin-bottom: 24px; }
+
+.step {
+  flex: 1; text-align: center; position: relative; padding-bottom: 12px;
+}
+
+.step-number {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; margin-bottom: 4px;
+  background: var(--bg-input); color: var(--text-tertiary);
+  border: 2px solid var(--border); transition: var(--transition);
+}
+
+.step.active .step-number { background: var(--accent); color: white; border-color: var(--accent); }
+.step.done .step-number { background: var(--green); color: white; border-color: var(--green); }
+
+.step-label { font-size: 11px; color: var(--text-tertiary); font-weight: 500; }
+.step.active .step-label { color: var(--accent-dark); font-weight: 600; }
+.step.done .step-label { color: var(--green-text); }
+
+.step::after {
+  content: ''; position: absolute; top: 14px; left: 50%; width: 100%;
+  height: 2px; background: var(--border);
+}
+.step:last-child::after { display: none; }
+.step.done::after { background: var(--green); }
+
+.step-content { display: none; animation: fadeSlideDown 0.25s ease; }
+.step-content.active { display: block; }
+
+/* PARTICIPANT ROW */
+.participant-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; background: var(--bg-metric);
+  border-radius: var(--radius); margin-bottom: 8px;
+  transition: var(--transition);
+}
+.participant-row:hover { background: var(--border-light); }
+
+.pct-input {
+  width: 70px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  text-align: center; background: var(--bg-card); outline: none;
+}
+.pct-input:focus { border-color: var(--accent); }
+
+/* CURRENCY RATE BOX */
+.rate-box {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--blue-bg); border-radius: var(--radius); padding: 10px 14px;
+  font-size: 13px;
+}
+
+.rate-box .rate-icon {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--blue); color: white;
+  display: flex; align-items: center; justify-content: center; font-size: 12px;
+}
+
+/* LIVE CALC */
+.live-calc {
+  background: var(--bg-metric); border-radius: var(--radius-lg);
+  padding: 16px; margin-top: 16px;
+  border: 1px solid var(--border-light);
+}
+
+.calc-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; }
+.calc-total {
+  display: flex; justify-content: space-between; padding: 10px 0 0;
+  margin-top: 8px; border-top: 2px solid var(--border);
+  font-weight: 700; font-size: 15px;
+}
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: 32px; right: 32px;
+  background: var(--bg-sidebar); color: white;
+  padding: 14px 24px; border-radius: var(--radius-lg);
+  font-size: 14px; font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(100px); opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 200; display: flex; align-items: center; gap: 10px;
+}
+
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast-icon { width: 20px; height: 20px; background: var(--green); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+
+/* GRID */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* TYPE DOTS */
+.type-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+.type-dot.income { background: var(--green); }
+.type-dot.expense { background: var(--red); }
+.type-dot.payout { background: var(--accent); }
+
+/* TAB CONTENT */
+.tab-content { display: none; animation: fadeIn 0.3s ease; }
+.tab-content.active { display: block; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* SCROLLBAR */
+.content::-webkit-scrollbar { width: 6px; }
+.content::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.modal::-webkit-scrollbar { width: 5px; }
+.modal::-webkit-scrollbar-track { background: transparent; }
+.modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* QUICK ACTION CARDS */
+.quick-action {
+  background: var(--bg-card); border: 2px dashed var(--border);
+  border-radius: var(--radius-lg); padding: 24px; text-align: center;
+  cursor: pointer; transition: var(--transition);
+}
+.quick-action:hover { border-color: var(--accent); background: var(--accent-light); transform: translateY(-2px); }
+.quick-action-icon { font-size: 28px; margin-bottom: 8px; }
+.quick-action-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.quick-action-desc { font-size: 12px; color: var(--text-secondary); }
+
+/* RESPONSIVE */
+@media (max-width: 1100px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } .grid-2 { grid-template-columns: 1fr; } }
+@media (max-width: 768px) {
+  .sidebar { width: 60px; min-width: 60px; }
+  .sidebar-logo span, .nav-item span, .nav-section { display: none; }
+  .sidebar-logo { padding: 16px; justify-content: center; }
+  .nav-item { justify-content: center; padding: 12px; }
+  .content { padding: 20px 16px; } .header { padding: 0 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">C</div>
+    <span>CRM</span>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section">Основное</div>
+    <a class="nav-item active" onclick="switchTab('dashboard', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a class="nav-item" onclick="switchTab('deals', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <span>Сделки</span>
+    </a>
+    <a class="nav-item" onclick="switchTab('clients', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>Клиенты</span>
+    </a>
+    <a class="nav-item" onclick="switchTab('workers', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+      <span>Сотрудники</span>
+    </a>
+    <div class="nav-section">Финансы</div>
+    <a class="nav-item" onclick="switchTab('finance', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span>Транзакции</span>
+    </a>
+    <a class="nav-item" onclick="switchTab('expenses', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span>Расходы</span>
+    </a>
+    <div class="nav-section">Отчёты</div>
+    <a class="nav-item" onclick="switchTab('reports', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Отчёты</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <a class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Настройки</span>
+    </a>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="header">
+    <h1 class="header-title" id="page-title">Dashboard</h1>
+    <div class="header-right">
+      <div class="header-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Поиск по сделкам, клиентам..." />
+      </div>
+      <div class="avatar-header">АД</div>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ========== DASHBOARD ========== -->
+    <div class="tab-content active" id="tab-dashboard">
+      <div class="metrics-grid">
+        <div class="metric-card"><div class="metric-label">Сделки за месяц</div><div class="metric-value">47</div><div class="metric-change up">+12% к прошлому</div></div>
+        <div class="metric-card"><div class="metric-label">Доход</div><div class="metric-value" style="color:var(--green);">128k</div><div class="metric-change up">+8%</div></div>
+        <div class="metric-card"><div class="metric-label">Расходы</div><div class="metric-value" style="color:var(--red);">41k</div><div class="metric-change down">+3%</div></div>
+        <div class="metric-card"><div class="metric-label">Чистая прибыль</div><div class="metric-value">87k</div><div class="metric-change up">+15%</div></div>
+      </div>
+
+      <!-- Quick actions -->
+      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px;">
+        <div class="quick-action" onclick="openDealModal()">
+          <div class="quick-action-icon">+</div>
+          <div class="quick-action-title">Новая сделка</div>
+          <div class="quick-action-desc">Создать сделку с клиентом или без</div>
+        </div>
+        <div class="quick-action" onclick="openClientModal()">
+          <div class="quick-action-icon">+</div>
+          <div class="quick-action-title">Новый клиент</div>
+          <div class="quick-action-desc">Добавить по номеру телефона</div>
+        </div>
+        <div class="quick-action" onclick="openExpenseModal()">
+          <div class="quick-action-icon">+</div>
+          <div class="quick-action-title">Новый расход</div>
+          <div class="quick-action-desc">Крипта, офис, материалы</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Последние сделки</span><span style="font-size:12px;color:var(--accent);cursor:pointer;font-weight:500;" onclick="switchTabByName('deals')">Все сделки →</span></div>
+          <div class="card-body">
+            <table class="data-table">
+              <thead><tr><th>ID</th><th>Клиент</th><th>Статус</th><th style="text-align:right">Сумма</th></tr></thead>
+              <tbody>
+                <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1042</td><td>Клиент А</td><td><span class="badge badge-green">Закрыта</span></td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">CHF 12,500</td></tr>
+                <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1041</td><td>Клиент Б</td><td><span class="badge badge-amber">В работе</span></td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">PLN 8,200</td></tr>
+                <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1040</td><td style="color:var(--text-tertiary);font-style:italic;">Без клиента</td><td><span class="badge badge-blue">Новая</span></td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">USDT 5,000</td></tr>
+                <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1039</td><td>Клиент Г</td><td><span class="badge badge-green">Закрыта</span></td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">UAH 45,000</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Последние расходы</span><span style="font-size:12px;color:var(--accent);cursor:pointer;font-weight:500;" onclick="switchTabByName('expenses')">Все расходы →</span></div>
+          <div class="card-body">
+            <table class="data-table">
+              <thead><tr><th>Категория</th><th>Описание</th><th style="text-align:right">Сумма</th></tr></thead>
+              <tbody>
+                <tr><td><span class="badge badge-purple">Крипта</span></td><td>Закупка USDT</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">USDT 2,400</td></tr>
+                <tr><td><span class="badge badge-amber">На земле</span></td><td>Аренда офиса</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">PLN 3,200</td></tr>
+                <tr><td><span class="badge badge-amber">На земле</span></td><td>Канцелярия</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">PLN 420</td></tr>
+                <tr><td><span class="badge badge-purple">Крипта</span></td><td>Комиссия обмена</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;font-size:13px;">CHF 180</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== DEALS ========== -->
+    <div class="tab-content" id="tab-deals">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div class="filter-bar">
+          <span class="filter-pill active">Все</span><span class="filter-pill">Новые</span><span class="filter-pill">В работе</span><span class="filter-pill">Закрытые</span>
+        </div>
+        <button class="btn btn-primary" onclick="openDealModal()">+ Новая сделка</button>
+      </div>
+      <div class="card"><div class="card-body">
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Клиент</th><th>Статус</th><th>Сумма</th><th>Участники</th><th style="text-align:right">Прибыль</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1042</td><td><div style="font-weight:500;">Клиент А</div><div style="font-size:11px;color:var(--text-tertiary);">+41 79 123 4567</div></td><td><span class="badge badge-green">Закрыта</span></td><td style="font-weight:600;font-family:'JetBrains Mono',mono;">CHF 12,500</td><td><div class="avatar-stack"><div class="avatar-sm" style="background:var(--purple-bg);color:var(--purple-text);">АК</div><div class="avatar-sm" style="background:var(--teal-bg);color:var(--teal-text);">МВ</div></div></td><td style="text-align:right;font-weight:600;color:var(--green);font-family:'JetBrains Mono',mono;">CHF 8,750</td></tr>
+            <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1041</td><td><div style="font-weight:500;">Клиент Б</div><div style="font-size:11px;color:var(--text-tertiary);">+48 512 345 678</div></td><td><span class="badge badge-amber">В работе</span></td><td style="font-weight:600;font-family:'JetBrains Mono',mono;">PLN 8,200</td><td><div class="avatar-stack"><div class="avatar-sm" style="background:var(--coral-bg);color:var(--coral-text);">ДС</div></div></td><td style="text-align:right;color:var(--text-tertiary);">—</td></tr>
+            <tr><td style="color:var(--text-secondary);font-family:'JetBrains Mono',mono;font-size:12px;">#1040</td><td><div style="font-weight:500;color:var(--text-tertiary);font-style:italic;">Без клиента</div><div style="font-size:11px;color:var(--accent);cursor:pointer;">+ Привязать</div></td><td><span class="badge badge-blue">Новая</span></td><td style="font-weight:600;font-family:'JetBrains Mono',mono;">USDT 5,000</td><td><div class="avatar-stack"><div class="avatar-sm" style="background:var(--purple-bg);color:var(--purple-text);">АК</div><div class="avatar-sm" style="background:var(--coral-bg);color:var(--coral-text);">ДС</div></div></td><td style="text-align:right;color:var(--text-tertiary);">—</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <!-- ========== CLIENTS ========== -->
+    <div class="tab-content" id="tab-clients">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <input type="text" class="form-input" placeholder="Поиск по имени или телефону..." style="width:350px;" />
+        <button class="btn btn-primary" onclick="openClientModal()">+ Новый клиент</button>
+      </div>
+      <div class="client-grid">
+        <div class="client-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+            <div style="display:flex;gap:12px;align-items:center;"><div class="worker-avatar" style="width:44px;height:44px;border-radius:12px;background:var(--green-bg);color:var(--green-text);font-size:15px;">А</div><div><div style="font-weight:600;font-size:15px;">Клиент А</div><div style="font-size:13px;color:var(--text-secondary);">+41 79 123 4567</div></div></div>
+            <span class="badge badge-green">3 сделки</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);border-top:1px solid var(--border-light);padding-top:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Общая сумма</span><span style="font-weight:600;color:var(--text-primary);font-family:'JetBrains Mono',mono;">CHF 28,400</span></div>
+            <div style="display:flex;justify-content:space-between;"><span>Комментарий</span><span style="color:var(--text-tertiary);">VIP клиент</span></div>
+          </div>
+        </div>
+        <div class="client-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+            <div style="display:flex;gap:12px;align-items:center;"><div class="worker-avatar" style="width:44px;height:44px;border-radius:12px;background:var(--amber-bg);color:var(--amber-text);font-size:15px;">Б</div><div><div style="font-weight:600;font-size:15px;">Клиент Б</div><div style="font-size:13px;color:var(--text-secondary);">+48 512 345 678</div></div></div>
+            <span class="badge badge-amber">1 сделка</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);border-top:1px solid var(--border-light);padding-top:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Общая сумма</span><span style="font-weight:600;color:var(--text-primary);font-family:'JetBrains Mono',mono;">PLN 8,200</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== WORKERS ========== -->
+    <div class="tab-content" id="tab-workers">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div style="font-size:14px;color:var(--text-secondary);">4 сотрудника · 2 филиала</div>
+        <button class="btn btn-primary">+ Добавить сотрудника</button>
+      </div>
+      <div class="worker-grid">
+        <div class="worker-card">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;"><div class="worker-avatar" style="background:var(--purple-bg);color:var(--purple-text);">АК</div><div><div style="font-weight:600;font-size:15px;">Алексей К.</div><div style="font-size:12px;color:var(--text-secondary);">Менеджер · Варшава</div></div></div>
+          <div style="border-top:1px solid var(--border-light);padding-top:14px;"><div class="worker-info-row"><span class="worker-info-label">Сделок</span><span style="font-weight:600;">12</span></div><div class="worker-info-row"><span class="worker-info-label">Заработок</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;">CHF 14,200</span></div><div class="worker-info-row"><span class="worker-info-label">Выплачено</span><span style="font-family:'JetBrains Mono',mono;color:var(--green);">CHF 10,400</span></div></div>
+        </div>
+        <div class="worker-card">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;"><div class="worker-avatar" style="background:var(--teal-bg);color:var(--teal-text);">МВ</div><div><div style="font-weight:600;font-size:15px;">Марина В.</div><div style="font-size:12px;color:var(--text-secondary);">Оператор · Цюрих</div></div></div>
+          <div style="border-top:1px solid var(--border-light);padding-top:14px;"><div class="worker-info-row"><span class="worker-info-label">Сделок</span><span style="font-weight:600;">8</span></div><div class="worker-info-row"><span class="worker-info-label">Заработок</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;">CHF 9,800</span></div><div class="worker-info-row"><span class="worker-info-label">Выплачено</span><span style="font-family:'JetBrains Mono',mono;color:var(--green);">CHF 6,000</span></div></div>
+        </div>
+        <div class="worker-card">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;"><div class="worker-avatar" style="background:var(--coral-bg);color:var(--coral-text);">ДС</div><div><div style="font-weight:600;font-size:15px;">Дмитрий С.</div><div style="font-size:12px;color:var(--text-secondary);">Воркер · Варшава</div></div></div>
+          <div style="border-top:1px solid var(--border-light);padding-top:14px;"><div class="worker-info-row"><span class="worker-info-label">Сделок</span><span style="font-weight:600;">15</span></div><div class="worker-info-row"><span class="worker-info-label">Заработок</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;">PLN 18,600</span></div><div class="worker-info-row"><span class="worker-info-label">Выплачено</span><span style="font-family:'JetBrains Mono',mono;color:var(--green);">PLN 12,500</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== FINANCE ========== -->
+    <div class="tab-content" id="tab-finance">
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+        <div class="metric-card"><div class="metric-label">Доходы</div><div class="metric-value" style="color:var(--green);">128,400</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">CHF</div></div>
+        <div class="metric-card"><div class="metric-label">Расходы</div><div class="metric-value" style="color:var(--red);">41,200</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">CHF</div></div>
+        <div class="metric-card"><div class="metric-label">Выплаты</div><div class="metric-value">32,600</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">CHF</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div class="filter-bar"><span class="filter-pill active">Все</span><span class="filter-pill">Доходы</span><span class="filter-pill">Расходы</span><span class="filter-pill">Выплаты</span></div>
+        <select class="form-select" style="width:auto;padding:6px 12px;font-size:12px;"><option>Все филиалы</option><option>Варшава</option><option>Цюрих</option></select>
+      </div>
+      <div class="card"><div class="card-body">
+        <table class="data-table">
+          <thead><tr><th>Дата</th><th>Тип</th><th>Описание</th><th>Филиал</th><th style="text-align:right">Сумма</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--text-secondary);">05.04</td><td><span class="type-dot income"></span>Доход</td><td>Сделка #1042</td><td style="color:var(--text-secondary);">Варшава</td><td style="text-align:right;font-weight:600;color:var(--green);font-family:'JetBrains Mono',mono;">+CHF 12,500</td></tr>
+            <tr><td style="color:var(--text-secondary);">04.04</td><td><span class="type-dot expense"></span>Расход</td><td>Материалы (крипта)</td><td style="color:var(--text-secondary);">Цюрих</td><td style="text-align:right;font-weight:600;color:var(--red);font-family:'JetBrains Mono',mono;">-USDT 2,400</td></tr>
+            <tr><td style="color:var(--text-secondary);">03.04</td><td><span class="type-dot payout"></span>Выплата</td><td>Алексей К.</td><td style="color:var(--text-secondary);">Варшава</td><td style="text-align:right;font-weight:600;color:var(--accent);font-family:'JetBrains Mono',mono;">-CHF 4,200</td></tr>
+            <tr><td style="color:var(--text-secondary);">01.04</td><td><span class="type-dot expense"></span>Расход</td><td>Аренда офиса</td><td style="color:var(--text-secondary);">Варшава</td><td style="text-align:right;font-weight:600;color:var(--red);font-family:'JetBrains Mono',mono;">-PLN 3,200</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <!-- ========== EXPENSES ========== -->
+    <div class="tab-content" id="tab-expenses">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div class="filter-bar"><span class="filter-pill active">Все</span><span class="filter-pill">Материалы (крипта)</span><span class="filter-pill">На земле</span></div>
+        <button class="btn btn-primary" onclick="openExpenseModal()">+ Добавить расход</button>
+      </div>
+      <div class="card"><div class="card-body">
+        <table class="data-table">
+          <thead><tr><th>Дата</th><th>Категория</th><th>Описание</th><th>Филиал</th><th>Сотрудник</th><th style="text-align:right">Сумма</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--text-secondary);">04.04</td><td><span class="badge badge-purple">Крипта</span></td><td>Закупка USDT</td><td>Цюрих</td><td style="color:var(--text-tertiary);">—</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;">USDT 2,400</td></tr>
+            <tr><td style="color:var(--text-secondary);">01.04</td><td><span class="badge badge-amber">На земле</span></td><td>Аренда офиса</td><td>Варшава</td><td style="color:var(--text-tertiary);">—</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;">PLN 3,200</td></tr>
+            <tr><td style="color:var(--text-secondary);">28.03</td><td><span class="badge badge-amber">На земле</span></td><td>Канцелярия</td><td>Варшава</td><td>Дмитрий С.</td><td style="text-align:right;font-weight:600;font-family:'JetBrains Mono',mono;">PLN 420</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <!-- ========== REPORTS ========== -->
+    <div class="tab-content" id="tab-reports">
+      <div style="margin-bottom:24px;"><select class="form-select" style="width:auto;padding:8px 14px;"><option>Апрель 2026</option><option>Март 2026</option></select></div>
+      <div style="font-weight:600;font-size:16px;margin-bottom:16px;">По филиалам</div>
+      <div class="grid-2" style="margin-bottom:32px;">
+        <div class="card" style="overflow:visible;"><div class="card-header"><span class="card-title">Варшава</span><span class="badge badge-green">+37,500</span></div><div class="card-body" style="padding:20px;"><div class="worker-info-row"><span class="worker-info-label">Доход</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;color:var(--green);">CHF 78,200</span></div><div class="worker-info-row"><span class="worker-info-label">Расходы</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;color:var(--red);">CHF 18,400</span></div><div class="worker-info-row"><span class="worker-info-label">Выплаты</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;">CHF 22,300</span></div></div></div>
+        <div class="card" style="overflow:visible;"><div class="card-header"><span class="card-title">Цюрих</span><span class="badge badge-green">+17,100</span></div><div class="card-body" style="padding:20px;"><div class="worker-info-row"><span class="worker-info-label">Доход</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;color:var(--green);">CHF 50,200</span></div><div class="worker-info-row"><span class="worker-info-label">Расходы</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;color:var(--red);">CHF 22,800</span></div><div class="worker-info-row"><span class="worker-info-label">Выплаты</span><span style="font-weight:600;font-family:'JetBrains Mono',mono;">CHF 10,300</span></div></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== MODAL: NEW CLIENT + CALL ==================== -->
+<div class="modal-overlay" id="modal-client" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div><h3>Новый клиент + звонок</h3><div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Быстрый ввод после звонка ИИ</div></div>
+      <button class="modal-close" onclick="closeAllModals()">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- QUICK PASTE FROM VAPI -->
+      <div style="background:var(--blue-bg);border-radius:var(--radius);padding:14px 16px;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <label class="form-label" style="color:var(--blue-text);margin:0;">Быстрая вставка из VAPI</label>
+          <span style="font-size:11px;color:var(--blue);cursor:pointer;font-weight:500;" id="paste-toggle" onclick="toggleVapiPaste()">Развернуть</span>
+        </div>
+        <div id="vapi-paste-area" style="display:none;margin-top:8px;">
+          <textarea id="vapi-paste-input" class="form-textarea" placeholder="Вставьте сообщение от VAPI сюда..." style="min-height:100px;font-family:'JetBrains Mono',mono;font-size:12px;margin-bottom:8px;"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-primary" style="padding:6px 16px;font-size:12px;" onclick="parseVapiMessage()">Распарсить и заполнить</button>
+            <span style="font-size:10px;color:var(--blue);">Система автоматически разберёт текст</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHONE -->
+      <div class="form-group">
+        <label class="form-label">Телефон клиента *</label>
+        <input type="tel" class="form-input" id="new-client-phone" placeholder="+48 000 000 000" style="font-family:'JetBrains Mono',mono;font-size:18px;padding:14px;" oninput="checkPhoneDuplicate(this.value)" />
+        <div id="phone-duplicate" style="display:none;background:var(--amber-bg);border-radius:var(--radius);padding:8px 12px;margin-top:6px;font-size:12px;color:var(--amber-text);">
+          <span style="font-weight:600;">Клиент с таким номером уже есть!</span> <span style="color:var(--accent);cursor:pointer;font-weight:600;">Открыть карточку →</span>
+        </div>
+      </div>
+
+      <!-- NAME + ASSISTANT -->
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Имя клиента</label>
+          <input type="text" class="form-input" id="new-client-name" placeholder="Необязательно" />
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">ИИ ассистент (кто звонил)</label>
+          <select class="form-select" id="new-client-assistant">
+            <option value="">— Выбрать —</option>
+            <option>Robert Nowak PKO BP</option>
+            <option>Wioletta Daszkowska PKO BP</option>
+            <option>Agata Nowak Credit Agricole</option>
+            <option>Natalia Mazur Santander</option>
+            <option>Zuzanna Wisniewska PKO BP</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- BANKS -->
+      <div class="form-group">
+        <label class="form-label">Банки клиента</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;" id="new-client-banks">
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">mBank</span>
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">PKO BP</span>
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">ING</span>
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">Santander</span>
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">Pekao</span>
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">Bank Pocztowy</span>
+          <span class="bank-tag-btn" onclick="toggleBankTag(this)" style="font-size:12px;padding:5px 12px;background:var(--bg-metric);color:var(--text-secondary);border-radius:20px;cursor:pointer;border:1.5px solid transparent;">Credit Agricole</span>
+        </div>
+        <div class="form-hint">Нажмите на банки которые назвал клиент</div>
+      </div>
+
+      <!-- CALL DATE/TIME -->
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Дата звонка</label>
+          <input type="date" class="form-input" id="new-client-date" />
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Время</label>
+          <input type="time" class="form-input" id="new-client-time" />
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="form-group">
+        <label class="form-label">Summary разговора</label>
+        <textarea class="form-textarea" id="new-client-summary" placeholder="Краткое содержание звонка..." style="min-height:70px;"></textarea>
+      </div>
+
+      <!-- ASSIGN MANAGER -->
+      <div class="form-group">
+        <label class="form-label">Назначить менеджера</label>
+        <select class="form-select">
+          <option value="">— Не назначать (в общую базу) —</option>
+          <option>Anna Muller — Оператор · Варшава</option>
+          <option>Lina — Менеджер · Цюрих</option>
+          <option>Cheryl Vega — Клоузер · Варшава</option>
+        </select>
+        <div class="form-hint">Если не назначить — клиент попадёт в общий пул</div>
+      </div>
+
+      <div style="background:var(--bg-metric);border-radius:var(--radius);padding:12px 14px;display:flex;align-items:center;gap:10px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0;"></div>
+        <div style="font-size:12px;color:var(--text-secondary);"><span style="font-weight:600;color:var(--text-primary);">Что произойдёт:</span> создастся карточка клиента + запись звонка ИИ в истории</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAllModals()">Отмена</button>
+      <button class="btn btn-primary btn-lg" onclick="saveClient()">Создать клиента</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: NEW DEAL (SINGLE PAGE) ==================== -->
+<div class="modal-overlay" id="modal-deal" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal" style="width:780px;">
+    <div class="modal-header">
+      <h3>Новая сделка</h3>
+      <button class="modal-close" onclick="closeAllModals()">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- DATE + CLIENT -->
+      <div style="display:grid;grid-template-columns:150px 1fr;gap:14px;margin-bottom:18px;">
+        <div>
+          <label class="form-label">Дата сделки *</label>
+          <input type="date" class="form-input" id="deal-date" style="font-family:'JetBrains Mono',mono;" />
+          <div class="form-hint">Фактическая дата</div>
+        </div>
+        <div>
+          <label class="form-label">Клиент</label>
+          <div id="deal-cl-mode-search">
+            <div style="display:flex;gap:6px;">
+              <div style="flex:1;position:relative;">
+                <div style="position:absolute;left:12px;top:50%;transform:translateY(-50%);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+                <input type="text" class="form-input" id="deal-client-search" placeholder="Поиск по имени или телефону..." style="padding-left:34px;" onfocus="document.getElementById('deal-client-dd').style.display=''" oninput="filterDealClients(this.value)" />
+              </div>
+              <button class="btn btn-ghost" style="font-size:11px;padding:0 10px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);white-space:nowrap;" onclick="openClientModal()">+ Новый</button>
+              <button class="btn btn-ghost" style="font-size:11px;padding:0 10px;background:var(--bg-metric);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;color:var(--text-tertiary);" onclick="skipDealClient()">Без клиента</button>
+            </div>
+            <div id="deal-client-dd" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);margin-top:4px;max-height:140px;overflow-y:auto;">
+              <div class="dcl-item" onclick="selectDealClient('Клиент А','+41 79 123 4567','А')" style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:13px;" onmouseover="this.style.background='var(--bg-input)'" onmouseout="this.style.background=''"><div style="width:26px;height:26px;border-radius:50%;background:var(--green-bg);color:var(--green-text);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;">А</div><span style="flex:1;">Клиент А</span><span style="font-family:'JetBrains Mono',mono;font-size:11px;color:var(--text-tertiary);">+41 79 123 4567</span></div>
+              <div class="dcl-item" onclick="selectDealClient('Клиент Б','+48 512 345 678','Б')" style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg-input)'" onmouseout="this.style.background=''"><div style="width:26px;height:26px;border-radius:50%;background:var(--amber-bg);color:var(--amber-text);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;">Б</div><span style="flex:1;">Клиент Б</span><span style="font-family:'JetBrains Mono',mono;font-size:11px;color:var(--text-tertiary);">+48 512 345 678</span></div>
+            </div>
+          </div>
+          <div id="deal-sel-client" style="display:none;background:var(--green-bg);border-radius:var(--radius);padding:8px 12px;margin-top:6px;align-items:center;gap:8px;font-size:13px;"><div style="width:26px;height:26px;border-radius:50%;background:var(--green-text);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;" id="deal-cl-av">А</div><span style="flex:1;font-weight:500;color:var(--green-text);" id="deal-cl-name">Клиент А</span><span style="font-family:'JetBrains Mono',mono;font-size:11px;color:var(--green);" id="deal-cl-phone">+41 79 123 4567</span><span style="cursor:pointer;color:var(--green);padding:2px 6px;" onclick="clearDealClient()">x</span></div>
+          <div id="deal-cl-mode-skip" style="display:none;background:var(--bg-metric);border-radius:var(--radius);padding:8px 12px;margin-top:6px;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);"><span style="flex:1;font-style:italic;">Без клиента — привяжу позже</span><span style="cursor:pointer;color:var(--accent);font-size:12px;font-weight:500;" onclick="backToDealClientSearch()">Изменить</span></div>
+          <div class="form-hint">Можно оставить пустым</div>
+        </div>
+      </div>
+
+      <!-- STATUS only (no manager, no AI assistant) -->
+      <div style="margin-bottom:18px;width:200px;">
+        <label class="form-label">Статус</label>
+        <select class="form-select"><option>Новая</option><option>В работе</option><option>Закрыта</option><option style="color:var(--red);">Провалена</option></select>
+      </div>
+
+      <!-- AMOUNTS -->
+      <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <label class="form-label" style="margin:0;">Суммы сделки *</label>
+          <button class="btn btn-ghost" style="font-size:12px;padding:4px 14px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);" onclick="addDealAmountRow()">+ Добавить сумму</button>
+        </div>
+        <div id="deal-amounts-list">
+          <div class="deal-amt-row" style="background:var(--bg-metric);border-radius:var(--radius);padding:14px;margin-bottom:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 60px 100px;gap:8px;margin-bottom:8px;">
+              <div><div class="form-label" style="margin-bottom:3px;">Банк клиента</div><select class="form-select" style="font-size:12px;padding:10px 4px;"><option>PKO BP</option><option>mBank</option><option>ING</option><option>Santander</option><option>Pekao</option></select></div>
+              <div><div class="form-label" style="margin-bottom:3px;">Посредник</div><div style="display:flex;gap:4px;"><select class="form-select da-med" style="flex:1;font-size:12px;padding:10px 4px;" onchange="onDealMedChange(this)"><option value="3">Посредник А (3%)</option><option value="5">Посредник Б (5%)</option><option value="2">Посредник В (2%)</option></select><button class="btn btn-ghost" style="padding:0 6px;font-size:11px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);">+</button></div></div>
+              <div><div class="form-label" style="margin-bottom:3px;color:var(--red);">Ком.%</div><input type="number" value="3" class="form-input da-med-pct" style="font-family:'JetBrains Mono',mono;font-size:13px;text-align:center;color:var(--red);padding:10px 4px;" oninput="calcDealAmounts()" /></div>
+              <div><div class="form-label" style="margin-bottom:3px;">Способ</div><select class="form-select" style="font-size:12px;padding:10px 4px;"><option>РЕКИ</option><option>КЕШ</option><option>КАРТА</option><option>БЛИК</option><option>ПОКУПКА</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 70px 70px 1fr 70px 60px 28px;gap:8px;align-items:end;">
+              <div><div style="font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;">Сумма</div><input type="number" value="24000" class="form-input da-amt" style="font-family:'JetBrains Mono',mono;font-size:15px;padding:10px;margin-top:3px;" oninput="calcDealAmounts()" /><div class="da-usd" style="font-size:10px;color:var(--text-tertiary);font-family:'JetBrains Mono',mono;margin-top:2px;">($5,784)</div></div>
+              <div><div style="font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;">Валюта</div><select class="form-select da-cur" style="font-size:11px;padding:10px 2px;margin-top:3px;" onchange="calcDealAmounts()"><option>PLN</option><option>CHF</option><option>USDT</option><option>UAH</option></select></div>
+              <div><div style="font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;">Курс</div><input type="number" value="4.15" step="0.01" class="form-input da-rate" style="font-family:'JetBrains Mono',mono;font-size:12px;text-align:center;padding:10px 4px;margin-top:3px;" oninput="calcDealAmounts()" /></div>
+              <div><div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;">Выплата (USDT)</div><input type="number" value="5614" class="form-input da-pay" style="font-family:'JetBrains Mono',mono;font-size:15px;color:var(--green);padding:10px;margin-top:3px;" oninput="calcDealAmountsManual(this)" /></div>
+              <div><div style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;">Филиал%</div><input type="number" value="25" class="form-input da-branch" style="font-family:'JetBrains Mono',mono;font-size:12px;text-align:center;color:var(--accent);padding:10px 4px;margin-top:3px;" oninput="calcDealAmounts()" /></div>
+              <div><div style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;">Доля</div><div class="da-share" style="font-family:'JetBrains Mono',mono;font-size:13px;font-weight:600;color:var(--accent);padding:10px 0;text-align:center;margin-top:3px;">1,404</div></div>
+              <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-tertiary);font-size:14px;border-radius:var(--radius);margin-bottom:2px;" onmouseover="this.style.background='var(--red-bg)';this.style.color='var(--red-text)'" onmouseout="this.style.background='';this.style.color='var(--text-tertiary)'" onclick="removeDealAmountRow(this)">x</div>
+            </div>
+            <div class="da-formula" style="margin-top:6px;font-size:11px;color:var(--text-tertiary);">24,000 PLN ($5,784) - 3% (720) = 23,280 / 4.15 = <span style="color:var(--green);font-weight:500;">5,614 USDT</span></div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;padding:12px 0 0;margin-top:4px;border-top:2px solid var(--border);">
+          <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius);padding:8px 10px;"><div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;">Итого сумма</div><div style="font-weight:600;font-family:'JetBrains Mono',mono;font-size:15px;" id="deal-t-amt">24,000 PLN</div><div style="font-family:'JetBrains Mono',mono;font-size:11px;color:var(--text-tertiary);" id="deal-t-amt-usd">$5,784</div></div>
+          <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius);padding:8px 10px;"><div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;">Итого выплата</div><div style="font-weight:600;font-family:'JetBrains Mono',mono;font-size:15px;color:var(--green);" id="deal-t-pay">5,614 USDT</div></div>
+          <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius);padding:8px 10px;"><div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;">Комиссия поср.</div><div style="font-weight:600;font-family:'JetBrains Mono',mono;font-size:15px;color:var(--red);" id="deal-t-comm">720 PLN</div><div style="font-family:'JetBrains Mono',mono;font-size:11px;color:var(--text-tertiary);" id="deal-t-comm-usd">$174</div></div>
+          <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius);padding:8px 10px;"><div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;">Доля филиала</div><div style="font-weight:600;font-family:'JetBrains Mono',mono;font-size:15px;color:var(--accent);" id="deal-t-share">1,404 USDT</div></div>
+        </div>
+      </div>
+
+      <!-- PARTICIPANTS -->
+      <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div><label class="form-label" style="margin:0;">Участники (воркеры)</label><div class="form-hint" style="margin-top:2px;">Распределение % от выплаты</div></div>
+          <button class="btn btn-ghost" style="font-size:12px;padding:4px 14px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);" onclick="addDealParticipant()">+ Добавить</button>
+        </div>
+        <div id="deal-participants">
+          <div class="participant-row" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-metric);border-radius:var(--radius);margin-bottom:6px;">
+            <select class="form-select" style="flex:1;padding:8px 10px;font-size:13px;"><option>Алексей К. — Менеджер · Варшава</option><option>Марина В. — Оператор · Цюрих</option><option>Дмитрий С. — Воркер · Варшава</option></select>
+            <input type="number" class="pct-input deal-pct" value="60" style="width:70px;text-align:center;" oninput="updateDealCalc()" />
+            <span style="font-size:13px;color:var(--text-secondary);">%</span>
+            <span class="pct-amount" style="font-size:13px;font-family:'JetBrains Mono',mono;min-width:90px;text-align:right;font-weight:600;">3,368 USDT</span>
+            <span style="cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:4px 8px;" onclick="removeParticipant(this)">x</span>
+          </div>
+          <div class="participant-row" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-metric);border-radius:var(--radius);margin-bottom:6px;">
+            <select class="form-select" style="flex:1;padding:8px 10px;font-size:13px;"><option>Марина В. — Оператор · Цюрих</option><option>Алексей К. — Менеджер · Варшава</option><option>Дмитрий С. — Воркер · Варшава</option></select>
+            <input type="number" class="pct-input deal-pct" value="40" style="width:70px;text-align:center;" oninput="updateDealCalc()" />
+            <span style="font-size:13px;color:var(--text-secondary);">%</span>
+            <span class="pct-amount" style="font-size:13px;font-family:'JetBrains Mono',mono;min-width:90px;text-align:right;font-weight:600;">2,246 USDT</span>
+            <span style="cursor:pointer;color:var(--text-tertiary);font-size:14px;padding:4px 8px;" onclick="removeParticipant(this)">x</span>
+          </div>
+        </div>
+        <div id="pct-status" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--green);">Итого: 100%</div>
+      </div>
+
+      <!-- COMMENT -->
+      <div class="form-group">
+        <label class="form-label">Комментарий</label>
+        <textarea class="form-textarea" placeholder="Заметки по сделке..." style="min-height:50px;"></textarea>
+      </div>
+
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <span style="font-size:11px;color:var(--text-tertiary);" id="deal-created-stamp"></span>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick="closeAllModals()">Отмена</button>
+        <button class="btn btn-success btn-lg" onclick="closeAllModals()">Создать сделку</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: NEW EXPENSE (ЗАЯВКА НА РАСХОД) ==================== -->
+<div class="modal-overlay" id="modal-expense" onclick="if(event.target===this)closeAllModals()">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <h3>Заявка на расход</h3>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Филиал Варшава</div>
+      </div>
+      <button class="modal-close" onclick="closeAllModals()">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- WHO APPROVES -->
+      <div style="background:var(--accent-light);border-radius:var(--radius);padding:14px 16px;margin-bottom:20px;">
+        <label class="form-label" style="color:var(--purple-text);margin-bottom:8px;">Кто подтверждает *</label>
+        <div style="display:flex;gap:8px;">
+          <div class="admin-pick active-admin" onclick="pickAdmin(this)" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-card);border-radius:var(--radius);cursor:pointer;border:2px solid var(--accent);transition:var(--transition);">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">АД</div>
+            <div><div style="font-weight:600;font-size:13px;color:var(--purple-text);">Админ Д.</div><div style="font-size:11px;color:var(--accent);">Главный админ</div></div>
+          </div>
+          <div class="admin-pick" onclick="pickAdmin(this)" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-card);border-radius:var(--radius);cursor:pointer;border:2px solid transparent;transition:var(--transition);">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--green-text);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">ИМ</div>
+            <div><div style="font-weight:600;font-size:13px;">Иван М.</div><div style="font-size:11px;color:var(--text-secondary);">Админ Цюрих</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CATEGORY -->
+      <div class="form-group">
+        <label class="form-label">Категория *</label>
+        <div style="display:flex;gap:8px;">
+          <div class="expense-type-option" onclick="selectExpenseType(this)" style="flex:1;display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--accent-light);border-radius:var(--radius);cursor:pointer;border:2px solid var(--accent);transition:var(--transition);">
+            <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">S</div>
+            <div><div style="font-weight:600;font-size:13px;color:var(--purple-text);">Материалы (сервисы)</div><div style="font-size:11px;color:var(--accent);">Оплата поставщиков</div></div>
+          </div>
+          <div class="expense-type-option" onclick="selectExpenseType(this)" style="flex:1;display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg-metric);border-radius:var(--radius);cursor:pointer;border:2px solid transparent;transition:var(--transition);">
+            <div style="width:32px;height:32px;border-radius:8px;background:var(--amber-bg);color:var(--amber-text);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">O</div>
+            <div><div style="font-weight:600;font-size:13px;">Расходы на земле</div><div style="font-size:11px;color:var(--text-secondary);">Офис, связь, материалы</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPPLIER -->
+      <div class="form-group">
+        <label class="form-label">Поставщик *</label>
+        <div style="display:flex;gap:8px;">
+          <select class="form-select" style="flex:1;">
+            <option>TeleCom Provider A</option>
+            <option>Hosting Corp B</option>
+            <option>VPN Service C</option>
+          </select>
+          <button class="btn btn-ghost" style="white-space:nowrap;font-size:12px;padding:0 14px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);" onclick="toggleInlineAdd('supplier')">+ Новый</button>
+        </div>
+        <div id="inline-supplier" class="inline-create" style="display:none;">
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">Название</label><input type="text" class="form-input" placeholder="Имя поставщика" /></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">Контакт</label><input type="text" class="form-input" placeholder="Телефон или email" /></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:10px;">
+            <button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="toggleInlineAdd('supplier')">Отмена</button>
+            <button class="btn btn-primary" style="padding:4px 12px;font-size:12px;" onclick="toggleInlineAdd('supplier');showToast('Поставщик добавлен!')">Сохранить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PURPOSE -->
+      <div class="form-group">
+        <label class="form-label">Назначение *</label>
+        <div style="display:flex;gap:8px;">
+          <select class="form-select" style="flex:1;">
+            <option>Оплата связи</option>
+            <option>Продление подписки</option>
+            <option>Покупка лицензии</option>
+          </select>
+          <button class="btn btn-ghost" style="white-space:nowrap;font-size:12px;padding:0 14px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);" onclick="toggleInlineAdd('purpose')">+ Новое</button>
+        </div>
+        <div id="inline-purpose" class="inline-create" style="display:none;">
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label">Новое назначение</label><input type="text" class="form-input" placeholder="Например: Оплата хостинга" /></div>
+          <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:10px;">
+            <button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="toggleInlineAdd('purpose')">Отмена</button>
+            <button class="btn btn-primary" style="padding:4px 12px;font-size:12px;" onclick="toggleInlineAdd('purpose');showToast('Назначение добавлено!')">Сохранить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AMOUNT + PAYMENT -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Сумма *</label>
+          <input type="number" class="form-input" placeholder="0.00" value="300" style="font-family:'JetBrains Mono',mono;font-size:16px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Способ оплаты *</label>
+          <select class="form-select" id="expense-pay-method" style="font-size:14px;" onchange="toggleExpensePayFields()">
+            <option value="usdt">USDT (крипта)</option>
+            <option value="bank">Банковский перевод</option>
+            <option value="cash">Наличные</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- CRYPTO FIELDS -->
+      <div id="expense-crypto-fields" style="background:var(--blue-bg);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px;">
+        <label class="form-label" style="color:var(--blue-text);margin-bottom:10px;">Реквизиты крипто-перевода</label>
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:6px;">СЕТЬ</div>
+          <div style="display:flex;gap:6px;" id="network-pills">
+            <span class="net-pill active-net" onclick="selectNetwork(this)" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--blue-text);color:white;cursor:pointer;border:1px solid var(--blue-text);">TRC20</span>
+            <span class="net-pill" onclick="selectNetwork(this)" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--bg-card);color:var(--blue-text);cursor:pointer;border:1px solid var(--blue);">ERC20</span>
+            <span class="net-pill" onclick="selectNetwork(this)" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--bg-card);color:var(--blue-text);cursor:pointer;border:1px solid var(--blue);">BEP20</span>
+            <span class="net-pill" onclick="selectNetwork(this)" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--bg-card);color:var(--blue-text);cursor:pointer;border:1px solid var(--blue);">SOL</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:4px;">АДРЕС КОШЕЛЬКА *</div>
+          <input type="text" class="form-input" placeholder="T... вставьте адрес кошелька" style="font-family:'JetBrains Mono',mono;font-size:13px;" />
+        </div>
+      </div>
+
+      <!-- BANK FIELDS (hidden by default) -->
+      <div id="expense-bank-fields" style="display:none;background:var(--green-bg);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px;">
+        <label class="form-label" style="color:var(--green-text);margin-bottom:10px;">Банковские реквизиты</label>
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label" style="color:var(--green);">IBAN</label><input type="text" class="form-input" placeholder="CH00 0000 0000 0000" style="font-family:'JetBrains Mono',mono;font-size:13px;" /></div>
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label" style="color:var(--green);">Банк</label><input type="text" class="form-input" placeholder="Название банка" /></div>
+        </div>
+      </div>
+
+      <!-- COMMENT -->
+      <div class="form-group">
+        <label class="form-label">Комментарий</label>
+        <textarea class="form-textarea" placeholder="Дополнительные заметки к заявке..." style="min-height:60px;"></textarea>
+      </div>
+
+      <!-- FILE UPLOAD -->
+      <div class="form-group">
+        <label class="form-label">Чек / документ</label>
+        <div id="expense-upload-zone" style="border:1.5px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;cursor:pointer;transition:var(--transition);" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--accent-light)'" onmouseout="this.style.borderColor='var(--border)';this.style.background=''" onclick="document.getElementById('expense-file-inp').click()">
+          <input type="file" id="expense-file-inp" accept=".png,.jpg,.jpeg,.pdf,.heic" multiple style="display:none;" onchange="handleExpenseFiles(this.files)" />
+          <div style="margin-bottom:6px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);">Перетащите или нажмите для загрузки</div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">PNG, JPG, PDF, HEIC до 10MB. Можно несколько файлов</div>
+        </div>
+        <div id="expense-file-list" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- STATUS INFO -->
+      <div style="background:var(--bg-metric);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--amber);"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600;">Заявка уйдёт на одобрение: Админ Д.</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">После одобрения админ проведёт перевод и выставит статус</div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-metric);border-radius:var(--radius);padding:12px 14px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">Статусы заявки</div>
+        <div style="display:flex;gap:16px;">
+          <div style="display:flex;align-items:center;gap:6px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div><span style="font-size:12px;color:var(--text-secondary);">Новая</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--amber);"></div><span style="font-size:12px;color:var(--text-secondary);">На одобрении</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="width:8px;height:8px;border-radius:50%;background:#5DCAA5;"></div><span style="font-size:12px;color:var(--text-secondary);">Одобрена</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="width:8px;height:8px;border-radius:50%;background:var(--green);"></div><span style="font-size:12px;color:var(--text-secondary);">Оплачено</span></div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAllModals()">Отмена</button>
+      <button class="btn btn-primary btn-lg" onclick="saveExpense()">Отправить на одобрение</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-icon">✓</div>
+  <span id="toast-text">Сохранено!</span>
+</div>
+
+<script>
+const titles = { dashboard:'Dashboard', deals:'Сделки', clients:'Клиенты', workers:'Сотрудники', finance:'Реестр транзакций', expenses:'Расходы', reports:'Отчёты' };
+let currentDealStep = 1;
+
+const rates = { CHF: 1, PLN: 0.23, USDT: 0.91, UAH: 0.024 };
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('page-title').textContent = titles[name] || name;
+}
+
+function switchTabByName(name) {
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(n => { if (n.textContent.trim() === titles[name]) { switchTab(name, n); } });
+  switchTab(name, null);
+}
+
+// MODALS
+function openClientModal() { closeAllModals(); document.getElementById('modal-client').classList.add('open'); initClientModal(); }
+function openDealModal() { closeAllModals(); currentDealStep = 1; showDealStep(1); document.getElementById('modal-deal').classList.add('open'); initDealDate(); }
+function openExpenseModal() { closeAllModals(); document.getElementById('modal-expense').classList.add('open'); }
+function closeAllModals() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open')); }
+
+// DEAL STEPPER
+function showDealStep(n) {
+  currentDealStep = n;
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('deal-step-' + i).classList.toggle('active', i === n);
+    const ind = document.getElementById('step-ind-' + i);
+    ind.classList.remove('active', 'done');
+    if (i < n) ind.classList.add('done');
+    if (i === n) ind.classList.add('active');
+  }
+  document.getElementById('deal-btn-back').style.display = n > 1 ? '' : 'none';
+  const nextBtn = document.getElementById('deal-btn-next');
+  if (n === 3) {
+    nextBtn.textContent = 'Создать сделку ✓';
+    nextBtn.className = 'btn btn-success btn-lg';
+    updateDealSummary();
+  } else {
+    nextBtn.textContent = 'Далее →';
+    nextBtn.className = 'btn btn-primary btn-lg';
+  }
+  if (n === 2) updateDealCalc();
+  const subtitles = ['Шаг 1 из 3 — Основное', 'Шаг 2 из 3 — Участники', 'Шаг 3 из 3 — Проверка'];
+  document.getElementById('deal-step-subtitle').textContent = subtitles[n - 1];
+}
+
+// DEAL PARTICIPANTS CALC
+function updateDealCalc() {
+  const totalPay = getTotalDealPayout();
+  const pctInputs = document.querySelectorAll('.deal-pct');
+  const amounts = document.querySelectorAll('.pct-amount');
+  let totalPct = 0;
+  pctInputs.forEach((inp, i) => {
+    const pct = parseInt(inp.value) || 0;
+    totalPct += pct;
+    const payout = Math.round(totalPay * pct / 100);
+    if (amounts[i]) amounts[i].textContent = totalPay > 0 ? 'USDT ' + payout.toLocaleString() : '—';
+  });
+  const status = document.getElementById('pct-status');
+  if (totalPct === 100) status.innerHTML = '<span style="color:var(--green);">✓ Итого: 100%</span>';
+  else if (totalPct > 100) status.innerHTML = '<span style="color:var(--red);">⚠ Итого: ' + totalPct + '% — превышает 100%</span>';
+  else status.innerHTML = '<span style="color:var(--amber);">⚠ Итого: ' + totalPct + '% — не хватает ' + (100 - totalPct) + '%</span>';
+}
+
+function getTotalDealPayout() {
+  let total = 0;
+  document.querySelectorAll('.deal-amt-row .da-pay').forEach(inp => total += parseFloat(inp.value) || 0);
+  return total;
+}
+
+function updateDealSummary() {
+  const clName = document.getElementById('deal-cl-name');
+  document.getElementById('summary-client').textContent = clName && document.getElementById('deal-sel-client').style.display !== 'none' ? clName.textContent : 'Без клиента';
+  document.getElementById('summary-branch').textContent = (document.getElementById('deal-t-share') ? document.getElementById('deal-t-share').textContent : '—');
+  const totalPay = getTotalDealPayout();
+  const pctInputs = document.querySelectorAll('.deal-pct');
+  const participantSelects = document.querySelectorAll('#deal-participants .participant-row select');
+  let totalWorkerPay = 0;
+  const calcDiv = document.getElementById('deal-summary-calc');
+  let rows = '<div class="calc-row"><span>Итого сумма</span><span style="font-weight:600;font-family:\'JetBrains Mono\',mono;">'+(document.getElementById('deal-t-amt')?document.getElementById('deal-t-amt').textContent:'—')+'</span></div>';
+  rows += '<div class="calc-row"><span>Итого выплата</span><span style="font-weight:600;font-family:\'JetBrains Mono\',mono;color:var(--green);">'+totalPay.toLocaleString()+' USDT</span></div>';
+  rows += '<div class="calc-row"><span>Комиссия посредников</span><span style="font-weight:600;font-family:\'JetBrains Mono\',mono;color:var(--red);">'+(document.getElementById('deal-t-comm')?document.getElementById('deal-t-comm').textContent:'—')+'</span></div>';
+  pctInputs.forEach((inp, i) => {
+    const pct = parseInt(inp.value) || 0;
+    const payout = Math.round(totalPay * pct / 100);
+    totalWorkerPay += payout;
+    const name = participantSelects[i] ? participantSelects[i].options[participantSelects[i].selectedIndex].text.split(' —')[0] : '—';
+    rows += '<div class="calc-row"><span style="color:var(--accent);">Воркер: '+name+' ('+pct+'%)</span><span style="font-weight:600;font-family:\'JetBrains Mono\',mono;color:var(--accent);">-USDT '+payout.toLocaleString()+'</span></div>';
+  });
+  const profit = totalPay - totalWorkerPay;
+  rows += '<div class="calc-total"><span>Остаток</span><span style="font-family:\'JetBrains Mono\',mono;color:'+(profit >= 0 ? 'var(--green)' : 'var(--red)')+';">USDT '+profit.toLocaleString()+'</span></div>';
+  calcDiv.innerHTML = rows;
+}
+
+function dealStepNext() {
+  if (currentDealStep < 3) { showDealStep(currentDealStep + 1); updateDealCalc(); }
+  else { closeAllModals(); showToast('Сделка создана!'); }
+}
+
+function dealStepBack() { if (currentDealStep > 1) showDealStep(currentDealStep - 1); }
+
+// CLIENT SELECT IN DEAL
+function filterDealClients(val) {
+  const dd = document.getElementById('deal-client-dd');
+  dd.style.display = '';
+  const lower = val.toLowerCase();
+  dd.querySelectorAll('.dcl-item').forEach(it => {
+    it.style.display = it.textContent.toLowerCase().includes(lower) ? '' : 'none';
+  });
+}
+
+function selectDealClient(name, phone, letter) {
+  document.getElementById('deal-client-dd').style.display = 'none';
+  document.getElementById('deal-cl-mode-search').style.display = 'none';
+  document.getElementById('deal-cl-mode-skip').style.display = 'none';
+  const sel = document.getElementById('deal-sel-client');
+  sel.style.display = 'flex';
+  document.getElementById('deal-cl-name').textContent = name;
+  document.getElementById('deal-cl-phone').textContent = phone;
+  document.getElementById('deal-cl-av').textContent = letter;
+}
+
+function clearDealClient() {
+  document.getElementById('deal-sel-client').style.display = 'none';
+  document.getElementById('deal-cl-mode-skip').style.display = 'none';
+  document.getElementById('deal-cl-mode-search').style.display = '';
+  document.getElementById('deal-client-search').value = '';
+}
+
+function skipDealClient() {
+  document.getElementById('deal-cl-mode-search').style.display = 'none';
+  document.getElementById('deal-sel-client').style.display = 'none';
+  document.getElementById('deal-cl-mode-skip').style.display = 'flex';
+}
+
+function backToDealClientSearch() {
+  document.getElementById('deal-cl-mode-skip').style.display = 'none';
+  document.getElementById('deal-sel-client').style.display = 'none';
+  document.getElementById('deal-cl-mode-search').style.display = '';
+  document.getElementById('deal-client-search').value = '';
+}
+
+function initDealDate() {
+  const d = document.getElementById('deal-date');
+  if (d) d.valueAsDate = new Date();
+}
+
+// Close client dropdown on outside click
+document.addEventListener('click', function(e) {
+  const dd = document.getElementById('deal-client-dd');
+  const search = document.getElementById('deal-client-search');
+  if (dd && !dd.contains(e.target) && e.target !== search) dd.style.display = 'none';
+});
+
+// DEAL MEDIATOR CHANGE
+function onDealMedChange(sel) {
+  const pctInput = sel.closest('.deal-amt-row').querySelector('.da-med-pct');
+  pctInput.value = sel.value;
+  calcDealAmounts();
+}
+
+// DEAL AMOUNTS CALC (auto)
+function calcDealAmounts() {
+  const rows = document.querySelectorAll('.deal-amt-row');
+  let tAmt = 0, tPay = 0, tComm = 0, tShare = 0;
+  rows.forEach(r => {
+    const amt = parseFloat(r.querySelector('.da-amt').value) || 0;
+    const pct = parseFloat(r.querySelector('.da-med-pct').value) || 0;
+    const rate = parseFloat(r.querySelector('.da-rate').value) || 1;
+    const branchPct = parseFloat(r.querySelector('.da-branch').value) || 0;
+    const comm = Math.round(amt * pct / 100);
+    const afterComm = amt - comm;
+    const payout = Math.round(afterComm / rate);
+    const share = Math.round(payout * branchPct / 100);
+    r.querySelector('.da-pay').value = payout;
+    r.querySelector('.da-comm').textContent = '-' + comm.toLocaleString();
+    r.querySelector('.da-share').textContent = share.toLocaleString();
+    const cur = r.querySelector('.da-cur').value;
+    r.querySelector('.da-formula').innerHTML = amt.toLocaleString()+' '+cur+' − '+pct+'% ('+comm.toLocaleString()+') = '+afterComm.toLocaleString()+' / '+rate+' = <span style="color:var(--green);font-weight:500;">'+payout.toLocaleString()+' USDT</span>';
+    tAmt += amt; tPay += payout; tComm += comm; tShare += share;
+  });
+  document.getElementById('deal-t-amt').textContent = tAmt.toLocaleString() + ' PLN';
+  document.getElementById('deal-t-pay').textContent = tPay.toLocaleString() + ' USDT';
+  document.getElementById('deal-t-comm').textContent = tComm.toLocaleString() + ' PLN';
+  document.getElementById('deal-t-share').textContent = tShare.toLocaleString() + ' USDT';
+}
+
+// DEAL AMOUNTS CALC (manual payout edit)
+function calcDealAmountsManual(inp) {
+  const row = inp.closest('.deal-amt-row');
+  const amt = parseFloat(row.querySelector('.da-amt').value) || 0;
+  const pct = parseFloat(row.querySelector('.da-med-pct').value) || 0;
+  const rate = parseFloat(row.querySelector('.da-rate').value) || 1;
+  const branchPct = parseFloat(row.querySelector('.da-branch').value) || 0;
+  const payout = parseFloat(inp.value) || 0;
+  const comm = Math.round(amt * pct / 100);
+  const afterComm = amt - comm;
+  const share = Math.round(payout * branchPct / 100);
+  row.querySelector('.da-comm').textContent = '-' + comm.toLocaleString();
+  row.querySelector('.da-share').textContent = share.toLocaleString();
+  const cur = row.querySelector('.da-cur').value;
+  row.querySelector('.da-formula').innerHTML = amt.toLocaleString()+' '+cur+' − '+pct+'% ('+comm.toLocaleString()+') = '+afterComm.toLocaleString()+' / '+rate+' = <span style="color:var(--green);font-weight:500;">'+payout.toLocaleString()+' USDT</span> <span style="color:var(--amber);">(ручная правка)</span>';
+  // recalc totals
+  let tAmt=0, tPay=0, tComm2=0, tShare2=0;
+  document.querySelectorAll('.deal-amt-row').forEach(r => {
+    tAmt += parseFloat(r.querySelector('.da-amt').value) || 0;
+    tPay += parseFloat(r.querySelector('.da-pay').value) || 0;
+    const c = parseFloat(r.querySelector('.da-med-pct').value) || 0;
+    const a = parseFloat(r.querySelector('.da-amt').value) || 0;
+    tComm2 += Math.round(a * c / 100);
+    const p = parseFloat(r.querySelector('.da-pay').value) || 0;
+    const b = parseFloat(r.querySelector('.da-branch').value) || 0;
+    tShare2 += Math.round(p * b / 100);
+  });
+  document.getElementById('deal-t-amt').textContent = tAmt.toLocaleString() + ' PLN';
+  document.getElementById('deal-t-pay').textContent = tPay.toLocaleString() + ' USDT';
+  document.getElementById('deal-t-comm').textContent = tComm2.toLocaleString() + ' PLN';
+  document.getElementById('deal-t-share').textContent = tShare2.toLocaleString() + ' USDT';
+}
+
+// ADD DEAL AMOUNT ROW
+function addDealAmountRow() {
+  const list = document.getElementById('deal-amounts-list');
+  const row = document.createElement('div');
+  row.className = 'deal-amt-row';
+  row.style.cssText = 'background:var(--bg-metric);border-radius:var(--radius);padding:14px;margin-bottom:8px;';
+  row.innerHTML = '<div style="display:grid;grid-template-columns:1fr 70px 1fr 50px 100px;gap:8px;margin-bottom:8px;"><div><div class="form-label" style="margin-bottom:3px;">Сумма</div><input type="number" placeholder="0" class="form-input da-amt" style="font-family:\'JetBrains Mono\',mono;font-size:15px;padding:10px;" oninput="calcDealAmounts()" /></div><div><div class="form-label" style="margin-bottom:3px;">Валюта</div><select class="form-select da-cur" style="font-size:12px;padding:10px 4px;"><option>PLN</option><option>CHF</option><option>USDT</option><option>UAH</option></select></div><div><div class="form-label" style="margin-bottom:3px;">Посредник</div><div style="display:flex;gap:4px;"><select class="form-select da-med" style="flex:1;font-size:12px;padding:10px 4px;" onchange="onDealMedChange(this)"><option value="3">Посредник А (3%)</option><option value="5">Посредник Б (5%)</option><option value="2">Посредник В (2%)</option></select><button class="btn btn-ghost" style="padding:0 6px;font-size:11px;background:var(--accent-light);border:1px solid rgba(108,92,231,0.2);border-radius:var(--radius);">+</button></div></div><div><div class="form-label" style="margin-bottom:3px;color:var(--red);">Ком.%</div><input type="number" value="3" class="form-input da-med-pct" style="font-family:\'JetBrains Mono\',mono;font-size:13px;text-align:center;color:var(--red);padding:10px 4px;" oninput="calcDealAmounts()" /></div><div><div class="form-label" style="margin-bottom:3px;">Способ</div><select class="form-select" style="font-size:12px;padding:10px 4px;"><option>КЕШ</option><option>КАРТА</option><option>РЕКИ</option><option>БЛИК</option></select></div></div><div style="display:grid;grid-template-columns:70px 80px 1fr 70px 60px 28px;gap:8px;align-items:end;"><div><div style="font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;">Курс</div><input type="number" value="4.15" step="0.01" class="form-input da-rate" style="font-family:\'JetBrains Mono\',mono;font-size:12px;text-align:center;padding:8px 4px;margin-top:3px;" oninput="calcDealAmounts()" /></div><div><div style="font-size:10px;font-weight:600;color:var(--red);text-transform:uppercase;">Комиссия</div><div class="da-comm" style="font-family:\'JetBrains Mono\',mono;font-size:12px;color:var(--red);padding:8px 0;text-align:center;margin-top:3px;">0</div></div><div><div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;">Выплата (USDT)</div><input type="number" value="0" class="form-input da-pay" style="font-family:\'JetBrains Mono\',mono;font-size:15px;color:var(--green);padding:8px 10px;margin-top:3px;" oninput="calcDealAmountsManual(this)" /></div><div><div style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;">Филиал%</div><input type="number" value="25" class="form-input da-branch" style="font-family:\'JetBrains Mono\',mono;font-size:12px;text-align:center;color:var(--accent);padding:8px 4px;margin-top:3px;" oninput="calcDealAmounts()" /></div><div><div style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;">Доля</div><div class="da-share" style="font-family:\'JetBrains Mono\',mono;font-size:13px;font-weight:600;color:var(--accent);padding:8px 0;text-align:center;margin-top:3px;">0</div></div><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-tertiary);font-size:14px;border-radius:var(--radius);margin-bottom:2px;" onmouseover="this.style.background=\'var(--red-bg)\';this.style.color=\'var(--red-text)\'" onmouseout="this.style.background=\'\';this.style.color=\'var(--text-tertiary)\'" onclick="removeDealAmountRow(this)">×</div></div><div class="da-formula" style="margin-top:6px;font-size:11px;color:var(--text-tertiary);">—</div>';
+  list.appendChild(row);
+}
+
+function removeDealAmountRow(el) {
+  el.closest('.deal-amt-row').remove();
+  calcDealAmounts();
+}
+
+// PARTICIPANTS
+function addDealParticipant() {
+  const container = document.getElementById('deal-participants');
+  const row = document.createElement('div');
+  row.className = 'participant-row';
+  row.innerHTML = `
+    <div class="avatar-sm" style="background:var(--coral-bg);color:var(--coral-text);width:32px;height:32px;flex-shrink:0;">ДС</div>
+    <select class="form-select" style="flex:1;padding:8px 10px;font-size:13px;" onchange="updateParticipantAvatar(this)">
+      <option value="ДС" data-bg="var(--coral-bg)" data-color="var(--coral-text)">Дмитрий С. — Варшава</option>
+      <option value="АК" data-bg="var(--purple-bg)" data-color="var(--purple-text)">Алексей К. — Варшава</option>
+      <option value="МВ" data-bg="var(--teal-bg)" data-color="var(--teal-text)">Марина В. — Цюрих</option>
+      <option value="ЕН" data-bg="var(--blue-bg)" data-color="var(--blue-text)">Елена Н. — Цюрих</option>
+    </select>
+    <input type="number" class="pct-input deal-pct" value="0" min="0" max="100" oninput="updateDealCalc()" />
+    <span style="font-size:13px;color:var(--text-secondary);">%</span>
+    <span class="pct-amount" style="font-size:13px;font-family:'JetBrains Mono',mono;min-width:90px;text-align:right;font-weight:600;">—</span>
+    <button class="btn-ghost" style="padding:4px 8px;color:var(--red);font-size:16px;" onclick="removeParticipant(this)">×</button>
+  `;
+  container.appendChild(row);
+  updateDealCalc();
+}
+
+function removeParticipant(btn) {
+  btn.closest('.participant-row').remove();
+  updateDealCalc();
+}
+
+function updateParticipantAvatar(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const avatar = sel.closest('.participant-row').querySelector('.avatar-sm');
+  avatar.textContent = opt.value;
+  avatar.style.background = opt.dataset.bg;
+  avatar.style.color = opt.dataset.color;
+}
+
+// PHONE DUPLICATE CHECK
+function checkPhoneDuplicate(val) {
+  const dup = document.getElementById('phone-duplicate');
+  dup.style.display = val.includes('370') ? '' : 'none';
+}
+
+// VAPI PASTE
+function toggleVapiPaste() {
+  const area = document.getElementById('vapi-paste-area');
+  const toggle = document.getElementById('paste-toggle');
+  if (area.style.display === 'none') { area.style.display = ''; toggle.textContent = 'Свернуть'; }
+  else { area.style.display = 'none'; toggle.textContent = 'Развернуть'; }
+}
+
+function parseVapiMessage() {
+  const txt = document.getElementById('vapi-paste-input').value;
+  const phoneMatch = txt.match(/[\+]?[0-9\s]{10,}/);
+  if (phoneMatch) document.getElementById('new-client-phone').value = phoneMatch[0].trim();
+  const nameMatch = txt.match(/Клиент:\s*(.+)/);
+  if (nameMatch) document.getElementById('new-client-name').value = nameMatch[1].trim();
+  const assistMatch = txt.match(/Ассистент:\s*(.+)/);
+  if (assistMatch) {
+    const sel = document.getElementById('new-client-assistant');
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].text.includes(assistMatch[1].trim().split(' ')[0])) { sel.selectedIndex = i; break; }
+    }
+  }
+  const summMatch = txt.match(/Summary:\s*([\s\S]*?)$/m);
+  if (summMatch) document.getElementById('new-client-summary').value = summMatch[1].trim();
+  const banks = ['mBank','PKO','ING','Santander','Pekao','Bank Pocztowy','Credit Agricole'];
+  document.querySelectorAll('.bank-tag-btn').forEach(tag => {
+    const found = banks.some(b => txt.includes(b) && tag.textContent.includes(b));
+    if (found) { tag.style.background = 'var(--blue-bg)'; tag.style.color = 'var(--blue-text)'; tag.style.fontWeight = '600'; }
+  });
+  document.getElementById('vapi-paste-area').style.display = 'none';
+  document.getElementById('paste-toggle').textContent = 'Развернуть';
+}
+
+// BANK TAGS
+function toggleBankTag(el) {
+  const isActive = el.style.fontWeight === '600';
+  if (isActive) { el.style.background = 'var(--bg-metric)'; el.style.color = 'var(--text-secondary)'; el.style.fontWeight = '400'; }
+  else { el.style.background = 'var(--blue-bg)'; el.style.color = 'var(--blue-text)'; el.style.fontWeight = '600'; }
+}
+
+// SET DEFAULT DATE/TIME ON CLIENT MODAL
+function initClientModal() {
+  const d = document.getElementById('new-client-date');
+  const t = document.getElementById('new-client-time');
+  if (d) d.valueAsDate = new Date();
+  if (t) { const now = new Date(); t.value = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'); }
+}
+
+// EXPENSE TYPE
+function selectExpenseType(el) {
+  document.querySelectorAll('.expense-type-option').forEach(o => {
+    o.style.borderColor = 'transparent';
+    o.style.background = 'var(--bg-metric)';
+  });
+  el.style.borderColor = 'var(--accent)';
+  el.style.background = 'var(--accent-light)';
+}
+
+// ADMIN PICK
+function pickAdmin(el) {
+  document.querySelectorAll('.admin-pick').forEach(a => {
+    a.style.border = '2px solid transparent';
+    a.classList.remove('active-admin');
+  });
+  el.style.border = '2px solid var(--accent)';
+  el.classList.add('active-admin');
+}
+
+// EXPENSE PAY METHOD
+function toggleExpensePayFields() {
+  const method = document.getElementById('expense-pay-method').value;
+  document.getElementById('expense-crypto-fields').style.display = method === 'usdt' ? '' : 'none';
+  document.getElementById('expense-bank-fields').style.display = method === 'bank' ? '' : 'none';
+}
+
+// NETWORK SELECT
+function selectNetwork(el) {
+  el.parentElement.querySelectorAll('.net-pill').forEach(p => {
+    p.style.background = 'var(--bg-card)';
+    p.style.color = 'var(--blue-text)';
+    p.style.border = '1px solid var(--blue)';
+  });
+  el.style.background = 'var(--blue-text)';
+  el.style.color = 'white';
+  el.style.border = '1px solid var(--blue-text)';
+}
+
+// INLINE ADD (supplier / purpose)
+function toggleInlineAdd(type) {
+  const el = document.getElementById('inline-' + type);
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// EXPENSE FILE UPLOAD
+function handleExpenseFiles(files) {
+  const list = document.getElementById('expense-file-list');
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const size = f.size < 1024*1024 ? Math.round(f.size/1024) + ' KB' : (f.size/(1024*1024)).toFixed(1) + ' MB';
+    const ext = f.name.split('.').pop().toUpperCase();
+    const isPdf = ext === 'PDF';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-metric);border-radius:var(--radius);margin-bottom:6px;';
+    row.innerHTML = '<div style="width:32px;height:32px;border-radius:8px;background:'+(isPdf?'var(--red-bg)':'var(--blue-bg)')+';color:'+(isPdf?'var(--red-text)':'var(--blue-text)')+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;">'+ext+'</div>'
+      +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+f.name+'</div><div style="font-size:11px;color:var(--text-tertiary);">'+size+'</div></div>'
+      +'<div style="cursor:pointer;color:var(--text-tertiary);font-size:16px;padding:4px 8px;" onclick="this.parentElement.remove()">×</div>';
+    list.appendChild(row);
+  }
+  document.getElementById('expense-file-inp').value = '';
+}
+
+// SAVE ACTIONS
+function saveClient() { closeAllModals(); showToast('Клиент создан!'); }
+function saveExpense() { closeAllModals(); showToast('Заявка отправлена на одобрение!'); }
+
+// TOAST
+function showToast(text) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-text').textContent = text;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// FILTER PILLS
+document.querySelectorAll('.filter-pill').forEach(pill => {
+  pill.addEventListener('click', function() {
+    this.parentElement.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

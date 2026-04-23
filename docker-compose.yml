@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16
+    container_name: biscrm-db
+    environment:
+      POSTGRES_USER: biscrm
+      POSTGRES_PASSWORD: biscrm_password
+      POSTGRES_DB: biscrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biscrm -d biscrm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: biscrm-backend
+    environment:
+      DATABASE_URL: postgresql://biscrm:biscrm_password@db:5432/biscrm?schema=public
+      PORT: "4000"
+      COOKIE_SECURE: "true"
+      COOKIE_DOMAIN: "my-crm.live"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: biscrm-web
+    environment:
+      NEXT_PUBLIC_API_BASE: http://backend:4000/api
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: biscrm-nginx
+    depends_on:
+      - web
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/biscrm.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker-data/certbot/www:/var/www/certbot
+      - ./docker-data/certbot/conf:/etc/letsencrypt
+
