@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# crm
-=======
 # biscrm
 
 Working CRM (admin/manager) with multi-business (multi-tenant) support.
@@ -13,16 +10,16 @@ Working CRM (admin/manager) with multi-business (multi-tenant) support.
 npm install
 ```
 
-2. Start DB + apps (will be added in `docker-compose.yml`):
+2. Start DB + apps:
 
 ```bash
 docker compose up -d
 ```
 
-3. Run migrations + seed (will be added):
+3. Push DB schema + seed:
 
 ```bash
-npm run db:migrate -w @biscrm/backend
+npm run db:push -w @biscrm/backend
 npm run db:seed -w @biscrm/backend
 ```
 
@@ -31,5 +28,3 @@ npm run db:seed -w @biscrm/backend
 ```bash
 npm run dev
 ```
-
->>>>>>> ef17deb (init)

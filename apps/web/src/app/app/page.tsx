@@ -32,7 +32,7 @@ type AppUser = {
   role: "ADMIN" | "MANAGER";
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "settings";
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings";
 
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 
@@ -91,6 +91,16 @@ export default function AppPage() {
   const [dealEditingId, setDealEditingId] = useState<string | null>(null);
   const [dealFilter, setDealFilter] = useState<"ALL" | DealStatus>("ALL");
 
+  const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [dashTo, setDashTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dash, setDash] = useState<any>(null);
+
+  const [repFrom, setRepFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [repTo, setRepTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [repLoading, setRepLoading] = useState(false);
+  const [repWorkers, setRepWorkers] = useState<any>(null);
+
   const [dealDate, setDealDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dealStatus, setDealStatus] = useState<DealStatus>("NEW");
   const [dealClientSearch, setDealClientSearch] = useState("");
@@ -122,6 +132,7 @@ export default function AppPage() {
     if (tab === "deals") return "Сделки";
     if (tab === "clients") return "Клиенты";
     if (tab === "expenses") return "Расходы";
+    if (tab === "reports") return "Отчёты";
     if (tab === "settings") return "Настройки";
     return "BisCRM";
   }, [tab]);
@@ -202,11 +213,43 @@ export default function AppPage() {
     }
   }
 
+  async function loadDashboard() {
+    setDashLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      const j = await res.json();
+      setDash(j);
+    } finally {
+      setDashLoading(false);
+    }
+  }
+
+  async function loadReportsWorkers() {
+    setRepLoading(true);
+    try {
+      const res = await fetch(`/api/reports/workers?from=${repFrom}&to=${repTo}`, { credentials: "include" });
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      const j = await res.json();
+      setRepWorkers(j);
+    } finally {
+      setRepLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (tab === "clients") loadClients();
     if (tab === "expenses") loadExpenses();
     if (tab === "settings") loadUsers();
     if (tab === "deals") loadDeals();
+    if (tab === "dashboard") loadDashboard();
+    if (tab === "reports") loadReportsWorkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -544,6 +587,9 @@ export default function AppPage() {
           <a className={`nav-item ${tab === "expenses" ? "active" : ""}`} onClick={() => setTab("expenses")}>
             <span>Расходы</span>
           </a>
+          <a className={`nav-item ${tab === "reports" ? "active" : ""}`} onClick={() => setTab("reports")}>
+            <span>Отчёты</span>
+          </a>
           <a className={`nav-item ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
             <span>Настройки</span>
           </a>
@@ -564,12 +610,149 @@ export default function AppPage() {
 
         <div className="content">
           {tab === "dashboard" ? (
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">Статус</span>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">Период</span>
+                  <button className="btn btn-secondary" onClick={loadDashboard}>
+                    Обновить
+                  </button>
+                </div>
+                <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                  <div>
+                    <div className="form-label">От</div>
+                    <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
+                  </div>
+                  <div>
+                    <div className="form-label">До</div>
+                    <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
+                  </div>
+                </div>
               </div>
-              <div className="card-body" style={{ color: "var(--text-secondary)" }}>
-                API подключен. Дальше добавлю сделки / расходы / отчёты и перенос всех модалок из прототипа на реальные данные.
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+                {dashLoading || !dash ? (
+                  <div className="card" style={{ gridColumn: "1 / -1" }}>
+                    <div className="card-body" style={{ color: "var(--text-secondary)" }}>
+                      Загрузка...
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="card">
+                      <div className="card-header">
+                        <span className="card-title">Сделки</span>
+                      </div>
+                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700 }}>
+                        {dash.deals?.count ?? 0}
+                      </div>
+                    </div>
+                    <div className="card">
+                      <div className="card-header">
+                        <span className="card-title">Выплата</span>
+                      </div>
+                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--green)" }}>
+                        {(dash.deals?.totalPayoutUsdt ?? 0).toLocaleString()} USDT
+                      </div>
+                    </div>
+                    <div className="card">
+                      <div className="card-header">
+                        <span className="card-title">Воркерам</span>
+                      </div>
+                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>
+                        {(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()} USDT
+                      </div>
+                    </div>
+                    <div className="card">
+                      <div className="card-header">
+                        <span className="card-title">Профит</span>
+                      </div>
+                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700 }}>
+                        {(dash.deals?.grossProfitUsdt ?? 0).toLocaleString()} USDT
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {!dashLoading && dash ? (
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">Расходы</span>
+                  </div>
+                  <div className="card-body" style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "var(--text-secondary)" }}>
+                    <div><b>{dash.expenses?.count ?? 0}</b> записей</div>
+                    <div><b>{(dash.expenses?.totalAmount ?? 0).toLocaleString()}</b> сумма (в валюте записей)</div>
+                    <div>DRAFT: <b>{dash.expenses?.byStatus?.DRAFT ?? 0}</b></div>
+                    <div>SUBMITTED: <b>{dash.expenses?.byStatus?.SUBMITTED ?? 0}</b></div>
+                    <div>APPROVED: <b>{dash.expenses?.byStatus?.APPROVED ?? 0}</b></div>
+                    <div>REJECTED: <b>{dash.expenses?.byStatus?.REJECTED ?? 0}</b></div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {tab === "reports" ? (
+            <div style={{ display: "grid", gap: 16 }}>
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">Период</span>
+                  <button className="btn btn-secondary" onClick={loadReportsWorkers}>
+                    Обновить
+                  </button>
+                </div>
+                <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                  <div>
+                    <div className="form-label">От</div>
+                    <input className="form-input" type="date" value={repFrom} onChange={(e) => setRepFrom(e.target.value)} />
+                  </div>
+                  <div>
+                    <div className="form-label">До</div>
+                    <input className="form-input" type="date" value={repTo} onChange={(e) => setRepTo(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">Выплаты воркерам (USDT)</span>
+                </div>
+                <div className="card-body">
+                  {repLoading || !repWorkers ? (
+                    <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
+                  ) : (
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Воркер</th>
+                          <th>Роль</th>
+                          <th>Сделок</th>
+                          <th style={{ textAlign: "right" }}>Выплата</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(repWorkers.rows ?? []).map((r: any) => (
+                          <tr key={r.userId}>
+                            <td>{r.email}</td>
+                            <td>{r.role}</td>
+                            <td>{r.dealsCount}</td>
+                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {Number(r.payoutUsdt ?? 0).toLocaleString()} USDT
+                            </td>
+                          </tr>
+                        ))}
+                        {(repWorkers.rows ?? []).length === 0 ? (
+                          <tr>
+                            <td colSpan={4} style={{ color: "var(--text-secondary)" }}>
+                              Нет данных за период
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </div>
           ) : null}

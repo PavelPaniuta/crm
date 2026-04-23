@@ -9,6 +9,8 @@ import { DealsModule } from './deals/deals.module';
 import { OrgsModule } from './orgs/orgs.module';
 import { UsersModule } from './users/users.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ExpensesModule } from './expenses/expenses.module';
     DealsModule,
     UsersModule,
     ExpensesModule,
+    DashboardModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
