@@ -30,6 +30,8 @@ type AppUser = {
   id: string;
   email: string;
   role: "ADMIN" | "MANAGER";
+  position?: string | null;
+  organizationId: string;
 };
 
 type Org = {
@@ -127,8 +129,12 @@ export default function AppPage() {
   const [newUserLogin, setNewUserLogin] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<"ADMIN" | "MANAGER">("MANAGER");
+  const [newUserPosition, setNewUserPosition] = useState("");
+  const [newUserTargetOrgId, setNewUserTargetOrgId] = useState("");
   const [userPwdId, setUserPwdId] = useState<string | null>(null);
   const [userPwdValue, setUserPwdValue] = useState("");
+  const [userPositionId, setUserPositionId] = useState<string | null>(null);
+  const [userPositionValue, setUserPositionValue] = useState("");
 
   // --- Orgs ---
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -225,7 +231,9 @@ export default function AppPage() {
   async function loadUsers() {
     setUsersLoading(true);
     try {
-      const res = await fetch("/api/users", { credentials: "include" });
+      // For ADMIN: fetch all users across orgs via /public; for MANAGER: own org only
+      const url = user?.role === "ADMIN" ? "/api/users/public" : "/api/users";
+      const res = await fetch(url, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
       if (!res.ok) { setUsers([]); return; }
       const j = await res.json();
@@ -294,6 +302,17 @@ export default function AppPage() {
     const meRes = await fetch("/api/auth/me", { credentials: "include" });
     if (meRes.ok) { const j = await meRes.json(); setUser(j.user); }
     loadDeals(); loadClients(); loadExpenses(); loadDashboard();
+  }
+
+  async function deleteOrg(orgId: string, orgName: string) {
+    if (!confirm(`Удалить офис "${orgName}"?\n\nВНИМАНИЕ: удалятся все сделки, клиенты, расходы и пользователи этого офиса!`)) return;
+    const res = await fetch(`/api/orgs/${orgId}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.message ?? "Не удалось удалить офис");
+      return;
+    }
+    await loadOrgs();
   }
 
   async function loadGlobalDash() {
@@ -370,10 +389,26 @@ export default function AppPage() {
     const res = await fetch("/api/users", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: newUserLogin, password: newUserPassword, role: newUserRole }),
+      body: JSON.stringify({
+        email: newUserLogin, password: newUserPassword, role: newUserRole,
+        position: newUserPosition || null,
+        targetOrgId: newUserTargetOrgId || null,
+      }),
     });
     if (!res.ok) return alert("Не удалось создать пользователя");
-    setNewUserLogin(""); setNewUserPassword("");
+    setNewUserLogin(""); setNewUserPassword(""); setNewUserPosition(""); setNewUserTargetOrgId("");
+    await loadUsers();
+    await loadOrgs();
+  }
+
+  async function setUserPosition(userId: string) {
+    const res = await fetch("/api/users/position", {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, position: userPositionValue || null }),
+    });
+    if (!res.ok) return alert("Не удалось обновить должность");
+    setUserPositionId(null); setUserPositionValue("");
     await loadUsers();
   }
 
@@ -1096,7 +1131,7 @@ export default function AppPage() {
                                   <option value="">— выбрать —</option>
                                   {dealWorkers.map((w) => (
                                     <option key={w.id} value={w.id}>
-                                      {w.email}{w.organization ? ` [${w.organization.name}]` : ""} — {w.role}
+                                      {w.email}{w.organization ? ` [${w.organization.name}]` : ""}{w.position ? ` · ${w.position}` : ""}
                                     </option>
                                   ))}
                                 </select>
@@ -1363,12 +1398,12 @@ export default function AppPage() {
                               <th>Название</th>
                               <th style={{ textAlign: "right" }}>Сотрудников</th>
                               <th style={{ textAlign: "right" }}>Сделок</th>
-                              <th style={{ width: 120 }}></th>
+                              <th style={{ width: 180 }}></th>
                             </tr>
                           </thead>
                           <tbody>
                             {orgs.length === 0 ? (
-                              <tr><td colSpan={4} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет офисов</td></tr>
+                              <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет офисов</td></tr>
                             ) : (
                               orgs.map((o) => (
                                 <tr key={o.id}>
@@ -1381,13 +1416,20 @@ export default function AppPage() {
                                   <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{o._count.users}</td>
                                   <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{o._count.deals}</td>
                                   <td>
-                                    {o.id !== user.activeOrganizationId ? (
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      {o.id !== user.activeOrganizationId ? (
+                                        <button
+                                          className="btn btn-secondary"
+                                          style={{ padding: "4px 12px", fontSize: 12 }}
+                                          onClick={() => switchOrg(o.id)}
+                                        >Перейти</button>
+                                      ) : null}
                                       <button
                                         className="btn btn-secondary"
-                                        style={{ padding: "4px 12px", fontSize: 12 }}
-                                        onClick={() => switchOrg(o.id)}
-                                      >Перейти</button>
-                                    ) : null}
+                                        style={{ padding: "4px 12px", fontSize: 12, color: "var(--red)" }}
+                                        onClick={() => deleteOrg(o.id, o.name)}
+                                      >Удалить</button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))
@@ -1411,25 +1453,38 @@ export default function AppPage() {
                   ) : (
                     <>
                       {/* create form */}
-                      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr 180px 140px" }}>
+                      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                         <div>
                           <div className="form-label">Логин</div>
-                          <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} />
+                          <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} placeholder="email или username" />
                         </div>
                         <div>
                           <div className="form-label">Пароль</div>
                           <input className="form-input" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">Роль</div>
-                          <select className="form-input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
-                            <option value="MANAGER">MANAGER</option>
-                            <option value="ADMIN">ADMIN</option>
-                          </select>
+                          <div className="form-label">Должность / Роль в команде</div>
+                          <input className="form-input" value={newUserPosition} onChange={(e) => setNewUserPosition(e.target.value)} placeholder="Воркер, Кассир, Бухгалтер..." />
                         </div>
-                        <div style={{ display: "flex", alignItems: "end" }}>
-                          <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ Создать</button>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <div className="form-label">Доступ</div>
+                            <select className="form-input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
+                              <option value="MANAGER">MANAGER</option>
+                              <option value="ADMIN">ADMIN</option>
+                            </select>
+                          </div>
+                          <div>
+                            <div className="form-label">Офис</div>
+                            <select className="form-input" value={newUserTargetOrgId} onChange={(e) => setNewUserTargetOrgId(e.target.value)}>
+                              <option value="">Текущий</option>
+                              {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                            </select>
+                          </div>
                         </div>
+                      </div>
+                      <div>
+                        <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ Создать пользователя</button>
                       </div>
 
                       {/* users table */}
@@ -1437,22 +1492,53 @@ export default function AppPage() {
                         <div className="card-body" style={{ padding: 0 }}>
                           <table className="data-table">
                             <thead>
-                              <tr><th>Логин</th><th>Роль</th><th style={{ width: 300 }}>Действия</th></tr>
+                              <tr>
+                                <th>Логин</th>
+                                <th>Должность</th>
+                                <th>Офис</th>
+                                <th>Доступ</th>
+                                <th style={{ width: 260 }}>Действия</th>
+                              </tr>
                             </thead>
                             <tbody>
                               {usersLoading ? (
-                                <tr><td colSpan={3} style={{ padding: 16 }}>Загрузка...</td></tr>
+                                <tr><td colSpan={5} style={{ padding: 16 }}>Загрузка...</td></tr>
                               ) : users.length === 0 ? (
-                                <tr><td colSpan={3} style={{ padding: 16 }}>Пока пусто</td></tr>
+                                <tr><td colSpan={5} style={{ padding: 16 }}>Пока пусто</td></tr>
                               ) : (
                                 users.map((u) => (
                                   <tr key={u.id}>
-                                    <td>{u.email}</td>
+                                    <td style={{ fontWeight: 600 }}>{u.email}</td>
+                                    <td>
+                                      {userPositionId === u.id ? (
+                                        <div style={{ display: "flex", gap: 4 }}>
+                                          <input
+                                            className="form-input"
+                                            value={userPositionValue}
+                                            onChange={(e) => setUserPositionValue(e.target.value)}
+                                            placeholder="Воркер..."
+                                            style={{ width: 120 }}
+                                          />
+                                          <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPosition(u.id)}>OK</button>
+                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPositionId(null)}>×</button>
+                                        </div>
+                                      ) : (
+                                        <span
+                                          style={{ cursor: "pointer", color: u.position ? "var(--text-primary)" : "var(--text-tertiary)", fontStyle: u.position ? "normal" : "italic" }}
+                                          onClick={() => { setUserPositionId(u.id); setUserPositionValue(u.position ?? ""); }}
+                                        >
+                                          {u.position || "не задана"}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                                      {orgs.find((o) => o.id === u.organizationId)?.name ?? "—"}
+                                    </td>
                                     <td>
                                       <select
                                         className="form-input"
                                         value={u.role}
-                                        style={{ width: 130 }}
+                                        style={{ width: 120 }}
                                         onChange={(e) => changeUserRole(u.id, e.target.value as any)}
                                       >
                                         <option value="MANAGER">MANAGER</option>
@@ -1461,17 +1547,17 @@ export default function AppPage() {
                                     </td>
                                     <td>
                                       {userPwdId === u.id ? (
-                                        <div style={{ display: "flex", gap: 6 }}>
+                                        <div style={{ display: "flex", gap: 4 }}>
                                           <input
                                             className="form-input"
                                             type="password"
                                             placeholder="Новый пароль"
                                             value={userPwdValue}
                                             onChange={(e) => setUserPwdValue(e.target.value)}
-                                            style={{ width: 160 }}
+                                            style={{ width: 130 }}
                                           />
-                                          <button className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => resetUserPassword(u.id)}>OK</button>
-                                          <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
+                                          <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => resetUserPassword(u.id)}>OK</button>
+                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
                                         </div>
                                       ) : (
                                         <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(u.id); setUserPwdValue(""); }}>

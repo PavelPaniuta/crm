@@ -31,4 +31,22 @@ export class OrgsService {
     if (!org) throw new NotFoundException('Organization not found');
     return org;
   }
+
+  async deleteOrg(id: string, requesterId: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    // Prevent deleting the org the requester belongs to (would log them out)
+    const requester = await this.prisma.user.findUnique({ where: { id: requesterId } });
+    if (requester?.organizationId === id) {
+      throw new BadRequestException('Нельзя удалить свой текущий офис');
+    }
+
+    const total = await this.prisma.organization.count();
+    if (total <= 1) throw new BadRequestException('Нельзя удалить последний офис');
+
+    // Cascade deletes users, deals, clients, expenses via schema onDelete: Cascade
+    await this.prisma.organization.delete({ where: { id } });
+    return { ok: true };
+  }
 }

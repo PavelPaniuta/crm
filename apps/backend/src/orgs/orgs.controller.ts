@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -24,6 +24,13 @@ export class OrgsController {
   @Roles(Role.ADMIN)
   async create(@Body() body: { name: string }) {
     return this.orgs.create(body.name);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  deleteOrg(@Req() req: any, @Param('id') id: string) {
+    return this.orgs.deleteOrg(id, req.user.id);
   }
 
   @Post('switch')

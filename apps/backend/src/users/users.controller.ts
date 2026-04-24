@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Param } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
@@ -25,9 +26,9 @@ export class UsersController {
   @Roles(Role.ADMIN)
   create(
     @Req() req: any,
-    @Body() body: { email: string; password: string; role: Role },
+    @Body() body: { email: string; password: string; role: Role; position?: string | null; targetOrgId?: string | null },
   ) {
-    return this.users.create(req.user.activeOrganizationId, body);
+    return this.users.create(req.user.activeOrganizationId, body, req.user.role);
   }
 
   @Patch('role')
@@ -46,6 +47,15 @@ export class UsersController {
     @Body() body: { userId: string; password: string },
   ) {
     return this.users.resetPassword(req.user.activeOrganizationId, body.userId, body.password, req.user.role);
+  }
+
+  @Patch('position')
+  @Roles(Role.ADMIN)
+  setPosition(
+    @Req() req: any,
+    @Body() body: { userId: string; position: string | null },
+  ) {
+    return this.users.setPosition(req.user.activeOrganizationId, body.userId, body.position, req.user.role);
   }
 }
 
