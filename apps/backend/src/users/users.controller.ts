@@ -1,5 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { Param } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
@@ -56,6 +55,12 @@ export class UsersController {
     @Body() body: { userId: string; position: string | null },
   ) {
     return this.users.setPosition(req.user.activeOrganizationId, body.userId, body.position, req.user.role);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  deleteUser(@Req() req: any, @Param('id') id: string) {
+    return this.users.deleteUser(req.user.activeOrganizationId, id, req.user.id, req.user.role);
   }
 }
 

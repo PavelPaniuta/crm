@@ -89,5 +89,14 @@ export class UsersService {
       select: { id: true, email: true, role: true, position: true, organizationId: true, createdAt: true, updatedAt: true },
     });
   }
+
+  async deleteUser(organizationId: string, userId: string, requesterId: string, requesterRole?: string) {
+    if (userId === requesterId) throw new BadRequestException('Нельзя удалить себя');
+    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    const existing = await this.prisma.user.findFirst({ where });
+    if (!existing) throw new NotFoundException();
+    await this.prisma.user.delete({ where: { id: userId } });
+    return { ok: true };
+  }
 }
 

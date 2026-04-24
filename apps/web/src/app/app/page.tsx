@@ -409,6 +409,17 @@ export default function AppPage() {
     await loadOrgs();
   }
 
+  async function deleteUser(userId: string, email: string) {
+    if (!confirm(`Удалить пользователя "${email}"?`)) return;
+    const res = await fetch(`/api/users/${userId}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      return alert(j?.message ?? "Не удалось удалить пользователя");
+    }
+    await loadUsers();
+    await loadOrgs();
+  }
+
   async function setUserPosition(userId: string) {
     const res = await fetch("/api/users/position", {
       method: "PATCH", credentials: "include",
@@ -1561,24 +1572,31 @@ export default function AppPage() {
                                       </select>
                                     </td>
                                     <td>
-                                      {userPwdId === u.id ? (
-                                        <div style={{ display: "flex", gap: 4 }}>
-                                          <input
-                                            className="form-input"
-                                            type="password"
-                                            placeholder="Новый пароль"
-                                            value={userPwdValue}
-                                            onChange={(e) => setUserPwdValue(e.target.value)}
-                                            style={{ width: 130 }}
-                                          />
-                                          <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => resetUserPassword(u.id)}>OK</button>
-                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
-                                        </div>
-                                      ) : (
-                                        <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(u.id); setUserPwdValue(""); }}>
-                                          Сменить пароль
-                                        </button>
-                                      )}
+                                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                        {userPwdId === u.id ? (
+                                          <div style={{ display: "flex", gap: 4 }}>
+                                            <input
+                                              className="form-input"
+                                              type="password"
+                                              placeholder="Новый пароль"
+                                              value={userPwdValue}
+                                              onChange={(e) => setUserPwdValue(e.target.value)}
+                                              style={{ width: 120 }}
+                                            />
+                                            <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => resetUserPassword(u.id)}>OK</button>
+                                            <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
+                                          </div>
+                                        ) : (
+                                          <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(u.id); setUserPwdValue(""); }}>
+                                            Сменить пароль
+                                          </button>
+                                        )}
+                                        <button
+                                          className="btn btn-secondary"
+                                          style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }}
+                                          onClick={() => deleteUser(u.id, u.email)}
+                                        >Удалить</button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))
