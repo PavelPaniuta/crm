@@ -210,4 +210,7 @@ a { color: inherit; text-decoration: none; }
   /* Deal amount row: stack on mobile */
   .amt-row-top { grid-template-columns: 1fr 1fr auto !important; }
   .amt-row-bot { grid-template-columns: 1fr 80px 20px 1fr 80px !important; }
+
+  /* Dashboard recent activity: stack on mobile */
+  .dash-recent-grid { grid-template-columns: 1fr !important; }
 }

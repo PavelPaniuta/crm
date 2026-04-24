@@ -37,7 +37,7 @@ export default function LoginPage() {
     <div className="auth-shell">
       <div className="card auth-card">
         <div className="card-header">
-          <span className="card-title">Вход в BisCRM</span>
+          <span className="card-title">Вход в MyCRM</span>
         </div>
         <div className="card-body">
           <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>

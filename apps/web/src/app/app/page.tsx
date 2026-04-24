@@ -204,7 +204,7 @@ export default function AppPage() {
     if (tab === "expenses") loadExpenses();
     if (tab === "settings") { loadUsers(); loadOrgs(); }
     if (tab === "deals") loadDeals();
-    if (tab === "dashboard") loadDashboard();
+    if (tab === "dashboard") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -615,8 +615,8 @@ export default function AppPage() {
 
       <aside className={`sidebar${sidebarOpen ? " is-open" : ""}`}>
         <div className="sidebar-logo">
-          <div className="logo-icon">B</div>
-          <span>BisCRM</span>
+          <div className="logo-icon">M</div>
+          <span>MyCRM</span>
         </div>
 
         {/* Org switcher */}
@@ -696,87 +696,137 @@ export default function AppPage() {
         <div className="content">
           {/* ===== DASHBOARD ===== */}
           {tab === "dashboard" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              {/* View toggle for ADMIN */}
-              {user?.role === "ADMIN" ? (
-                <div style={{ display: "flex", gap: 8 }}>
-                  {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
-                    <span
-                      key={v.id}
-                      onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}
-                      style={{
-                        padding: "6px 16px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
-                        border: "1px solid var(--border)",
-                        background: dashView === v.id ? "var(--accent-light)" : "transparent",
-                        color: dashView === v.id ? "var(--accent)" : "var(--text-secondary)",
-                      }}
-                    >{v.label}</span>
-                  ))}
-                </div>
-              ) : null}
+            <div style={{ display: "grid", gap: 20 }}>
 
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Период</span>
-                  <button className="btn btn-secondary" onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>Обновить</button>
+              {/* Period bar */}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, minWidth: 260 }}>
+                  <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} style={{ height: 36 }} />
+                  <span style={{ color: "var(--text-tertiary)" }}>—</span>
+                  <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ height: 36 }} />
+                  <button className="btn btn-secondary" style={{ height: 36, whiteSpace: "nowrap" }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>↻ Обновить</button>
                 </div>
-                <div className="card-body g2">
-                  <div>
-                    <div className="form-label">От</div>
-                    <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
+                {user?.role === "ADMIN" ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
+                      <span key={v.id} onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}
+                        style={{ padding: "6px 14px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                          border: "1px solid var(--border)",
+                          background: dashView === v.id ? "var(--accent-light)" : "transparent",
+                          color: dashView === v.id ? "var(--accent)" : "var(--text-secondary)" }}
+                      >{v.label}</span>
+                    ))}
                   </div>
-                  <div>
-                    <div className="form-label">До</div>
-                    <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
-                  </div>
-                </div>
+                ) : null}
               </div>
 
-              {dashView === "global" ? null : <div className="g3" style={{ gap: 16 }}>
-                {dashLoading || !dash ? (
-                  <div className="card" style={{ gridColumn: "1 / -1" }}>
-                    <div className="card-body" style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="card">
-                      <div className="card-header"><span className="card-title">Сделки</span></div>
-                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700 }}>
-                        {dash.deals?.count ?? 0}
+              {dashView === "current" ? (
+                <>
+                  {/* 4 Metric cards */}
+                  {dashLoading || !dash ? (
+                    <div style={{ color: "var(--text-secondary)", padding: "8px 0" }}>Загрузка...</div>
+                  ) : (() => {
+                    const amountOut = dash.deals?.totalAmountOut ?? 0;
+                    const expenses = dash.expenses?.totalAmount ?? 0;
+                    const profit = amountOut - expenses;
+                    return (
+                      <div className="g4" style={{ gap: 14 }}>
+                        {[
+                          { label: "Сделки за период", value: String(dash.deals?.count ?? 0), sub: `новых: ${dash.deals?.byStatus?.NEW ?? 0}`, color: "var(--text-primary)" },
+                          { label: "Доход", value: amountOut.toLocaleString(), sub: `воркерам: ${(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}`, color: "var(--green)" },
+                          { label: "Расходы", value: expenses.toLocaleString(), sub: `записей: ${dash.expenses?.count ?? 0}`, color: "var(--amber)" },
+                          { label: "Чистая прибыль", value: profit.toLocaleString(), sub: "доход − расходы", color: profit >= 0 ? "var(--text-primary)" : "var(--red)" },
+                        ].map((m) => (
+                          <div key={m.label} className="card" style={{ border: "1px solid var(--border-light)" }}>
+                            <div className="card-body" style={{ padding: "18px 20px" }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-tertiary)", marginBottom: 10 }}>{m.label}</div>
+                              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: m.color, lineHeight: 1 }}>{m.value}</div>
+                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>{m.sub}</div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                    <div className="card">
-                      <div className="card-header"><span className="card-title">Сумма выхода</span></div>
-                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--green)" }}>
-                        {(dash.deals?.totalAmountOut ?? 0).toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="card">
-                      <div className="card-header"><span className="card-title">Воркерам</span></div>
-                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>
-                        {(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>}
+                    );
+                  })()}
 
-              {!dashLoading && dash && dashView === "current" ? (
-                <div className="card">
-                  <div className="card-header"><span className="card-title">Расходы</span></div>
-                  <div className="card-body" style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "var(--text-secondary)" }}>
-                    <div><b>{dash.expenses?.count ?? 0}</b> записей</div>
-                    <div><b>{(dash.expenses?.totalAmount ?? 0).toLocaleString()}</b> сумма</div>
-                    <div>DRAFT: <b>{dash.expenses?.byStatus?.DRAFT ?? 0}</b></div>
-                    <div>SUBMITTED: <b>{dash.expenses?.byStatus?.SUBMITTED ?? 0}</b></div>
-                    <div>APPROVED: <b>{dash.expenses?.byStatus?.APPROVED ?? 0}</b></div>
-                    <div>REJECTED: <b>{dash.expenses?.byStatus?.REJECTED ?? 0}</b></div>
+                  {/* 3 Quick action cards */}
+                  <div className="g3" style={{ gap: 14 }}>
+                    {[
+                      { icon: "+", title: "Новая сделка", desc: "Создать сделку с клиентом или без", action: () => { setTab("deals"); setTimeout(openDealModal, 50); } },
+                      { icon: "+", title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => setTab("clients") },
+                      { icon: "+", title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses") },
+                    ].map((a) => (
+                      <div key={a.title} onClick={a.action} style={{
+                        background: "var(--bg-card)", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg)",
+                        padding: "28px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", gap: 8, transition: "var(--transition)", textAlign: "center",
+                      }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.background = "var(--accent-light)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.background = "var(--bg-card)"; }}
+                      >
+                        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "var(--accent)", fontWeight: 300 }}>{a.icon}</div>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{a.title}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{a.desc}</div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ) : null}
 
-              {/* Global stats for ADMIN */}
-              {dashView === "global" ? (
+                  {/* Recent activity: deals + expenses */}
+                  <div className="dash-recent-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    {/* Recent deals */}
+                    <div className="card">
+                      <div className="card-header">
+                        <span className="card-title">Последние сделки</span>
+                        <span style={{ fontSize: 12, color: "var(--accent)", cursor: "pointer", fontWeight: 600 }} onClick={() => setTab("deals")}>Все сделки →</span>
+                      </div>
+                      <div className="table-scroll" style={{ padding: 0 }}>
+                        <table className="data-table">
+                          <thead><tr><th>Клиент</th><th>Статус</th><th style={{ textAlign: "right" }}>Выход</th></tr></thead>
+                          <tbody>
+                            {deals.length === 0 ? (
+                              <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет сделок</td></tr>
+                            ) : deals.slice(0, 5).map((d) => {
+                              const out = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+                              return (
+                                <tr key={d.id} style={{ cursor: "pointer" }} onClick={() => { setTab("deals"); setTimeout(() => openDealEditModal(d), 50); }}>
+                                  <td style={{ fontWeight: 500 }}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
+                                  <td><span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>{d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}</span></td>
+                                  <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{out > 0 ? out.toLocaleString() : "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Recent expenses */}
+                    <div className="card">
+                      <div className="card-header">
+                        <span className="card-title">Последние расходы</span>
+                        <span style={{ fontSize: 12, color: "var(--accent)", cursor: "pointer", fontWeight: 600 }} onClick={() => setTab("expenses")}>Все расходы →</span>
+                      </div>
+                      <div className="table-scroll" style={{ padding: 0 }}>
+                        <table className="data-table">
+                          <thead><tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th></tr></thead>
+                          <tbody>
+                            {expenses.length === 0 ? (
+                              <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет расходов</td></tr>
+                            ) : expenses.slice(0, 5).map((e) => (
+                              <tr key={e.id}>
+                                <td style={{ fontWeight: 500 }}>{e.title}</td>
+                                <td><span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>{e.status}</span></td>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{Number(e.amount).toLocaleString()} {e.currency}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Global view for ADMIN */
                 <div className="card">
                   <div className="card-header"><span className="card-title">Сводка по всем офисам</span></div>
                   <div className="card-body" style={{ padding: 0 }}>
@@ -784,27 +834,25 @@ export default function AppPage() {
                       <div style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</div>
                     ) : (
                       <>
-                        {/* Totals row */}
                         <div className="g4" style={{ gap: 12, padding: 16, borderBottom: "1px solid var(--border)" }}>
                           {[
-                            { label: "Сделок всего", value: globalDash.totals?.dealsCount ?? 0, mono: false },
-                            { label: "Сумма выхода", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), mono: true, color: "var(--green)" },
-                            { label: "Воркерам", value: (globalDash.totals?.totalWorkersPayoutUsdt ?? 0).toLocaleString(), mono: true, color: "var(--accent)" },
-                            { label: "Расходов", value: (globalDash.totals?.totalExpenses ?? 0).toLocaleString(), mono: true },
+                            { label: "Сделок всего", value: String(globalDash.totals?.dealsCount ?? 0), color: "var(--text-primary)" },
+                            { label: "Доход", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), color: "var(--green)" },
+                            { label: "Воркерам", value: (globalDash.totals?.totalWorkersPayoutUsdt ?? 0).toLocaleString(), color: "var(--accent)" },
+                            { label: "Расходы", value: (globalDash.totals?.totalExpenses ?? 0).toLocaleString(), color: "var(--amber)" },
                           ].map((c) => (
-                            <div key={c.label} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "12px 14px" }}>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase" }}>{c.label}</div>
-                              <div style={{ fontWeight: 700, fontSize: 18, fontFamily: c.mono ? "'JetBrains Mono', monospace" : undefined, color: (c as any).color ?? "var(--text-primary)" }}>{c.value}</div>
+                            <div key={c.label} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "14px 16px" }}>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 6 }}>{c.label}</div>
+                              <div style={{ fontWeight: 700, fontSize: 22, fontFamily: "'JetBrains Mono', monospace", color: c.color }}>{c.value}</div>
                             </div>
                           ))}
                         </div>
-                        {/* Per-org breakdown */}
                         <div className="table-scroll"><table className="data-table">
                           <thead>
                             <tr>
                               <th>Офис</th>
                               <th style={{ textAlign: "right" }}>Сделок</th>
-                              <th style={{ textAlign: "right" }}>Сумма выхода</th>
+                              <th style={{ textAlign: "right" }}>Доход</th>
                               <th style={{ textAlign: "right" }}>Воркерам</th>
                               <th style={{ textAlign: "right" }}>Расходы</th>
                               <th style={{ width: 100 }}></th>
@@ -817,14 +865,8 @@ export default function AppPage() {
                                 <td style={{ textAlign: "right" }}>{r.dealsCount}</td>
                                 <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}>{(r.totalAmountOut ?? 0).toLocaleString()}</td>
                                 <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{(r.totalWorkersPayoutUsdt ?? 0).toLocaleString()}</td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{(r.totalExpenses ?? 0).toLocaleString()}</td>
-                                <td>
-                                  <button
-                                    className="btn btn-secondary"
-                                    style={{ padding: "4px 10px", fontSize: 11 }}
-                                    onClick={() => switchOrg(r.orgId)}
-                                  >Перейти</button>
-                                </td>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--amber)" }}>{(r.totalExpenses ?? 0).toLocaleString()}</td>
+                                <td><button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => switchOrg(r.orgId)}>Перейти</button></td>
                               </tr>
                             ))}
                           </tbody>
@@ -833,7 +875,7 @@ export default function AppPage() {
                     )}
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
           ) : null}
 
