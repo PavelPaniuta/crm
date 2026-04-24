@@ -136,6 +136,9 @@ export default function AppPage() {
   const [userPositionId, setUserPositionId] = useState<string | null>(null);
   const [userPositionValue, setUserPositionValue] = useState("");
 
+  // --- Mobile sidebar ---
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   // --- Orgs ---
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [newOrgName, setNewOrgName] = useState("");
@@ -591,7 +594,10 @@ export default function AppPage() {
   // =========================================================
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {/* Mobile overlay */}
+      <div className={`sidebar-overlay${sidebarOpen ? " is-open" : ""}`} onClick={() => setSidebarOpen(false)} />
+
+      <aside className={`sidebar${sidebarOpen ? " is-open" : ""}`}>
         <div className="sidebar-logo">
           <div className="logo-icon">B</div>
           <span>BisCRM</span>
@@ -644,7 +650,7 @@ export default function AppPage() {
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
           {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[]).map((t) => (
-            <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); }}>
+            <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
               <span>
                 {t === "dashboard" ? "Dashboard" : t === "deals" ? "Сделки" : t === "clients" ? "Клиенты" : t === "expenses" ? "Расходы" : t === "reports" ? "Отчёты" : "Настройки"}
               </span>
@@ -657,8 +663,11 @@ export default function AppPage() {
 
       <div className="main">
         <header className="header">
-          <h1 className="header-title">{title}</h1>
-          <div style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "right" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>☰</button>
+            <h1 className="header-title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
+          </div>
+          <div style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "right", flexShrink: 0 }}>
             <div>{user ? `${user.email} · ${user.role}` : "…"}</div>
             {orgs.find((o) => o.id === user?.activeOrganizationId) ? (
               <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
@@ -695,7 +704,7 @@ export default function AppPage() {
                   <span className="card-title">Период</span>
                   <button className="btn btn-secondary" onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>Обновить</button>
                 </div>
-                <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                <div className="card-body g2">
                   <div>
                     <div className="form-label">От</div>
                     <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
@@ -707,7 +716,7 @@ export default function AppPage() {
                 </div>
               </div>
 
-              {dashView === "global" ? null : <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+              {dashView === "global" ? null : <div className="g3" style={{ gap: 16 }}>
                 {dashLoading || !dash ? (
                   <div className="card" style={{ gridColumn: "1 / -1" }}>
                     <div className="card-body" style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
@@ -760,7 +769,7 @@ export default function AppPage() {
                     ) : (
                       <>
                         {/* Totals row */}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, padding: 16, borderBottom: "1px solid var(--border)" }}>
+                        <div className="g4" style={{ gap: 12, padding: 16, borderBottom: "1px solid var(--border)" }}>
                           {[
                             { label: "Сделок всего", value: globalDash.totals?.dealsCount ?? 0, mono: false },
                             { label: "Сумма выхода", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), mono: true, color: "var(--green)" },
@@ -774,7 +783,7 @@ export default function AppPage() {
                           ))}
                         </div>
                         {/* Per-org breakdown */}
-                        <table className="data-table">
+                        <div className="table-scroll"><table className="data-table">
                           <thead>
                             <tr>
                               <th>Офис</th>
@@ -803,7 +812,7 @@ export default function AppPage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </table></div>
                       </>
                     )}
                   </div>
@@ -820,7 +829,7 @@ export default function AppPage() {
                   <span className="card-title">Период</span>
                   <button className="btn btn-secondary" onClick={loadReportsWorkers}>Обновить</button>
                 </div>
-                <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                <div className="card-body g2">
                   <div>
                     <div className="form-label">От</div>
                     <input className="form-input" type="date" value={repFrom} onChange={(e) => setRepFrom(e.target.value)} />
@@ -837,7 +846,7 @@ export default function AppPage() {
                   {repLoading || !repWorkers ? (
                     <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
                   ) : (
-                    <table className="table">
+                    <div className="table-scroll"><table className="data-table">
                       <thead>
                         <tr>
                           <th>Воркер</th><th>Роль</th><th>Сделок</th>
@@ -856,7 +865,7 @@ export default function AppPage() {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></div>
                   )}
                 </div>
               </div>
@@ -889,7 +898,7 @@ export default function AppPage() {
                   <span className="card-title">Сделки</span>
                   <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
                 </div>
-                <div className="card-body" style={{ padding: 0 }}>
+                <div className="card-body table-scroll" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
                       <tr>
@@ -935,6 +944,7 @@ export default function AppPage() {
               {/* Deal modal */}
               {dealModalOpen ? (
                 <div
+                  className="modal-backdrop"
                   style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
                   onMouseDown={(e) => { if (e.target === e.currentTarget) closeDealModal(); }}
                 >
@@ -1180,7 +1190,7 @@ export default function AppPage() {
                   <span className="card-title">Новый клиент</span>
                   <button className="btn btn-primary" onClick={createClient} disabled={!newClientName || !newClientPhone}>+ Создать</button>
                 </div>
-                <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className="card-body g2">
                   <div>
                     <div className="form-label">Имя</div>
                     <input className="form-input" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
@@ -1197,7 +1207,7 @@ export default function AppPage() {
                   <span className="card-title">Клиенты</span>
                   <button className="btn btn-secondary" onClick={loadClients}>Обновить</button>
                 </div>
-                <div className="card-body" style={{ padding: 0 }}>
+                <div className="card-body table-scroll" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
                       <tr><th>Имя</th><th>Телефон</th><th style={{ width: 100 }}></th></tr>
@@ -1228,7 +1238,7 @@ export default function AppPage() {
 
               {/* client edit modal */}
               {clientEditOpen && clientEditing ? (
-                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
+                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
                   onMouseDown={(e) => { if (e.target === e.currentTarget) setClientEditOpen(false); }}>
                   <div className="card" style={{ width: 420, maxWidth: "100%" }}>
                     <div className="card-header">
@@ -1296,7 +1306,7 @@ export default function AppPage() {
                   <span className="card-title">Расходы</span>
                   <button className="btn btn-secondary" onClick={loadExpenses}>Обновить</button>
                 </div>
-                <div className="card-body" style={{ padding: 0 }}>
+                <div className="card-body table-scroll" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
                       <tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th></tr>
@@ -1325,7 +1335,7 @@ export default function AppPage() {
               </div>
 
               {expenseModalOpen && expenseEditing ? (
-                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
+                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
                   onMouseDown={(e) => { if (e.target === e.currentTarget) setExpenseModalOpen(false); }}>
                   <div className="card" style={{ width: 500, maxWidth: "100%" }}>
                     <div className="card-header">
@@ -1391,7 +1401,7 @@ export default function AppPage() {
 
                     {/* Orgs table */}
                     <div className="card" style={{ border: "1px solid var(--border-light)" }}>
-                      <div className="card-body" style={{ padding: 0 }}>
+                      <div className="card-body table-scroll" style={{ padding: 0 }}>
                         <table className="data-table">
                           <thead>
                             <tr>
@@ -1489,7 +1499,7 @@ export default function AppPage() {
 
                       {/* users table */}
                       <div className="card" style={{ border: "1px solid var(--border-light)" }}>
-                        <div className="card-body" style={{ padding: 0 }}>
+                        <div className="card-body table-scroll" style={{ padding: 0 }}>
                           <table className="data-table">
                             <thead>
                               <tr>
