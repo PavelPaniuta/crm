@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { DashboardService } from './dashboard.service';
 
@@ -10,6 +10,12 @@ export class DashboardController {
   @Get()
   summary(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
     return this.dashboard.getSummary(req.user.activeOrganizationId, from, to);
+  }
+
+  @Get('global')
+  globalSummary(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException();
+    return this.dashboard.getGlobalSummary(from, to);
   }
 }
 

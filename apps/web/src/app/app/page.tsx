@@ -32,6 +32,20 @@ type AppUser = {
   role: "ADMIN" | "MANAGER";
 };
 
+type Org = {
+  id: string;
+  name: string;
+  _count: { users: number; deals: number };
+};
+
+type DealWorker = {
+  id: string;
+  email: string;
+  role: string;
+  organizationId: string;
+  organization?: { name: string };
+};
+
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
@@ -116,6 +130,14 @@ export default function AppPage() {
   const [userPwdId, setUserPwdId] = useState<string | null>(null);
   const [userPwdValue, setUserPwdValue] = useState("");
 
+  // --- Orgs ---
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [orgSwitchOpen, setOrgSwitchOpen] = useState(false);
+  const [globalDash, setGlobalDash] = useState<any>(null);
+  const [globalDashLoading, setGlobalDashLoading] = useState(false);
+  const [dashView, setDashView] = useState<"current" | "global">("current");
+
   // --- Deals ---
   const [deals, setDeals] = useState<Deal[]>([]);
   const [dealsLoading, setDealsLoading] = useState(false);
@@ -128,7 +150,7 @@ export default function AppPage() {
   const [dealClientId, setDealClientId] = useState<string | null>(null);
   const [dealClientSkip, setDealClientSkip] = useState(false);
   const [dealClients, setDealClients] = useState<Client[]>([]);
-  const [dealWorkers, setDealWorkers] = useState<Array<{ id: string; email: string; role: string }>>([]);
+  const [dealWorkers, setDealWorkers] = useState<DealWorker[]>([]);
   const [dealAmounts, setDealAmounts] = useState<DealAmtRow[]>([]);
   const [dealParticipants, setDealParticipants] = useState<DealParticipantRow[]>([]);
   const [dealComment, setDealComment] = useState("");
@@ -161,13 +183,16 @@ export default function AppPage() {
       if (!res.ok) { router.replace("/login"); return; }
       const j = await res.json();
       setUser(j.user);
+      // Load orgs for all users (ADMIN sees all, MANAGER sees own)
+      const orgRes = await fetch("/api/orgs", { credentials: "include" });
+      if (orgRes.ok) setOrgs(await orgRes.json());
     })();
   }, [router]);
 
   useEffect(() => {
     if (tab === "clients") loadClients();
     if (tab === "expenses") loadExpenses();
-    if (tab === "settings") loadUsers();
+    if (tab === "settings") { loadUsers(); loadOrgs(); }
     if (tab === "deals") loadDeals();
     if (tab === "dashboard") loadDashboard();
     if (tab === "reports") loadReportsWorkers();
@@ -237,6 +262,46 @@ export default function AppPage() {
       if (!res.ok) return;
       setRepWorkers(await res.json());
     } finally { setRepLoading(false); }
+  }
+
+  // ---- orgs ----
+  async function loadOrgs() {
+    const res = await fetch("/api/orgs", { credentials: "include" });
+    if (res.ok) setOrgs(await res.json());
+  }
+
+  async function createOrg() {
+    if (!newOrgName.trim()) return;
+    const res = await fetch("/api/orgs", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newOrgName.trim() }),
+    });
+    if (!res.ok) return alert("Не удалось создать офис");
+    setNewOrgName("");
+    await loadOrgs();
+  }
+
+  async function switchOrg(orgId: string) {
+    const res = await fetch("/api/orgs/switch", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ organizationId: orgId }),
+    });
+    if (!res.ok) return alert("Не удалось переключиться");
+    setOrgSwitchOpen(false);
+    // Reload user to get new activeOrganizationId, then reload current tab
+    const meRes = await fetch("/api/auth/me", { credentials: "include" });
+    if (meRes.ok) { const j = await meRes.json(); setUser(j.user); }
+    loadDeals(); loadClients(); loadExpenses(); loadDashboard();
+  }
+
+  async function loadGlobalDash() {
+    setGlobalDashLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/global?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
+      if (res.ok) setGlobalDash(await res.json());
+    } finally { setGlobalDashLoading(false); }
   }
 
   // ---- clients ----
@@ -496,10 +561,55 @@ export default function AppPage() {
           <div className="logo-icon">B</div>
           <span>BisCRM</span>
         </div>
+
+        {/* Org switcher */}
+        <div style={{ padding: "8px 12px 4px", position: "relative" }}>
+          <div
+            style={{
+              background: "rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 12px",
+              cursor: user?.role === "ADMIN" ? "pointer" : "default",
+              display: "flex", alignItems: "center", gap: 8,
+            }}
+            onClick={() => user?.role === "ADMIN" && setOrgSwitchOpen((v) => !v)}
+          >
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1 }}>Офис</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "…"}
+              </div>
+            </div>
+            {user?.role === "ADMIN" && <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 16 }}>⌄</div>}
+          </div>
+
+          {orgSwitchOpen && user?.role === "ADMIN" ? (
+            <div style={{
+              position: "absolute", top: "100%", left: 12, right: 12, zIndex: 200,
+              background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.15)", overflow: "hidden",
+            }}>
+              {orgs.map((o) => (
+                <div
+                  key={o.id}
+                  onClick={() => switchOrg(o.id)}
+                  style={{
+                    padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--border-light)",
+                    background: o.id === user?.activeOrganizationId ? "var(--accent-light)" : "transparent",
+                    color: o.id === user?.activeOrganizationId ? "var(--accent)" : "var(--text-primary)",
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{o.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{o._count.users} польз. · {o._count.deals} сделок</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
           {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[]).map((t) => (
-            <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
+            <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); }}>
               <span>
                 {t === "dashboard" ? "Dashboard" : t === "deals" ? "Сделки" : t === "clients" ? "Клиенты" : t === "expenses" ? "Расходы" : t === "reports" ? "Отчёты" : "Настройки"}
               </span>
@@ -513,8 +623,13 @@ export default function AppPage() {
       <div className="main">
         <header className="header">
           <h1 className="header-title">{title}</h1>
-          <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-            {user ? `${user.email} · ${user.role}` : "…"}
+          <div style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "right" }}>
+            <div>{user ? `${user.email} · ${user.role}` : "…"}</div>
+            {orgs.find((o) => o.id === user?.activeOrganizationId) ? (
+              <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                {orgs.find((o) => o.id === user?.activeOrganizationId)!.name}
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -522,10 +637,28 @@ export default function AppPage() {
           {/* ===== DASHBOARD ===== */}
           {tab === "dashboard" ? (
             <div style={{ display: "grid", gap: 16 }}>
+              {/* View toggle for ADMIN */}
+              {user?.role === "ADMIN" ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
+                    <span
+                      key={v.id}
+                      onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}
+                      style={{
+                        padding: "6px 16px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                        border: "1px solid var(--border)",
+                        background: dashView === v.id ? "var(--accent-light)" : "transparent",
+                        color: dashView === v.id ? "var(--accent)" : "var(--text-secondary)",
+                      }}
+                    >{v.label}</span>
+                  ))}
+                </div>
+              ) : null}
+
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Период</span>
-                  <button className="btn btn-secondary" onClick={loadDashboard}>Обновить</button>
+                  <button className="btn btn-secondary" onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                   <div>
@@ -539,7 +672,7 @@ export default function AppPage() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+              {dashView === "global" ? null : <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                 {dashLoading || !dash ? (
                   <div className="card" style={{ gridColumn: "1 / -1" }}>
                     <div className="card-body" style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
@@ -566,9 +699,9 @@ export default function AppPage() {
                     </div>
                   </>
                 )}
-              </div>
+              </div>}
 
-              {!dashLoading && dash ? (
+              {!dashLoading && dash && dashView === "current" ? (
                 <div className="card">
                   <div className="card-header"><span className="card-title">Расходы</span></div>
                   <div className="card-body" style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "var(--text-secondary)" }}>
@@ -578,6 +711,66 @@ export default function AppPage() {
                     <div>SUBMITTED: <b>{dash.expenses?.byStatus?.SUBMITTED ?? 0}</b></div>
                     <div>APPROVED: <b>{dash.expenses?.byStatus?.APPROVED ?? 0}</b></div>
                     <div>REJECTED: <b>{dash.expenses?.byStatus?.REJECTED ?? 0}</b></div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Global stats for ADMIN */}
+              {dashView === "global" ? (
+                <div className="card">
+                  <div className="card-header"><span className="card-title">Сводка по всем офисам</span></div>
+                  <div className="card-body" style={{ padding: 0 }}>
+                    {globalDashLoading || !globalDash ? (
+                      <div style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</div>
+                    ) : (
+                      <>
+                        {/* Totals row */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, padding: 16, borderBottom: "1px solid var(--border)" }}>
+                          {[
+                            { label: "Сделок всего", value: globalDash.totals?.dealsCount ?? 0, mono: false },
+                            { label: "Сумма выхода", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), mono: true, color: "var(--green)" },
+                            { label: "Воркерам", value: (globalDash.totals?.totalWorkersPayoutUsdt ?? 0).toLocaleString(), mono: true, color: "var(--accent)" },
+                            { label: "Расходов", value: (globalDash.totals?.totalExpenses ?? 0).toLocaleString(), mono: true },
+                          ].map((c) => (
+                            <div key={c.label} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "12px 14px" }}>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase" }}>{c.label}</div>
+                              <div style={{ fontWeight: 700, fontSize: 18, fontFamily: c.mono ? "'JetBrains Mono', monospace" : undefined, color: (c as any).color ?? "var(--text-primary)" }}>{c.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Per-org breakdown */}
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Офис</th>
+                              <th style={{ textAlign: "right" }}>Сделок</th>
+                              <th style={{ textAlign: "right" }}>Сумма выхода</th>
+                              <th style={{ textAlign: "right" }}>Воркерам</th>
+                              <th style={{ textAlign: "right" }}>Расходы</th>
+                              <th style={{ width: 100 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(globalDash.byOrg ?? []).map((r: any) => (
+                              <tr key={r.orgId}>
+                                <td style={{ fontWeight: 600 }}>{r.orgName}</td>
+                                <td style={{ textAlign: "right" }}>{r.dealsCount}</td>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}>{(r.totalAmountOut ?? 0).toLocaleString()}</td>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{(r.totalWorkersPayoutUsdt ?? 0).toLocaleString()}</td>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{(r.totalExpenses ?? 0).toLocaleString()}</td>
+                                <td>
+                                  <button
+                                    className="btn btn-secondary"
+                                    style={{ padding: "4px 10px", fontSize: 11 }}
+                                    onClick={() => switchOrg(r.orgId)}
+                                  >Перейти</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -901,7 +1094,11 @@ export default function AppPage() {
                                   style={{ flex: 1 }}
                                 >
                                   <option value="">— выбрать —</option>
-                                  {dealWorkers.map((w) => <option key={w.id} value={w.id}>{w.email} — {w.role}</option>)}
+                                  {dealWorkers.map((w) => (
+                                    <option key={w.id} value={w.id}>
+                                      {w.email}{w.organization ? ` [${w.organization.name}]` : ""} — {w.role}
+                                    </option>
+                                  ))}
                                 </select>
                                 <input
                                   className="form-input"
@@ -1139,6 +1336,70 @@ export default function AppPage() {
           {/* ===== SETTINGS ===== */}
           {tab === "settings" ? (
             <div style={{ display: "grid", gap: 16 }}>
+
+              {/* Organisations block (ADMIN only) */}
+              {user?.role === "ADMIN" ? (
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">Офисы / Организации</span>
+                    <button className="btn btn-secondary" onClick={loadOrgs}>Обновить</button>
+                  </div>
+                  <div className="card-body" style={{ display: "grid", gap: 16 }}>
+                    {/* Create org */}
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+                      <div style={{ flex: 1 }}>
+                        <div className="form-label">Название офиса</div>
+                        <input className="form-input" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="Київ, Дніпро, Львів..." />
+                      </div>
+                      <button className="btn btn-primary" onClick={createOrg} disabled={!newOrgName.trim()}>+ Создать офис</button>
+                    </div>
+
+                    {/* Orgs table */}
+                    <div className="card" style={{ border: "1px solid var(--border-light)" }}>
+                      <div className="card-body" style={{ padding: 0 }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Название</th>
+                              <th style={{ textAlign: "right" }}>Сотрудников</th>
+                              <th style={{ textAlign: "right" }}>Сделок</th>
+                              <th style={{ width: 120 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orgs.length === 0 ? (
+                              <tr><td colSpan={4} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет офисов</td></tr>
+                            ) : (
+                              orgs.map((o) => (
+                                <tr key={o.id}>
+                                  <td style={{ fontWeight: 600 }}>
+                                    {o.name}
+                                    {o.id === user.activeOrganizationId ? (
+                                      <span style={{ marginLeft: 8, fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px" }}>активный</span>
+                                    ) : null}
+                                  </td>
+                                  <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{o._count.users}</td>
+                                  <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{o._count.deals}</td>
+                                  <td>
+                                    {o.id !== user.activeOrganizationId ? (
+                                      <button
+                                        className="btn btn-secondary"
+                                        style={{ padding: "4px 12px", fontSize: 12 }}
+                                        onClick={() => switchOrg(o.id)}
+                                      >Перейти</button>
+                                    ) : null}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Пользователи</span>

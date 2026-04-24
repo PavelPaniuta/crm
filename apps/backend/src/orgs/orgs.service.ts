@@ -5,11 +5,20 @@ import { PrismaService } from '../prisma/prisma.service';
 export class OrgsService {
   constructor(private prisma: PrismaService) {}
 
-  async listForUser(userId: string) {
+  async listForUser(userId: string, role: string) {
+    // ADMIN sees ALL organizations; MANAGER only sees their own
+    if (role === 'ADMIN') {
+      return this.prisma.organization.findMany({
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { users: true, deals: true } } },
+      });
+    }
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException();
-    // MVP: 1 org per user (their own). Later we can add membership table.
-    return this.prisma.organization.findMany({ where: { id: user.organizationId } });
+    return this.prisma.organization.findMany({
+      where: { id: user.organizationId },
+      include: { _count: { select: { users: true, deals: true } } },
+    });
   }
 
   async create(name: string) {
@@ -23,4 +32,3 @@ export class OrgsService {
     return org;
   }
 }
-

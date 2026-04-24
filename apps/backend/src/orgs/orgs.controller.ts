@@ -1,5 +1,8 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { Role } from '@prisma/client';
 import { OrgsService } from './orgs.service';
 import { AuthService } from '../auth/auth.service';
 
@@ -13,15 +16,14 @@ export class OrgsController {
 
   @Get()
   list(@Req() req: any) {
-    return this.orgs.listForUser(req.user.id);
+    return this.orgs.listForUser(req.user.id, req.user.role);
   }
 
   @Post()
-  async create(@Req() req: any, @Body() body: { name: string }) {
-    // MVP: allow any logged-in user to create org; later restrict to ADMIN/global
-    const org = await this.orgs.create(body.name);
-    // Keep user in their original org; switching is explicit
-    return org;
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  async create(@Body() body: { name: string }) {
+    return this.orgs.create(body.name);
   }
 
   @Post('switch')
@@ -30,10 +32,15 @@ export class OrgsController {
     const token = req.cookies?.[cookieName] as string | undefined;
     if (!token) return { ok: false };
 
-    // MVP security: user can only switch to their org (since no membership table yet)
+    // ADMIN can switch to any org; MANAGER can only stay in their own org
+    if (req.user.role !== 'ADMIN') {
+      if (body.organizationId !== req.user.organizationId) {
+        return { ok: false, error: 'Access denied' };
+      }
+    }
+
     await this.orgs.assertOrgExists(body.organizationId);
     await this.auth.switchOrganization(token, body.organizationId);
     return { ok: true };
   }
 }
-

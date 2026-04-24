@@ -17,8 +17,8 @@ export class UsersController {
   }
 
   @Get('public')
-  listPublic(@Req() req: any) {
-    return this.users.listPublic(req.user.activeOrganizationId);
+  listPublic() {
+    return this.users.listPublic();
   }
 
   @Post()
@@ -36,7 +36,7 @@ export class UsersController {
     @Req() req: any,
     @Body() body: { userId: string; role: Role },
   ) {
-    return this.users.setRole(req.user.activeOrganizationId, body.userId, body.role);
+    return this.users.setRole(req.user.activeOrganizationId, body.userId, body.role, req.user.role);
   }
 
   @Patch('password')
@@ -45,7 +45,7 @@ export class UsersController {
     @Req() req: any,
     @Body() body: { userId: string; password: string },
   ) {
-    return this.users.resetPassword(req.user.activeOrganizationId, body.userId, body.password);
+    return this.users.resetPassword(req.user.activeOrganizationId, body.userId, body.password, req.user.role);
   }
 }
 

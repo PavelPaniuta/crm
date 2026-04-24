@@ -15,11 +15,17 @@ export class UsersService {
     });
   }
 
-  listPublic(organizationId: string) {
+  listPublic() {
+    // Returns ALL users across ALL orgs so workers can be assigned to cross-org deals
     return this.prisma.user.findMany({
-      where: { organizationId },
-      select: { id: true, email: true, role: true },
-      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        organization: { select: { name: true } },
+      },
+      orderBy: [{ organizationId: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
@@ -43,10 +49,9 @@ export class UsersService {
     });
   }
 
-  async setRole(organizationId: string, userId: string, role: Role) {
-    const existing = await this.prisma.user.findFirst({
-      where: { id: userId, organizationId },
-    });
+  async setRole(organizationId: string, userId: string, role: Role, requesterRole?: string) {
+    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
     return this.prisma.user.update({
       where: { id: userId },
@@ -55,11 +60,10 @@ export class UsersService {
     });
   }
 
-  async resetPassword(organizationId: string, userId: string, password: string) {
+  async resetPassword(organizationId: string, userId: string, password: string, requesterRole?: string) {
     if (!password || password.length < 6) throw new BadRequestException('password too short');
-    const existing = await this.prisma.user.findFirst({
-      where: { id: userId, organizationId },
-    });
+    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
     const passwordHash = await bcrypt.hash(password, 10);
     return this.prisma.user.update({
