@@ -180,7 +180,9 @@ export default function AppPage() {
     try {
       const res = await fetch("/api/clients", { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
-      setClients(await res.json());
+      if (!res.ok) return;
+      const j = await res.json();
+      setClients(Array.isArray(j) ? j : []);
     } finally { setClientsLoading(false); }
   }
 
@@ -189,7 +191,9 @@ export default function AppPage() {
     try {
       const res = await fetch("/api/expenses", { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
-      setExpenses(await res.json());
+      if (!res.ok) return;
+      const j = await res.json();
+      setExpenses(Array.isArray(j) ? j : []);
     } finally { setExpensesLoading(false); }
   }
 
@@ -198,8 +202,9 @@ export default function AppPage() {
     try {
       const res = await fetch("/api/users", { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
-      if (res.status === 403) { setUsers([]); return; }
-      setUsers(await res.json());
+      if (!res.ok) { setUsers([]); return; }
+      const j = await res.json();
+      setUsers(Array.isArray(j) ? j : []);
     } finally { setUsersLoading(false); }
   }
 
@@ -208,7 +213,9 @@ export default function AppPage() {
     try {
       const res = await fetch("/api/deals", { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
-      setDeals(await res.json());
+      if (!res.ok) return;
+      const j = await res.json();
+      setDeals(Array.isArray(j) ? j : []);
     } finally { setDealsLoading(false); }
   }
 
@@ -217,6 +224,7 @@ export default function AppPage() {
     try {
       const res = await fetch(`/api/dashboard?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
+      if (!res.ok) return;
       setDash(await res.json());
     } finally { setDashLoading(false); }
   }
@@ -226,6 +234,7 @@ export default function AppPage() {
     try {
       const res = await fetch(`/api/reports/workers?from=${repFrom}&to=${repTo}`, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
+      if (!res.ok) return;
       setRepWorkers(await res.json());
     } finally { setRepLoading(false); }
   }

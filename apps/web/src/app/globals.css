@@ -133,6 +133,7 @@ a { color: inherit; text-decoration: none; }
 .badge-green { background: var(--green-bg); color: var(--green-text); }
 .badge-amber { background: var(--amber-bg); color: var(--amber-text); }
 .badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+.badge-red { background: #fef2f2; color: #dc2626; }
 
 .auth-shell { min-height: 100vh; display:flex; align-items:center; justify-content:center; padding: 24px; }
 .auth-card { width: 420px; max-width: 100%; }
