@@ -399,7 +399,11 @@ export default function AppPage() {
         targetOrgId: newUserTargetOrgId || null,
       }),
     });
-    if (!res.ok) return alert("Не удалось создать пользователя");
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null);
+      const msg = errBody?.message ?? `HTTP ${res.status}`;
+      return alert(`Не удалось создать пользователя:\n${Array.isArray(msg) ? msg.join("\n") : msg}`);
+    }
     setNewUserLogin(""); setNewUserPassword(""); setNewUserPosition(""); setNewUserTargetOrgId("");
     await loadUsers();
     await loadOrgs();
