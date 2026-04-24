@@ -137,6 +137,19 @@ export default function AppPage() {
   const [userPositionId, setUserPositionId] = useState<string | null>(null);
   const [userPositionValue, setUserPositionValue] = useState("");
 
+  // --- Theme ---
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("mycrm-theme") as "light" | "dark" | null;
+    if (saved) setTheme(saved);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("mycrm-theme", theme);
+  }, [theme]);
+
   // --- Mobile sidebar ---
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -665,16 +678,34 @@ export default function AppPage() {
 
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[]).map((t) => (
-            <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
-              <span>
-                {t === "dashboard" ? "Dashboard" : t === "deals" ? "Сделки" : t === "clients" ? "Клиенты" : t === "expenses" ? "Расходы" : t === "reports" ? "Отчёты" : "Настройки"}
-              </span>
-            </a>
-          ))}
+          {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[]).map((t) => {
+            const NAV_ICONS: Record<string, string> = {
+              dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡", settings: "⊕"
+            };
+            const NAV_LABELS: Record<string, string> = {
+              dashboard: "Dashboard", deals: "Сделки", clients: "Клиенты",
+              expenses: "Расходы", reports: "Отчёты", settings: "Настройки"
+            };
+            return (
+              <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
+                <span style={{ fontSize: 15, width: 18, textAlign: "center", opacity: tab === t ? 1 : 0.6 }}>{NAV_ICONS[t]}</span>
+                <span>{NAV_LABELS[t]}</span>
+              </a>
+            );
+          })}
           <div className="nav-section">Аккаунт</div>
           <a className="nav-item" onClick={logout}><span>Выйти</span></a>
         </nav>
+
+        <div className="sidebar-footer">
+          <button className="theme-toggle" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 15 }}>{theme === "dark" ? "☀️" : "🌙"}</span>
+              <span>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
+            </span>
+            <span className={`theme-toggle-pill${theme === "dark" ? " is-dark" : ""}`} />
+          </button>
+        </div>
       </aside>
 
       <div className="main">
