@@ -25,6 +25,12 @@ enum ExpenseStatus {
   REJECTED
 }
 
+enum OperationType {
+  PURCHASE
+  ATM
+  TRANSFER
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -91,6 +97,7 @@ model Deal {
   title     String
   status    DealStatus @default(NEW)
   dealDate  DateTime @default(now())
+  comment   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -108,16 +115,16 @@ model Deal {
 }
 
 model DealAmount {
-  id        String   @id @default(cuid())
-  amount    Decimal  @db.Decimal(18, 2)
-  currency  String
-  mediatorPct Int @default(0)
-  rateToUsdt Decimal @db.Decimal(18, 6)
-  payoutUsdt Decimal @db.Decimal(18, 2)
-  branchPct  Int @default(0)
-  branchShareUsdt Decimal @db.Decimal(18, 2)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String        @id @default(cuid())
+  amountIn      Decimal       @db.Decimal(18, 2)
+  currencyIn    String
+  amountOut     Decimal       @db.Decimal(18, 2)
+  currencyOut   String
+  bank          String
+  operationType OperationType
+  shopName      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   dealId String
   deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)

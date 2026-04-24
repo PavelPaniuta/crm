@@ -1,6 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DealStatus } from '@prisma/client';
+import { DealStatus, OperationType } from '@prisma/client';
+
+type AmountInput = {
+  amountIn: number;
+  currencyIn: string;
+  amountOut: number;
+  currencyOut: string;
+  bank: string;
+  operationType: OperationType;
+  shopName?: string | null;
+};
 
 @Injectable()
 export class DealsService {
@@ -10,7 +20,7 @@ export class DealsService {
     return this.prisma.deal.findMany({
       where: { organizationId },
       include: { client: true, amounts: true, participants: { include: { user: true } } },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { dealDate: 'desc' },
     });
   }
 
@@ -23,13 +33,17 @@ export class DealsService {
     return deal;
   }
 
-  create(organizationId: string, data: { title: string; clientId?: string | null; dealDate?: string }) {
+  create(
+    organizationId: string,
+    data: { title: string; clientId?: string | null; dealDate?: string; comment?: string | null },
+  ) {
     return this.prisma.deal.create({
       data: {
         organizationId,
         title: data.title,
         clientId: data.clientId ?? null,
         dealDate: data.dealDate ? new Date(data.dealDate) : new Date(),
+        comment: data.comment ?? null,
       },
     });
   }
@@ -37,7 +51,13 @@ export class DealsService {
   async update(
     organizationId: string,
     id: string,
-    data: { title?: string; status?: DealStatus; clientId?: string | null; dealDate?: string },
+    data: {
+      title?: string;
+      status?: DealStatus;
+      clientId?: string | null;
+      dealDate?: string;
+      comment?: string | null;
+    },
   ) {
     const existing = await this.prisma.deal.findFirst({ where: { id, organizationId } });
     if (!existing) throw new NotFoundException();
@@ -48,55 +68,30 @@ export class DealsService {
         status: data.status,
         clientId: data.clientId === undefined ? undefined : data.clientId,
         dealDate: data.dealDate ? new Date(data.dealDate) : undefined,
+        comment: data.comment === undefined ? undefined : data.comment,
       },
     });
   }
 
-  async addAmount(
-    organizationId: string,
-    dealId: string,
-    data: {
-      amount: number;
-      currency: string;
-      mediatorPct: number;
-      rateToUsdt: number;
-      branchPct: number;
-      payoutUsdt?: number;
-    },
-  ) {
+  async addAmount(organizationId: string, dealId: string, data: AmountInput) {
     const deal = await this.prisma.deal.findFirst({ where: { id: dealId, organizationId } });
     if (!deal) throw new NotFoundException();
-    const comm = (data.amount * data.mediatorPct) / 100;
-    const afterComm = data.amount - comm;
-    const payoutUsdt = data.payoutUsdt ?? Math.round((afterComm / data.rateToUsdt) * 100) / 100;
-    const branchShareUsdt = Math.round((payoutUsdt * data.branchPct) * 100) / 10000;
 
     return this.prisma.dealAmount.create({
       data: {
         dealId,
-        amount: data.amount,
-        currency: data.currency,
-        mediatorPct: data.mediatorPct,
-        rateToUsdt: data.rateToUsdt,
-        payoutUsdt,
-        branchPct: data.branchPct,
-        branchShareUsdt,
+        amountIn: data.amountIn,
+        currencyIn: data.currencyIn,
+        amountOut: data.amountOut,
+        currencyOut: data.currencyOut,
+        bank: data.bank,
+        operationType: data.operationType,
+        shopName: data.shopName ?? null,
       },
     });
   }
 
-  async replaceAmounts(
-    organizationId: string,
-    dealId: string,
-    amounts: Array<{
-      amount: number;
-      currency: string;
-      mediatorPct: number;
-      rateToUsdt: number;
-      branchPct: number;
-      payoutUsdt?: number;
-    }>,
-  ) {
+  async replaceAmounts(organizationId: string, dealId: string, amounts: AmountInput[]) {
     const deal = await this.prisma.deal.findFirst({ where: { id: dealId, organizationId } });
     if (!deal) throw new NotFoundException();
     await this.prisma.dealAmount.deleteMany({ where: { dealId } });
@@ -123,4 +118,3 @@ export class DealsService {
     return { ok: true };
   }
 }
-

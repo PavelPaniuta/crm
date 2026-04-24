@@ -1,7 +1,17 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { DealsService } from './deals.service';
-import { DealStatus } from '@prisma/client';
+import { DealStatus, OperationType } from '@prisma/client';
+
+type AmountBody = {
+  amountIn: number;
+  currencyIn: string;
+  amountOut: number;
+  currencyOut: string;
+  bank: string;
+  operationType: OperationType;
+  shopName?: string | null;
+};
 
 @Controller('deals')
 @UseGuards(AuthGuard)
@@ -21,7 +31,7 @@ export class DealsController {
   @Post()
   create(
     @Req() req: any,
-    @Body() body: { title: string; clientId?: string | null; dealDate?: string },
+    @Body() body: { title: string; clientId?: string | null; dealDate?: string; comment?: string | null },
   ) {
     return this.deals.create(req.user.activeOrganizationId, body);
   }
@@ -30,25 +40,20 @@ export class DealsController {
   update(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { title?: string; status?: DealStatus; clientId?: string | null; dealDate?: string },
+    @Body()
+    body: {
+      title?: string;
+      status?: DealStatus;
+      clientId?: string | null;
+      dealDate?: string;
+      comment?: string | null;
+    },
   ) {
     return this.deals.update(req.user.activeOrganizationId, id, body);
   }
 
   @Post(':id/amounts')
-  addAmount(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body()
-    body: {
-      amount: number;
-      currency: string;
-      mediatorPct: number;
-      rateToUsdt: number;
-      branchPct: number;
-      payoutUsdt?: number;
-    },
-  ) {
+  addAmount(@Req() req: any, @Param('id') id: string, @Body() body: AmountBody) {
     return this.deals.addAmount(req.user.activeOrganizationId, id, body);
   }
 
@@ -56,17 +61,7 @@ export class DealsController {
   replaceAmounts(
     @Req() req: any,
     @Param('id') id: string,
-    @Body()
-    body: {
-      amounts: Array<{
-        amount: number;
-        currency: string;
-        mediatorPct: number;
-        rateToUsdt: number;
-        branchPct: number;
-        payoutUsdt?: number;
-      }>;
-    },
+    @Body() body: { amounts: AmountBody[] },
   ) {
     return this.deals.replaceAmounts(req.user.activeOrganizationId, id, body.amounts);
   }
@@ -80,4 +75,3 @@ export class DealsController {
     return this.deals.setParticipants(req.user.activeOrganizationId, id, body.participants);
   }
 }
-

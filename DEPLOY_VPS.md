@@ -1,5 +1,25 @@
 ## Deploy BisCRM to Ubuntu VPS (my-crm.live)
 
+### Обновление уже запущенного сервера
+
+Если сервер уже работает и нужно накатить новые изменения:
+
+```bash
+cd ~/crm
+git pull
+
+# Обновить схему БД (ОБЯЗАТЕЛЬНО перед рестартом если менялась Prisma схема)
+docker compose exec backend sh -lc "npx prisma@6 db push --schema /app/apps/backend/prisma/schema.prisma"
+
+# Пересобрать и перезапустить только изменённые сервисы
+docker compose build --parallel backend web
+docker compose up -d backend web nginx
+```
+
+---
+
+## Первичный деплой
+
 ### 0) DNS
 - Create A record: `my-crm.live` → your VPS IP
 - (Optional) `www.my-crm.live` → same IP (only if you want www)

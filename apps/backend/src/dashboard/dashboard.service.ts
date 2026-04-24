@@ -15,18 +15,14 @@ export class DashboardService {
 
   async getSummary(organizationId: string, from?: string, to?: string) {
     const now = new Date();
-    const fromDate = from ? new Date(from) : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+    const fromDate = from
+      ? new Date(from)
+      : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
     const toDate = to ? new Date(to) : endOfDay(now);
 
     const deals = await this.prisma.deal.findMany({
-      where: {
-        organizationId,
-        dealDate: { gte: fromDate, lte: toDate },
-      },
-      include: {
-        amounts: true,
-        participants: true,
-      },
+      where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
+      include: { amounts: true, participants: true },
     });
 
     const dealsCount = deals.length;
@@ -38,31 +34,25 @@ export class DashboardService {
       {} as Record<string, number>,
     );
 
-    let totalPayoutUsdt = 0;
-    let totalBranchShareUsdt = 0;
+    // totalAmountOut = sum of all amountOut across all deal rows
+    let totalAmountOut = 0;
     deals.forEach((d) => {
       d.amounts.forEach((a) => {
-        totalPayoutUsdt += Number(a.payoutUsdt);
-        totalBranchShareUsdt += Number(a.branchShareUsdt);
+        totalAmountOut += Number(a.amountOut);
       });
     });
 
-    // “worker payouts” = total payout * pct for each participant
+    // workerPayout = amountOut × workerPct / 100
     let totalWorkersPayoutUsdt = 0;
     deals.forEach((d) => {
-      const dealPayout = d.amounts.reduce((s, a) => s + Number(a.payoutUsdt), 0);
+      const dealAmountOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
       d.participants.forEach((p) => {
-        totalWorkersPayoutUsdt += (dealPayout * p.pct) / 100;
+        totalWorkersPayoutUsdt += (dealAmountOut * p.pct) / 100;
       });
     });
 
-    const grossProfitUsdt = totalPayoutUsdt - totalWorkersPayoutUsdt;
-
     const expenses = await this.prisma.expense.findMany({
-      where: {
-        organizationId,
-        createdAt: { gte: fromDate, lte: toDate },
-      },
+      where: { organizationId, createdAt: { gte: fromDate, lte: toDate } },
     });
 
     const expensesCount = expenses.length;
@@ -80,10 +70,8 @@ export class DashboardService {
       deals: {
         count: dealsCount,
         byStatus: dealsByStatus,
-        totalPayoutUsdt: Math.round(totalPayoutUsdt * 100) / 100,
-        totalBranchShareUsdt: Math.round(totalBranchShareUsdt * 100) / 100,
+        totalAmountOut: Math.round(totalAmountOut * 100) / 100,
         totalWorkersPayoutUsdt: Math.round(totalWorkersPayoutUsdt * 100) / 100,
-        grossProfitUsdt: Math.round(grossProfitUsdt * 100) / 100,
       },
       expenses: {
         count: expensesCount,
@@ -93,4 +81,3 @@ export class DashboardService {
     };
   }
 }
-

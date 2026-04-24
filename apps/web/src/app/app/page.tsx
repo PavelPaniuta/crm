@@ -33,25 +33,26 @@ type AppUser = {
 };
 
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings";
-
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
+type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 
 type Deal = {
   id: string;
   title: string;
   status: DealStatus;
   dealDate: string;
+  comment?: string | null;
   clientId?: string | null;
   client?: { id: string; name: string; phone: string } | null;
   amounts: Array<{
     id: string;
-    amount: string;
-    currency: string;
-    mediatorPct: number;
-    rateToUsdt: string;
-    payoutUsdt: string;
-    branchPct: number;
-    branchShareUsdt: string;
+    amountIn: string;
+    currencyIn: string;
+    amountOut: string;
+    currencyOut: string;
+    bank: string;
+    operationType: OperationType;
+    shopName?: string | null;
   }>;
   participants: Array<{
     id: string;
@@ -60,16 +61,43 @@ type Deal = {
   }>;
 };
 
+type DealAmtRow = {
+  id: string;
+  bank: string;
+  operationType: OperationType;
+  amountIn: string;
+  currencyIn: string;
+  amountOut: string;
+  currencyOut: string;
+  shopName: string;
+};
+
+type DealParticipantRow = { id: string; userId: string; pct: string };
+
+const OP_LABELS: Record<OperationType, string> = {
+  PURCHASE: "Покупка",
+  ATM: "Банкомат",
+  TRANSFER: "Перевод",
+};
+
+const CURRENCIES = ["PLN", "CHF", "USDT", "UAH", "EUR", "USD"];
+
 export default function AppPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
 
+  // --- Clients ---
   const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newClientPhone, setNewClientPhone] = useState("");
+  const [clientEditOpen, setClientEditOpen] = useState(false);
+  const [clientEditing, setClientEditing] = useState<Client | null>(null);
+  const [clientEditName, setClientEditName] = useState("");
+  const [clientEditPhone, setClientEditPhone] = useState("");
 
+  // --- Expenses ---
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [newExpenseTitle, setNewExpenseTitle] = useState("");
@@ -79,53 +107,43 @@ export default function AppPage() {
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseEditing, setExpenseEditing] = useState<Expense | null>(null);
 
+  // --- Users ---
   const [users, setUsers] = useState<AppUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [newUserLogin, setNewUserLogin] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<"ADMIN" | "MANAGER">("MANAGER");
+  const [userPwdId, setUserPwdId] = useState<string | null>(null);
+  const [userPwdValue, setUserPwdValue] = useState("");
 
+  // --- Deals ---
   const [deals, setDeals] = useState<Deal[]>([]);
   const [dealsLoading, setDealsLoading] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [dealEditingId, setDealEditingId] = useState<string | null>(null);
   const [dealFilter, setDealFilter] = useState<"ALL" | DealStatus>("ALL");
-
-  const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
-  const [dashTo, setDashTo] = useState(() => new Date().toISOString().slice(0, 10));
-  const [dashLoading, setDashLoading] = useState(false);
-  const [dash, setDash] = useState<any>(null);
-
-  const [repFrom, setRepFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
-  const [repTo, setRepTo] = useState(() => new Date().toISOString().slice(0, 10));
-  const [repLoading, setRepLoading] = useState(false);
-  const [repWorkers, setRepWorkers] = useState<any>(null);
-
   const [dealDate, setDealDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dealStatus, setDealStatus] = useState<DealStatus>("NEW");
   const [dealClientSearch, setDealClientSearch] = useState("");
   const [dealClientId, setDealClientId] = useState<string | null>(null);
   const [dealClientSkip, setDealClientSkip] = useState(false);
   const [dealClients, setDealClients] = useState<Client[]>([]);
-  const [dealWorkers, setDealWorkers] = useState<Array<{ id: string; email: string; role: "ADMIN" | "MANAGER" }>>([]);
-
-  type DealAmtRow = {
-    id: string;
-    bank: string;
-    mediatorPct: number;
-    method: string;
-    amount: string;
-    currency: string;
-    rate: string;
-    payoutUsdt: string;
-    payoutManual: boolean;
-    branchPct: string;
-  };
+  const [dealWorkers, setDealWorkers] = useState<Array<{ id: string; email: string; role: string }>>([]);
   const [dealAmounts, setDealAmounts] = useState<DealAmtRow[]>([]);
-
-  type DealParticipantRow = { id: string; userId: string; pct: string };
   const [dealParticipants, setDealParticipants] = useState<DealParticipantRow[]>([]);
   const [dealComment, setDealComment] = useState("");
+
+  // --- Dashboard ---
+  const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [dashTo, setDashTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dash, setDash] = useState<any>(null);
+
+  // --- Reports ---
+  const [repFrom, setRepFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [repTo, setRepTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [repLoading, setRepLoading] = useState(false);
+  const [repWorkers, setRepWorkers] = useState<any>(null);
 
   const title = useMemo(() => {
     if (tab === "dashboard") return "Dashboard";
@@ -140,108 +158,11 @@ export default function AppPage() {
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/auth/me", { credentials: "include" });
-      if (!res.ok) {
-        router.replace("/login");
-        return;
-      }
+      if (!res.ok) { router.replace("/login"); return; }
       const j = await res.json();
       setUser(j.user);
     })();
   }, [router]);
-
-  async function loadClients() {
-    setClientsLoading(true);
-    try {
-      const res = await fetch("/api/clients", { credentials: "include" });
-      if (res.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      const j = await res.json();
-      setClients(j);
-    } finally {
-      setClientsLoading(false);
-    }
-  }
-
-  async function loadExpenses() {
-    setExpensesLoading(true);
-    try {
-      const res = await fetch("/api/expenses", { credentials: "include" });
-      if (res.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      const j = await res.json();
-      setExpenses(j);
-    } finally {
-      setExpensesLoading(false);
-    }
-  }
-
-  async function loadUsers() {
-    setUsersLoading(true);
-    try {
-      const res = await fetch("/api/users", { credentials: "include" });
-      if (res.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      if (res.status === 403) {
-        setUsers([]);
-        return;
-      }
-      const j = await res.json();
-      setUsers(j);
-    } finally {
-      setUsersLoading(false);
-    }
-  }
-
-  async function loadDeals() {
-    setDealsLoading(true);
-    try {
-      const res = await fetch("/api/deals", { credentials: "include" });
-      if (res.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      const j = await res.json();
-      setDeals(j);
-    } finally {
-      setDealsLoading(false);
-    }
-  }
-
-  async function loadDashboard() {
-    setDashLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
-      if (res.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      const j = await res.json();
-      setDash(j);
-    } finally {
-      setDashLoading(false);
-    }
-  }
-
-  async function loadReportsWorkers() {
-    setRepLoading(true);
-    try {
-      const res = await fetch(`/api/reports/workers?from=${repFrom}&to=${repTo}`, { credentials: "include" });
-      if (res.status === 401) {
-        router.replace("/login");
-        return;
-      }
-      const j = await res.json();
-      setRepWorkers(j);
-    } finally {
-      setRepLoading(false);
-    }
-  }
 
   useEffect(() => {
     if (tab === "clients") loadClients();
@@ -253,67 +174,155 @@ export default function AppPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // ---- loaders ----
+  async function loadClients() {
+    setClientsLoading(true);
+    try {
+      const res = await fetch("/api/clients", { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      setClients(await res.json());
+    } finally { setClientsLoading(false); }
+  }
+
+  async function loadExpenses() {
+    setExpensesLoading(true);
+    try {
+      const res = await fetch("/api/expenses", { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      setExpenses(await res.json());
+    } finally { setExpensesLoading(false); }
+  }
+
+  async function loadUsers() {
+    setUsersLoading(true);
+    try {
+      const res = await fetch("/api/users", { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      if (res.status === 403) { setUsers([]); return; }
+      setUsers(await res.json());
+    } finally { setUsersLoading(false); }
+  }
+
+  async function loadDeals() {
+    setDealsLoading(true);
+    try {
+      const res = await fetch("/api/deals", { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      setDeals(await res.json());
+    } finally { setDealsLoading(false); }
+  }
+
+  async function loadDashboard() {
+    setDashLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      setDash(await res.json());
+    } finally { setDashLoading(false); }
+  }
+
+  async function loadReportsWorkers() {
+    setRepLoading(true);
+    try {
+      const res = await fetch(`/api/reports/workers?from=${repFrom}&to=${repTo}`, { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      setRepWorkers(await res.json());
+    } finally { setRepLoading(false); }
+  }
+
+  // ---- clients ----
   async function createClient() {
     const res = await fetch("/api/clients", {
-      method: "POST",
+      method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ name: newClientName, phone: newClientPhone }),
     });
-    if (!res.ok) throw new Error("Не удалось создать клиента");
-    setNewClientName("");
-    setNewClientPhone("");
+    if (!res.ok) return alert("Не удалось создать клиента");
+    setNewClientName(""); setNewClientPhone("");
     await loadClients();
   }
 
+  function openClientEdit(c: Client) {
+    setClientEditing(c);
+    setClientEditName(c.name);
+    setClientEditPhone(c.phone);
+    setClientEditOpen(true);
+  }
+
+  async function saveClientEdit() {
+    if (!clientEditing) return;
+    const res = await fetch(`/api/clients/${clientEditing.id}`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: clientEditName, phone: clientEditPhone }),
+    });
+    if (!res.ok) return alert("Не удалось обновить клиента");
+    setClientEditOpen(false);
+    await loadClients();
+  }
+
+  async function deleteClient(id: string) {
+    if (!confirm("Удалить клиента?")) return;
+    const res = await fetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) return alert("Не удалось удалить клиента");
+    await loadClients();
+  }
+
+  // ---- expenses ----
   async function createExpense() {
     const amount = Number(newExpenseAmount);
-    if (!Number.isFinite(amount)) throw new Error("Некорректная сумма");
+    if (!Number.isFinite(amount)) return alert("Некорректная сумма");
     const res = await fetch("/api/expenses", {
-      method: "POST",
+      method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        title: newExpenseTitle,
-        amount,
-        currency: newExpenseCurrency,
-        payMethod: newExpensePayMethod,
-      }),
+      body: JSON.stringify({ title: newExpenseTitle, amount, currency: newExpenseCurrency, payMethod: newExpensePayMethod }),
     });
-    if (!res.ok) throw new Error("Не удалось создать расход");
-    setNewExpenseTitle("");
-    setNewExpenseAmount("");
+    if (!res.ok) return alert("Не удалось создать расход");
+    setNewExpenseTitle(""); setNewExpenseAmount("");
     await loadExpenses();
   }
 
   async function expenseAction(action: "submit" | "approve" | "reject") {
     if (!expenseEditing) return;
-    const res = await fetch(`/api/expenses/${expenseEditing.id}/${action}`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Не удалось изменить статус");
-    await loadExpenses();
-    const updated = await fetch("/api/expenses", { credentials: "include" }).then((r) => r.json());
-    const found = updated.find((e: Expense) => e.id === expenseEditing.id) ?? null;
-    setExpenseEditing(found);
+    const res = await fetch(`/api/expenses/${expenseEditing.id}/${action}`, { method: "POST", credentials: "include" });
+    if (!res.ok) return alert("Не удалось изменить статус");
+    const list = await fetch("/api/expenses", { credentials: "include" }).then((r) => r.json());
+    setExpenses(list);
+    setExpenseEditing(list.find((e: Expense) => e.id === expenseEditing.id) ?? null);
   }
 
+  // ---- users ----
   async function createUser() {
     const res = await fetch("/api/users", {
-      method: "POST",
+      method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        email: newUserLogin,
-        password: newUserPassword,
-        role: newUserRole,
-      }),
+      body: JSON.stringify({ email: newUserLogin, password: newUserPassword, role: newUserRole }),
     });
-    if (!res.ok) throw new Error("Не удалось создать пользователя");
-    setNewUserLogin("");
-    setNewUserPassword("");
+    if (!res.ok) return alert("Не удалось создать пользователя");
+    setNewUserLogin(""); setNewUserPassword("");
     await loadUsers();
+  }
+
+  async function changeUserRole(userId: string, role: "ADMIN" | "MANAGER") {
+    const res = await fetch("/api/users/role", {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, role }),
+    });
+    if (!res.ok) return alert("Не удалось сменить роль");
+    await loadUsers();
+  }
+
+  async function resetUserPassword(userId: string) {
+    if (!userPwdValue.trim()) return alert("Введите пароль");
+    const res = await fetch("/api/users/password", {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, password: userPwdValue }),
+    });
+    if (!res.ok) return alert("Не удалось сбросить пароль");
+    setUserPwdId(null); setUserPwdValue("");
+    alert("Пароль обновлён");
   }
 
   async function logout() {
@@ -321,250 +330,156 @@ export default function AppPage() {
     router.replace("/login");
   }
 
+  // ---- deal modal helpers ----
+  function newAmtRow(): DealAmtRow {
+    return {
+      id: crypto.randomUUID(),
+      bank: "ING",
+      operationType: "ATM",
+      amountIn: "",
+      currencyIn: "PLN",
+      amountOut: "",
+      currencyOut: "PLN",
+      shopName: "",
+    };
+  }
+
   function openDealModal() {
-    setDealModalOpen(true);
-    setDealEditingId(null);
+    setDealModalOpen(true); setDealEditingId(null);
     setDealDate(new Date().toISOString().slice(0, 10));
-    setDealStatus("NEW");
-    setDealClientSearch("");
-    setDealClientId(null);
-    setDealClientSkip(false);
-    setDealComment("");
-
-    setDealAmounts([
-      {
-        id: crypto.randomUUID(),
-        bank: "PKO BP",
-        mediatorPct: 3,
-        method: "РЕКИ",
-        amount: "",
-        currency: "PLN",
-        rate: "4.15",
-        payoutUsdt: "0",
-        payoutManual: false,
-        branchPct: "25",
-      },
-    ]);
-    setDealParticipants([
-      { id: crypto.randomUUID(), userId: "", pct: "100" },
-    ]);
-
-    // preload clients + workers for dropdowns
-    (async () => {
-      const [cRes, wRes] = await Promise.all([
-        fetch("/api/clients", { credentials: "include" }),
-        fetch("/api/users/public", { credentials: "include" }),
-      ]);
-      if (cRes.ok) setDealClients(await cRes.json());
-      if (wRes.ok) setDealWorkers(await wRes.json());
-    })();
+    setDealStatus("NEW"); setDealClientSearch(""); setDealClientId(null);
+    setDealClientSkip(false); setDealComment("");
+    setDealAmounts([newAmtRow()]);
+    setDealParticipants([{ id: crypto.randomUUID(), userId: "", pct: "100" }]);
+    fetchDealDropdowns();
   }
 
   function openDealEditModal(deal: Deal) {
-    setDealModalOpen(true);
-    setDealEditingId(deal.id);
+    setDealModalOpen(true); setDealEditingId(deal.id);
     setDealDate((deal.dealDate ?? new Date().toISOString()).slice(0, 10));
-    setDealStatus(deal.status);
-    setDealClientSearch("");
+    setDealStatus(deal.status); setDealClientSearch("");
     setDealClientId(deal.clientId ?? null);
     setDealClientSkip(!deal.clientId);
-    setDealComment("");
-
+    setDealComment(deal.comment ?? "");
     setDealAmounts(
       (deal.amounts ?? []).map((a) => ({
         id: a.id,
-        bank: "PKO BP",
-        mediatorPct: a.mediatorPct,
-        method: "РЕКИ",
-        amount: String(a.amount ?? ""),
-        currency: a.currency,
-        rate: String(a.rateToUsdt ?? "1"),
-        payoutUsdt: String(a.payoutUsdt ?? "0"),
-        payoutManual: true,
-        branchPct: String(a.branchPct ?? 0),
+        bank: a.bank,
+        operationType: a.operationType,
+        amountIn: String(a.amountIn ?? ""),
+        currencyIn: a.currencyIn,
+        amountOut: String(a.amountOut ?? ""),
+        currencyOut: a.currencyOut,
+        shopName: a.shopName ?? "",
       })),
     );
-
     setDealParticipants(
-      (deal.participants ?? []).map((p) => ({
-        id: p.id,
-        userId: p.user.id,
-        pct: String(p.pct),
-      })),
+      (deal.participants ?? []).map((p) => ({ id: p.id, userId: p.user.id, pct: String(p.pct) })),
     );
+    fetchDealDropdowns();
+  }
 
-    (async () => {
-      const [cRes, wRes] = await Promise.all([
-        fetch("/api/clients", { credentials: "include" }),
-        fetch("/api/users/public", { credentials: "include" }),
-      ]);
+  function fetchDealDropdowns() {
+    Promise.all([
+      fetch("/api/clients", { credentials: "include" }),
+      fetch("/api/users/public", { credentials: "include" }),
+    ]).then(async ([cRes, wRes]) => {
       if (cRes.ok) setDealClients(await cRes.json());
       if (wRes.ok) setDealWorkers(await wRes.json());
-    })();
-  }
-
-  function closeDealModal() {
-    setDealModalOpen(false);
-  }
-
-  function calcAmountRow(r: DealAmtRow) {
-    const amt = Number(r.amount) || 0;
-    const pct = Number(r.mediatorPct) || 0;
-    const rate = Number(r.rate) || 1;
-    const branchPct = Number(r.branchPct) || 0;
-    const comm = Math.round((amt * pct) / 100);
-    const afterComm = amt - comm;
-    const payoutAuto = Math.round((afterComm / rate) * 100) / 100;
-    const payout = r.payoutManual ? Number(r.payoutUsdt) || 0 : payoutAuto;
-    const branchShare = Math.round(payout * branchPct) / 100;
-    return { comm, afterComm, payout, branchShare, payoutAuto };
-  }
-
-  const dealTotals = useMemo(() => {
-    let tAmt = 0;
-    let tPay = 0;
-    let tComm = 0;
-    let tShare = 0;
-    dealAmounts.forEach((r) => {
-      const amt = Number(r.amount) || 0;
-      tAmt += amt;
-      const { comm, payout, branchShare } = calcAmountRow(r);
-      tComm += comm;
-      tPay += payout;
-      tShare += branchShare;
     });
-    return { tAmt, tPay, tComm, tShare };
+  }
+
+  function closeDealModal() { setDealModalOpen(false); }
+
+  // totals
+  const dealTotals = useMemo(() => {
+    let tAmountIn = 0;
+    let tAmountOut = 0;
+    dealAmounts.forEach((r) => {
+      tAmountIn += Number(r.amountIn) || 0;
+      tAmountOut += Number(r.amountOut) || 0;
+    });
+    return { tAmountIn, tAmountOut };
   }, [dealAmounts]);
 
   const pctStatus = useMemo(() => {
-    const totalPct = dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0);
-    if (totalPct === 100) return { ok: true, text: "✓ Итого: 100%", color: "var(--green)" };
-    if (totalPct > 100) return { ok: false, text: `⚠ Итого: ${totalPct}% — превышает 100%`, color: "var(--red)" };
-    return { ok: false, text: `⚠ Итого: ${totalPct}% — не хватает ${100 - totalPct}%`, color: "var(--amber)" };
+    const total = dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0);
+    if (total === 100) return { ok: true, text: "✓ Итого: 100%", color: "var(--green)" };
+    if (total > 100) return { ok: false, text: `⚠ Итого: ${total}% — превышает 100%`, color: "var(--red)" };
+    return { ok: false, text: `⚠ Итого: ${total}% — не хватает ${100 - total}%`, color: "var(--amber)" };
   }, [dealParticipants]);
 
   async function saveDeal() {
-    // title like in MVP: client or "Без клиента"
+    const parts = dealParticipants.filter((p) => p.userId).map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
+    const totalPct = parts.reduce((s, p) => s + p.pct, 0);
+    if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
+
     const selectedClient = dealClientId ? dealClients.find((c) => c.id === dealClientId) : null;
-    const title = selectedClient ? `Сделка — ${selectedClient.name}` : "Сделка — без клиента";
+    const titleText = selectedClient ? `Сделка — ${selectedClient.name}` : "Сделка";
+    const amountsPayload = dealAmounts.map((r) => ({
+      amountIn: Number(r.amountIn) || 0,
+      currencyIn: r.currencyIn,
+      amountOut: Number(r.amountOut) || 0,
+      currencyOut: r.currencyOut,
+      bank: r.bank,
+      operationType: r.operationType,
+      shopName: r.operationType === "PURCHASE" ? (r.shopName || null) : null,
+    }));
 
-    const targetId = dealEditingId;
-    if (!targetId) {
-      // create deal
+    if (!dealEditingId) {
       const dRes = await fetch("/api/deals", {
-        method: "POST",
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title,
-          status: dealStatus,
-          clientId: dealClientSkip ? null : (dealClientId ?? null),
-          dealDate,
-        }),
+        body: JSON.stringify({ title: titleText, status: dealStatus, clientId: dealClientSkip ? null : (dealClientId ?? null), dealDate, comment: dealComment || null }),
       });
-      if (!dRes.ok) throw new Error("Не удалось создать сделку");
+      if (!dRes.ok) return alert("Не удалось создать сделку");
       const deal = await dRes.json();
-      await fetch(`/api/deals/${deal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ status: dealStatus }),
-      });
 
-      // amounts (initial create)
-      for (const r of dealAmounts) {
-        const { payout } = calcAmountRow(r);
+      for (const a of amountsPayload) {
         const aRes = await fetch(`/api/deals/${deal.id}/amounts`, {
-          method: "POST",
+          method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            amount: Number(r.amount) || 0,
-            currency: r.currency,
-            mediatorPct: Number(r.mediatorPct) || 0,
-            rateToUsdt: Number(r.rate) || 1,
-            branchPct: Number(r.branchPct) || 0,
-            payoutUsdt: payout,
-          }),
+          body: JSON.stringify(a),
         });
-        if (!aRes.ok) throw new Error("Не удалось сохранить суммы сделки");
+        if (!aRes.ok) return alert("Не удалось сохранить суммы");
       }
 
-      // participants
-      const parts = dealParticipants
-        .filter((p) => p.userId)
-        .map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
-      const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-      if (totalPct !== 100) throw new Error("Проценты участников должны суммарно быть 100%");
       const pRes = await fetch(`/api/deals/${deal.id}/participants`, {
-        method: "POST",
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ participants: parts }),
       });
-      if (!pRes.ok) throw new Error("Не удалось сохранить участников сделки");
+      if (!pRes.ok) return alert("Не удалось сохранить участников");
     } else {
-      // update deal
-      const upd = await fetch(`/api/deals/${targetId}`, {
-        method: "PATCH",
+      const upd = await fetch(`/api/deals/${dealEditingId}`, {
+        method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title,
-          status: dealStatus,
-          clientId: dealClientSkip ? null : (dealClientId ?? null),
-          dealDate,
-        }),
+        body: JSON.stringify({ title: titleText, status: dealStatus, clientId: dealClientSkip ? null : (dealClientId ?? null), dealDate, comment: dealComment || null }),
       });
-      if (!upd.ok) throw new Error("Не удалось обновить сделку");
+      if (!upd.ok) return alert("Не удалось обновить сделку");
 
-      // replace amounts
-      const rep = await fetch(`/api/deals/${targetId}/amounts`, {
-        method: "PUT",
+      const rep = await fetch(`/api/deals/${dealEditingId}/amounts`, {
+        method: "PUT", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          amounts: dealAmounts.map((r) => {
-            const { payout } = calcAmountRow(r);
-            return {
-              amount: Number(r.amount) || 0,
-              currency: r.currency,
-              mediatorPct: Number(r.mediatorPct) || 0,
-              rateToUsdt: Number(r.rate) || 1,
-              branchPct: Number(r.branchPct) || 0,
-              payoutUsdt: payout,
-            };
-          }),
-        }),
+        body: JSON.stringify({ amounts: amountsPayload }),
       });
-      if (!rep.ok) throw new Error("Не удалось обновить суммы сделки");
+      if (!rep.ok) return alert("Не удалось обновить суммы");
 
-      // participants
-      const parts = dealParticipants
-        .filter((p) => p.userId)
-        .map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
-      const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-      if (totalPct !== 100) throw new Error("Проценты участников должны суммарно быть 100%");
-      const pRes = await fetch(`/api/deals/${targetId}/participants`, {
-        method: "POST",
+      const pRes = await fetch(`/api/deals/${dealEditingId}/participants`, {
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ participants: parts }),
       });
-      if (!pRes.ok) throw new Error("Не удалось обновить участников сделки");
+      if (!pRes.ok) return alert("Не удалось обновить участников");
     }
-
-    // participants (require 100%)
-    const parts = dealParticipants
-      .filter((p) => p.userId)
-      .map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
-    const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-    if (totalPct !== 100) throw new Error("Проценты участников должны суммарно быть 100%");
 
     closeDealModal();
     await loadDeals();
   }
 
+  // =========================================================
+  // RENDER
+  // =========================================================
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -572,31 +487,17 @@ export default function AppPage() {
           <div className="logo-icon">B</div>
           <span>BisCRM</span>
         </div>
-
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          <a className={`nav-item ${tab === "dashboard" ? "active" : ""}`} onClick={() => setTab("dashboard")}>
-            <span>Dashboard</span>
-          </a>
-          <a className={`nav-item ${tab === "deals" ? "active" : ""}`} onClick={() => setTab("deals")}>
-            <span>Сделки</span>
-          </a>
-          <a className={`nav-item ${tab === "clients" ? "active" : ""}`} onClick={() => setTab("clients")}>
-            <span>Клиенты</span>
-          </a>
-          <a className={`nav-item ${tab === "expenses" ? "active" : ""}`} onClick={() => setTab("expenses")}>
-            <span>Расходы</span>
-          </a>
-          <a className={`nav-item ${tab === "reports" ? "active" : ""}`} onClick={() => setTab("reports")}>
-            <span>Отчёты</span>
-          </a>
-          <a className={`nav-item ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
-            <span>Настройки</span>
-          </a>
+          {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[]).map((t) => (
+            <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
+              <span>
+                {t === "dashboard" ? "Dashboard" : t === "deals" ? "Сделки" : t === "clients" ? "Клиенты" : t === "expenses" ? "Расходы" : t === "reports" ? "Отчёты" : "Настройки"}
+              </span>
+            </a>
+          ))}
           <div className="nav-section">Аккаунт</div>
-          <a className="nav-item" onClick={logout}>
-            <span>Выйти</span>
-          </a>
+          <a className="nav-item" onClick={logout}><span>Выйти</span></a>
         </nav>
       </aside>
 
@@ -609,14 +510,13 @@ export default function AppPage() {
         </header>
 
         <div className="content">
+          {/* ===== DASHBOARD ===== */}
           {tab === "dashboard" ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Период</span>
-                  <button className="btn btn-secondary" onClick={loadDashboard}>
-                    Обновить
-                  </button>
+                  <button className="btn btn-secondary" onClick={loadDashboard}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                   <div>
@@ -630,45 +530,29 @@ export default function AppPage() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                 {dashLoading || !dash ? (
                   <div className="card" style={{ gridColumn: "1 / -1" }}>
-                    <div className="card-body" style={{ color: "var(--text-secondary)" }}>
-                      Загрузка...
-                    </div>
+                    <div className="card-body" style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
                   </div>
                 ) : (
                   <>
                     <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">Сделки</span>
-                      </div>
+                      <div className="card-header"><span className="card-title">Сделки</span></div>
                       <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700 }}>
                         {dash.deals?.count ?? 0}
                       </div>
                     </div>
                     <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">Выплата</span>
-                      </div>
+                      <div className="card-header"><span className="card-title">Сумма выхода</span></div>
                       <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--green)" }}>
-                        {(dash.deals?.totalPayoutUsdt ?? 0).toLocaleString()} USDT
+                        {(dash.deals?.totalAmountOut ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">Воркерам</span>
-                      </div>
+                      <div className="card-header"><span className="card-title">Воркерам</span></div>
                       <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>
-                        {(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()} USDT
-                      </div>
-                    </div>
-                    <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">Профит</span>
-                      </div>
-                      <div className="card-body" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700 }}>
-                        {(dash.deals?.grossProfitUsdt ?? 0).toLocaleString()} USDT
+                        {(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}
                       </div>
                     </div>
                   </>
@@ -677,12 +561,10 @@ export default function AppPage() {
 
               {!dashLoading && dash ? (
                 <div className="card">
-                  <div className="card-header">
-                    <span className="card-title">Расходы</span>
-                  </div>
+                  <div className="card-header"><span className="card-title">Расходы</span></div>
                   <div className="card-body" style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "var(--text-secondary)" }}>
                     <div><b>{dash.expenses?.count ?? 0}</b> записей</div>
-                    <div><b>{(dash.expenses?.totalAmount ?? 0).toLocaleString()}</b> сумма (в валюте записей)</div>
+                    <div><b>{(dash.expenses?.totalAmount ?? 0).toLocaleString()}</b> сумма</div>
                     <div>DRAFT: <b>{dash.expenses?.byStatus?.DRAFT ?? 0}</b></div>
                     <div>SUBMITTED: <b>{dash.expenses?.byStatus?.SUBMITTED ?? 0}</b></div>
                     <div>APPROVED: <b>{dash.expenses?.byStatus?.APPROVED ?? 0}</b></div>
@@ -693,14 +575,13 @@ export default function AppPage() {
             </div>
           ) : null}
 
+          {/* ===== REPORTS ===== */}
           {tab === "reports" ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Период</span>
-                  <button className="btn btn-secondary" onClick={loadReportsWorkers}>
-                    Обновить
-                  </button>
+                  <button className="btn btn-secondary" onClick={loadReportsWorkers}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                   <div>
@@ -713,11 +594,8 @@ export default function AppPage() {
                   </div>
                 </div>
               </div>
-
               <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Выплаты воркерам (USDT)</span>
-                </div>
+                <div className="card-header"><span className="card-title">Выплаты воркерам</span></div>
                 <div className="card-body">
                   {repLoading || !repWorkers ? (
                     <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
@@ -725,30 +603,21 @@ export default function AppPage() {
                     <table className="table">
                       <thead>
                         <tr>
-                          <th>Воркер</th>
-                          <th>Роль</th>
-                          <th>Сделок</th>
-                          <th style={{ textAlign: "right" }}>Выплата</th>
+                          <th>Воркер</th><th>Роль</th><th>Сделок</th>
+                          <th style={{ textAlign: "right" }}>Заработок</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(repWorkers.rows ?? []).map((r: any) => (
+                        {(repWorkers.rows ?? []).length === 0 ? (
+                          <tr><td colSpan={4} style={{ color: "var(--text-secondary)" }}>Нет данных за период</td></tr>
+                        ) : (repWorkers.rows ?? []).map((r: any) => (
                           <tr key={r.userId}>
-                            <td>{r.email}</td>
-                            <td>{r.role}</td>
-                            <td>{r.dealsCount}</td>
+                            <td>{r.email}</td><td>{r.role}</td><td>{r.dealsCount}</td>
                             <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
-                              {Number(r.payoutUsdt ?? 0).toLocaleString()} USDT
+                              {Number(r.payoutUsdt ?? 0).toLocaleString()}
                             </td>
                           </tr>
                         ))}
-                        {(repWorkers.rows ?? []).length === 0 ? (
-                          <tr>
-                            <td colSpan={4} style={{ color: "var(--text-secondary)" }}>
-                              Нет данных за период
-                            </td>
-                          </tr>
-                        ) : null}
                       </tbody>
                     </table>
                   )}
@@ -757,122 +626,92 @@ export default function AppPage() {
             </div>
           ) : null}
 
+          {/* ===== DEALS ===== */}
           {tab === "deals" ? (
             <div style={{ display: "grid", gap: 16 }}>
-              <div className="filter-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              {/* filter bar */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: 8 }}>
-                  {[
-                    { id: "ALL", label: "Все" },
-                    { id: "NEW", label: "Новые" },
-                    { id: "IN_PROGRESS", label: "В работе" },
-                    { id: "CLOSED", label: "Закрытые" },
-                  ].map((f) => (
+                  {([{ id: "ALL", label: "Все" }, { id: "NEW", label: "Новые" }, { id: "IN_PROGRESS", label: "В работе" }, { id: "CLOSED", label: "Закрытые" }] as const).map((f) => (
                     <span
                       key={f.id}
-                      className={`filter-pill ${dealFilter === (f.id as any) ? "active" : ""}`}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 999,
-                        background: dealFilter === (f.id as any) ? "var(--accent-light)" : "transparent",
-                        border: "1px solid var(--border)",
-                        cursor: "pointer",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: dealFilter === (f.id as any) ? "var(--accent)" : "var(--text-secondary)",
-                      }}
                       onClick={() => setDealFilter(f.id as any)}
-                    >
-                      {f.label}
-                    </span>
+                      style={{
+                        padding: "6px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                        border: "1px solid var(--border)",
+                        background: dealFilter === f.id ? "var(--accent-light)" : "transparent",
+                        color: dealFilter === f.id ? "var(--accent)" : "var(--text-secondary)",
+                      }}
+                    >{f.label}</span>
                   ))}
                 </div>
               </div>
+
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Сделки</span>
-                  <button className="btn btn-primary" onClick={openDealModal}>
-                    + Новая сделка
-                  </button>
+                  <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
                 </div>
                 <div className="card-body" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>ID</th>
-                        <th>Клиент</th>
-                        <th>Статус</th>
-                        <th style={{ textAlign: "right" }}>Выплата</th>
+                        <th>Дата</th><th>Клиент</th><th>Воркеры</th><th>Статус</th>
+                        <th style={{ textAlign: "right" }}>Сумма выхода</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dealsLoading ? (
-                        <tr>
-                          <td colSpan={4} style={{ padding: 16, color: "var(--text-secondary)" }}>
-                            Загрузка...
-                          </td>
-                        </tr>
-                      ) : deals.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} style={{ padding: 16, color: "var(--text-secondary)" }}>
-                            Пока пусто
-                          </td>
-                        </tr>
+                        <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
+                      ) : deals.filter((d) => dealFilter === "ALL" || d.status === dealFilter).length === 0 ? (
+                        <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Пока пусто</td></tr>
                       ) : (
                         deals
-                          .filter((d) => (dealFilter === "ALL" ? true : d.status === dealFilter))
+                          .filter((d) => dealFilter === "ALL" || d.status === dealFilter)
                           .map((d) => {
-                          const payout = d.amounts.reduce((s, a) => s + Number(a.payoutUsdt || 0), 0);
-                          return (
-                            <tr key={d.id} onClick={() => openDealEditModal(d)}>
-                              <td style={{ color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
-                                {d.id.slice(0, 8)}
-                              </td>
-                              <td>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
-                              <td>
-                                <span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>
-                                  {d.status}
-                                </span>
-                              </td>
-                              <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
-                                {payout.toLocaleString()} USDT
-                              </td>
-                            </tr>
-                          );
-                        })
+                            const totalOut = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+                            const workerNames = d.participants.map((p) => p.user.email.split("@")[0]).join(", ");
+                            return (
+                              <tr key={d.id} onClick={() => openDealEditModal(d)} style={{ cursor: "pointer" }}>
+                                <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                                  {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}
+                                </td>
+                                <td>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
+                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>{workerNames || "—"}</td>
+                                <td>
+                                  <span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>
+                                    {d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                                  {totalOut.toLocaleString()}
+                                </td>
+                              </tr>
+                            );
+                          })
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
 
+              {/* Deal modal */}
               {dealModalOpen ? (
                 <div
-                  style={{
-                    position: "fixed",
-                    inset: 0,
-                    background: "rgba(0,0,0,0.35)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 24,
-                    zIndex: 50,
-                  }}
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget) closeDealModal();
-                  }}
+                  style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) closeDealModal(); }}
                 >
-                  <div className="card" style={{ width: 780, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
+                  <div className="card" style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
                     <div className="card-header">
-                      <span className="card-title">Новая сделка</span>
-                      <button className="btn btn-secondary" onClick={closeDealModal}>
-                        Отмена
-                      </button>
+                      <span className="card-title">{dealEditingId ? "Редактировать сделку" : "Новая сделка"}</span>
+                      <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 18 }}>
-                      {/* DATE + CLIENT */}
+
+                      {/* Date + Client */}
                       <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 14 }}>
                         <div>
-                          <div className="form-label">Дата сделки *</div>
+                          <div className="form-label">Дата *</div>
                           <input className="form-input" type="date" value={dealDate} onChange={(e) => setDealDate(e.target.value)} />
                         </div>
                         <div>
@@ -880,315 +719,192 @@ export default function AppPage() {
                           {!dealClientSkip && !dealClientId ? (
                             <div style={{ display: "grid", gap: 6 }}>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <input
-                                  className="form-input"
-                                  placeholder="Поиск по имени или телефону..."
-                                  value={dealClientSearch}
-                                  onChange={(e) => setDealClientSearch(e.target.value)}
-                                />
-                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>
-                                  Без клиента
-                                </button>
+                                <input className="form-input" placeholder="Поиск..." value={dealClientSearch} onChange={(e) => setDealClientSearch(e.target.value)} />
+                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>Без клиента</button>
                               </div>
-                              <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-card)", maxHeight: 140, overflow: "auto" }}>
-                                {dealClients
-                                  .filter((c) => (c.name + " " + c.phone).toLowerCase().includes(dealClientSearch.toLowerCase()))
-                                  .slice(0, 20)
-                                  .map((c) => (
-                                    <div
-                                      key={c.id}
-                                      style={{ padding: "8px 14px", borderBottom: "1px solid var(--border-light)", cursor: "pointer", display: "flex", gap: 10 }}
-                                      onClick={() => setDealClientId(c.id)}
-                                    >
-                                      <span style={{ flex: 1 }}>{c.name}</span>
-                                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)" }}>{c.phone}</span>
-                                    </div>
-                                  ))}
+                              <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-card)", maxHeight: 130, overflow: "auto" }}>
+                                {dealClients.filter((c) => (c.name + " " + c.phone).toLowerCase().includes(dealClientSearch.toLowerCase())).slice(0, 20).map((c) => (
+                                  <div key={c.id} style={{ padding: "8px 14px", borderBottom: "1px solid var(--border-light)", cursor: "pointer", display: "flex", gap: 10 }} onClick={() => setDealClientId(c.id)}>
+                                    <span style={{ flex: 1 }}>{c.name}</span>
+                                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)" }}>{c.phone}</span>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           ) : dealClientId ? (
                             <div style={{ background: "var(--green-bg)", borderRadius: 10, padding: "8px 12px", display: "flex", gap: 10, alignItems: "center" }}>
-                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>
-                                {dealClients.find((c) => c.id === dealClientId)?.name ?? "Клиент"}
-                              </span>
-                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>
-                                x
-                              </button>
+                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>{dealClients.find((c) => c.id === dealClientId)?.name ?? "Клиент"}</span>
+                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>×</button>
                             </div>
                           ) : (
                             <div style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 12px", color: "var(--text-secondary)", fontStyle: "italic" }}>
-                              Без клиента — привяжу позже{" "}
-                              <span style={{ color: "var(--accent)", cursor: "pointer", fontStyle: "normal", marginLeft: 8 }} onClick={() => setDealClientSkip(false)}>
-                                Изменить
-                              </span>
+                              Без клиента{" "}
+                              <span style={{ color: "var(--accent)", cursor: "pointer", fontStyle: "normal", marginLeft: 8 }} onClick={() => setDealClientSkip(false)}>Изменить</span>
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* STATUS */}
+                      {/* Status */}
                       <div style={{ width: 240 }}>
                         <div className="form-label">Статус</div>
-                        <select className="form-input" value={dealStatus} onChange={(e) => setDealStatus(e.target.value as any)}>
+                        <select className="form-input" value={dealStatus} onChange={(e) => setDealStatus(e.target.value as DealStatus)}>
                           <option value="NEW">Новая</option>
                           <option value="IN_PROGRESS">В работе</option>
                           <option value="CLOSED">Закрыта</option>
                         </select>
                       </div>
 
-                      {/* AMOUNTS */}
+                      {/* Amounts */}
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div className="form-label" style={{ margin: 0 }}>
-                            Суммы сделки *
-                          </div>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() =>
-                              setDealAmounts((prev) => [
-                                ...prev,
-                                {
-                                  id: crypto.randomUUID(),
-                                  bank: "PKO BP",
-                                  mediatorPct: 3,
-                                  method: "РЕКИ",
-                                  amount: "",
-                                  currency: "PLN",
-                                  rate: "4.15",
-                                  payoutUsdt: "0",
-                                  payoutManual: false,
-                                  branchPct: "25",
-                                },
-                              ])
-                            }
-                          >
-                            + Добавить сумму
-                          </button>
+                          <div className="form-label" style={{ margin: 0 }}>Операции *</div>
+                          <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Добавить строку</button>
                         </div>
 
-                        <div style={{ display: "grid", gap: 8 }}>
-                          {dealAmounts.map((r) => {
-                            const { comm, afterComm, payout, branchShare, payoutAuto } = calcAmountRow(r);
-                            return (
-                              <div key={r.id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14 }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 60px 100px", gap: 8, marginBottom: 8 }}>
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>
-                                      Банк клиента
-                                    </div>
-                                    <select
-                                      className="form-input"
-                                      value={r.bank}
-                                      onChange={(e) => setDealAmounts((p) => p.map((x) => (x.id === r.id ? { ...x, bank: e.target.value } : x)))}
-                                    >
-                                      <option>PKO BP</option>
-                                      <option>mBank</option>
-                                      <option>ING</option>
-                                      <option>Santander</option>
-                                      <option>Pekao</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>
-                                      Посредник
-                                    </div>
-                                    <select
-                                      className="form-input"
-                                      value={String(r.mediatorPct)}
-                                      onChange={(e) =>
-                                        setDealAmounts((p) =>
-                                          p.map((x) =>
-                                            x.id === r.id ? { ...x, mediatorPct: Number(e.target.value), payoutManual: false } : x,
-                                          ),
-                                        )
-                                      }
-                                    >
-                                      <option value="3">Посредник А (3%)</option>
-                                      <option value="5">Посредник Б (5%)</option>
-                                      <option value="2">Посредник В (2%)</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3, color: "var(--red)" }}>
-                                      Ком.%
-                                    </div>
-                                    <input
-                                      className="form-input"
-                                      value={String(r.mediatorPct)}
-                                      onChange={(e) =>
-                                        setDealAmounts((p) =>
-                                          p.map((x) => (x.id === r.id ? { ...x, mediatorPct: Number(e.target.value) || 0, payoutManual: false } : x)),
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>
-                                      Способ
-                                    </div>
-                                    <select
-                                      className="form-input"
-                                      value={r.method}
-                                      onChange={(e) => setDealAmounts((p) => p.map((x) => (x.id === r.id ? { ...x, method: e.target.value } : x)))}
-                                    >
-                                      <option>РЕКИ</option>
-                                      <option>КЕШ</option>
-                                      <option>КАРТА</option>
-                                      <option>БЛИК</option>
-                                      <option>ПОКУПКА</option>
-                                    </select>
-                                  </div>
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {dealAmounts.map((r) => (
+                            <div key={r.id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14 }}>
+                              {/* row 1: bank, type, shopName */}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 1fr 28px", gap: 8, marginBottom: 8, alignItems: "end" }}>
+                                <div>
+                                  <div className="form-label" style={{ marginBottom: 3 }}>Банк</div>
+                                  <input
+                                    className="form-input"
+                                    value={r.bank}
+                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, bank: e.target.value } : x))}
+                                    placeholder="ING, PKO BP..."
+                                  />
                                 </div>
-
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 1fr 70px 60px 28px", gap: 8, alignItems: "end" }}>
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Сумма</div>
-                                    <input
-                                      className="form-input"
-                                      value={r.amount}
-                                      onChange={(e) => setDealAmounts((p) => p.map((x) => (x.id === r.id ? { ...x, amount: e.target.value, payoutManual: false } : x)))}
-                                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                                    />
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Валюта</div>
-                                    <select
-                                      className="form-input"
-                                      value={r.currency}
-                                      onChange={(e) => setDealAmounts((p) => p.map((x) => (x.id === r.id ? { ...x, currency: e.target.value, payoutManual: false } : x)))}
-                                    >
-                                      <option>PLN</option>
-                                      <option>CHF</option>
-                                      <option>USDT</option>
-                                      <option>UAH</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Курс</div>
-                                    <input
-                                      className="form-input"
-                                      value={r.rate}
-                                      onChange={(e) => setDealAmounts((p) => p.map((x) => (x.id === r.id ? { ...x, rate: e.target.value, payoutManual: false } : x)))}
-                                      style={{ fontFamily: "'JetBrains Mono', monospace", textAlign: "center" }}
-                                    />
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase" }}>Выплата (USDT)</div>
-                                    <input
-                                      className="form-input"
-                                      value={r.payoutManual ? r.payoutUsdt : String(payoutAuto)}
-                                      onChange={(e) =>
-                                        setDealAmounts((p) =>
-                                          p.map((x) => (x.id === r.id ? { ...x, payoutUsdt: e.target.value, payoutManual: true } : x)),
-                                        )
-                                      }
-                                      style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}
-                                    />
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase" }}>Филиал%</div>
-                                    <input
-                                      className="form-input"
-                                      value={r.branchPct}
-                                      onChange={(e) => setDealAmounts((p) => p.map((x) => (x.id === r.id ? { ...x, branchPct: e.target.value } : x)))}
-                                      style={{ fontFamily: "'JetBrains Mono', monospace", textAlign: "center", color: "var(--accent)" }}
-                                    />
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase" }}>Доля</div>
-                                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--accent)", padding: "10px 0", textAlign: "center" }}>
-                                      {branchShare.toLocaleString()}
-                                    </div>
-                                  </div>
-                                  <div
-                                    style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)" }}
-                                    onClick={() => setDealAmounts((p) => p.filter((x) => x.id !== r.id))}
+                                <div>
+                                  <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
+                                  <select
+                                    className="form-input"
+                                    value={r.operationType}
+                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, operationType: e.target.value as OperationType } : x))}
                                   >
-                                    ×
-                                  </div>
+                                    <option value="ATM">Банкомат</option>
+                                    <option value="PURCHASE">Покупка</option>
+                                    <option value="TRANSFER">Перевод</option>
+                                  </select>
                                 </div>
+                                <div>
+                                  {r.operationType === "PURCHASE" ? (
+                                    <>
+                                      <div className="form-label" style={{ marginBottom: 3 }}>Магазин</div>
+                                      <input
+                                        className="form-input"
+                                        value={r.shopName}
+                                        onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, shopName: e.target.value } : x))}
+                                        placeholder="Название магазина"
+                                      />
+                                    </>
+                                  ) : <div />}
+                                </div>
+                                <div
+                                  style={{ width: 28, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
+                                  onClick={() => setDealAmounts((p) => p.filter((x) => x.id !== r.id))}
+                                >×</div>
+                              </div>
 
-                                <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-tertiary)" }}>
-                                  {`${(Number(r.amount) || 0).toLocaleString()} ${r.currency} − ${r.mediatorPct}% (${comm.toLocaleString()}) = ${afterComm.toLocaleString()} / ${r.rate} = `}
-                                  <span style={{ color: "var(--green)", fontWeight: 600 }}>
-                                    {payout.toLocaleString()} USDT
-                                  </span>
-                                  {r.payoutManual ? <span style={{ color: "var(--amber)" }}> (ручная правка)</span> : null}
+                              {/* row 2: amountIn + currencyIn → amountOut + currencyOut */}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 24px 1fr 90px", gap: 8, alignItems: "end" }}>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Взяли</div>
+                                  <input
+                                    className="form-input"
+                                    value={r.amountIn}
+                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, amountIn: e.target.value } : x))}
+                                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                                    placeholder="0"
+                                  />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
+                                  <select
+                                    className="form-input"
+                                    value={r.currencyIn}
+                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, currencyIn: e.target.value } : x))}
+                                  >
+                                    {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+                                  </select>
+                                </div>
+                                <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingBottom: 8 }}>→</div>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Получили</div>
+                                  <input
+                                    className="form-input"
+                                    value={r.amountOut}
+                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, amountOut: e.target.value } : x))}
+                                    style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}
+                                    placeholder="0"
+                                  />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
+                                  <select
+                                    className="form-input"
+                                    value={r.currencyOut}
+                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, currencyOut: e.target.value } : x))}
+                                  >
+                                    {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+                                  </select>
                                 </div>
                               </div>
-                            );
-                          })}
+                            </div>
+                          ))}
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, paddingTop: 12, marginTop: 12, borderTop: "2px solid var(--border)" }}>
+                        {/* totals row */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, paddingTop: 12, marginTop: 12, borderTop: "2px solid var(--border)" }}>
                           <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Итого сумма</div>
-                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15 }}>{dealTotals.tAmt.toLocaleString()} PLN</div>
+                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Итого взяли</div>
+                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15 }}>{dealTotals.tAmountIn.toLocaleString()}</div>
                           </div>
                           <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Итого выплата</div>
-                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: "var(--green)" }}>{dealTotals.tPay.toLocaleString()} USDT</div>
-                          </div>
-                          <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Комиссия поср.</div>
-                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: "var(--red)" }}>{dealTotals.tComm.toLocaleString()} PLN</div>
-                          </div>
-                          <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Доля филиала</div>
-                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: "var(--accent)" }}>{dealTotals.tShare.toLocaleString()} USDT</div>
+                            <div style={{ fontSize: 10, color: "var(--green)", textTransform: "uppercase" }}>Итого получили</div>
+                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: "var(--green)" }}>{dealTotals.tAmountOut.toLocaleString()}</div>
                           </div>
                         </div>
                       </div>
 
-                      {/* PARTICIPANTS */}
+                      {/* Participants */}
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                           <div>
-                            <div className="form-label" style={{ margin: 0 }}>
-                              Участники (воркеры)
-                            </div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>Распределение % от выплаты</div>
+                            <div className="form-label" style={{ margin: 0 }}>Участники (воркеры)</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>% от суммы выхода</div>
                           </div>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: "0" }])}
-                          >
+                          <button className="btn btn-secondary" onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: "0" }])}>
                             + Добавить
                           </button>
                         </div>
-
                         <div style={{ display: "grid", gap: 6 }}>
                           {dealParticipants.map((p) => {
                             const pct = Number(p.pct) || 0;
-                            const payout = Math.round((dealTotals.tPay * pct) / 100);
+                            const earn = Math.round((dealTotals.tAmountOut * pct) / 100 * 100) / 100;
                             return (
                               <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--bg-metric)", borderRadius: 10 }}>
                                 <select
                                   className="form-input"
                                   value={p.userId}
-                                  onChange={(e) => setDealParticipants((pp) => pp.map((x) => (x.id === p.id ? { ...x, userId: e.target.value } : x)))}
+                                  onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
                                   style={{ flex: 1 }}
                                 >
                                   <option value="">— выбрать —</option>
-                                  {dealWorkers.map((w) => (
-                                    <option key={w.id} value={w.id}>
-                                      {w.email} — {w.role}
-                                    </option>
-                                  ))}
+                                  {dealWorkers.map((w) => <option key={w.id} value={w.id}>{w.email} — {w.role}</option>)}
                                 </select>
                                 <input
                                   className="form-input"
                                   value={p.pct}
-                                  onChange={(e) => setDealParticipants((pp) => pp.map((x) => (x.id === p.id ? { ...x, pct: e.target.value } : x)))}
-                                  style={{ width: 80, textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}
+                                  onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, pct: e.target.value } : x))}
+                                  style={{ width: 70, textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}
                                 />
                                 <span style={{ color: "var(--text-secondary)" }}>%</span>
-                                <span style={{ minWidth: 120, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
-                                  {dealTotals.tPay > 0 ? `${payout.toLocaleString()} USDT` : "—"}
+                                <span style={{ minWidth: 110, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)" }}>
+                                  {dealTotals.tAmountOut > 0 ? `${earn.toLocaleString()}` : "—"}
                                 </span>
-                                <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16, padding: "4px 8px" }} onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}>
-                                  ×
-                                </span>
+                                <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16, padding: "4px 8px" }} onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}>×</span>
                               </div>
                             );
                           })}
@@ -1196,18 +912,16 @@ export default function AppPage() {
                         <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: pctStatus.color }}>{pctStatus.text}</div>
                       </div>
 
-                      {/* COMMENT */}
+                      {/* Comment */}
                       <div>
                         <div className="form-label">Комментарий</div>
-                        <textarea className="form-input" value={dealComment} onChange={(e) => setDealComment(e.target.value)} style={{ height: 80, paddingTop: 10 }} />
+                        <textarea className="form-input" value={dealComment} onChange={(e) => setDealComment(e.target.value)} style={{ height: 72, paddingTop: 10 }} />
                       </div>
 
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                        <button className="btn btn-secondary" onClick={closeDealModal}>
-                          Отмена
-                        </button>
-                        <button className="btn btn-primary" onClick={saveDeal} disabled={!pctStatus.ok || dealTotals.tPay <= 0}>
-                          {dealEditingId ? "Сохранить изменения" : "Создать сделку"}
+                        <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
+                        <button className="btn btn-primary" onClick={saveDeal} disabled={!pctStatus.ok}>
+                          {dealEditingId ? "Сохранить" : "Создать сделку"}
                         </button>
                       </div>
                     </div>
@@ -1217,16 +931,15 @@ export default function AppPage() {
             </div>
           ) : null}
 
+          {/* ===== CLIENTS ===== */}
           {tab === "clients" ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Новый клиент</span>
-                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientName || !newClientPhone}>
-                    + Создать
-                  </button>
+                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientName || !newClientPhone}>+ Создать</button>
                 </div>
-                <div className="card-body" style={{ display: "grid", gap: 12 }}>
+                <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <div className="form-label">Имя</div>
                     <input className="form-input" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
@@ -1241,36 +954,29 @@ export default function AppPage() {
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Клиенты</span>
-                  <button className="btn btn-secondary" onClick={loadClients}>
-                    Обновить
-                  </button>
+                  <button className="btn btn-secondary" onClick={loadClients}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
-                      <tr>
-                        <th>Имя</th>
-                        <th>Телефон</th>
-                      </tr>
+                      <tr><th>Имя</th><th>Телефон</th><th style={{ width: 100 }}></th></tr>
                     </thead>
                     <tbody>
                       {clientsLoading ? (
-                        <tr>
-                          <td colSpan={2} style={{ padding: 16, color: "var(--text-secondary)" }}>
-                            Загрузка...
-                          </td>
-                        </tr>
+                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
                       ) : clients.length === 0 ? (
-                        <tr>
-                          <td colSpan={2} style={{ padding: 16, color: "var(--text-secondary)" }}>
-                            Пока пусто
-                          </td>
-                        </tr>
+                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Пока пусто</td></tr>
                       ) : (
                         clients.map((c) => (
                           <tr key={c.id}>
                             <td>{c.name}</td>
                             <td style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{c.phone}</td>
+                            <td>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openClientEdit(c)}>Ред.</button>
+                                <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteClient(c.id)}>Удал.</button>
+                              </div>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -1278,21 +984,43 @@ export default function AppPage() {
                   </table>
                 </div>
               </div>
+
+              {/* client edit modal */}
+              {clientEditOpen && clientEditing ? (
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) setClientEditOpen(false); }}>
+                  <div className="card" style={{ width: 420, maxWidth: "100%" }}>
+                    <div className="card-header">
+                      <span className="card-title">Редактировать клиента</span>
+                      <button className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 12 }}>
+                      <div>
+                        <div className="form-label">Имя</div>
+                        <input className="form-input" value={clientEditName} onChange={(e) => setClientEditName(e.target.value)} />
+                      </div>
+                      <div>
+                        <div className="form-label">Телефон</div>
+                        <input className="form-input" value={clientEditPhone} onChange={(e) => setClientEditPhone(e.target.value)} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                        <button className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
+                        <button className="btn btn-primary" onClick={saveClientEdit}>Сохранить</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
+          {/* ===== EXPENSES ===== */}
           {tab === "expenses" ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Новый расход</span>
-                  <button
-                    className="btn btn-primary"
-                    onClick={createExpense}
-                    disabled={!newExpenseTitle || !newExpenseAmount}
-                  >
-                    + Создать
-                  </button>
+                  <button className="btn btn-primary" onClick={createExpense} disabled={!newExpenseTitle || !newExpenseAmount}>+ Создать</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 12 }}>
                   <div>
@@ -1306,24 +1034,13 @@ export default function AppPage() {
                     </div>
                     <div>
                       <div className="form-label">Валюта</div>
-                      <select
-                        className="form-input"
-                        value={newExpenseCurrency}
-                        onChange={(e) => setNewExpenseCurrency(e.target.value)}
-                      >
-                        <option value="PLN">PLN</option>
-                        <option value="CHF">CHF</option>
-                        <option value="USDT">USDT</option>
-                        <option value="UAH">UAH</option>
+                      <select className="form-input" value={newExpenseCurrency} onChange={(e) => setNewExpenseCurrency(e.target.value)}>
+                        {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
                       <div className="form-label">Оплата</div>
-                      <select
-                        className="form-input"
-                        value={newExpensePayMethod}
-                        onChange={(e) => setNewExpensePayMethod(e.target.value)}
-                      >
+                      <select className="form-input" value={newExpensePayMethod} onChange={(e) => setNewExpensePayMethod(e.target.value)}>
                         <option value="bank">Банк</option>
                         <option value="usdt">USDT</option>
                         <option value="cash">Кэш</option>
@@ -1336,50 +1053,28 @@ export default function AppPage() {
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Расходы</span>
-                  <button className="btn btn-secondary" onClick={loadExpenses}>
-                    Обновить
-                  </button>
+                  <button className="btn btn-secondary" onClick={loadExpenses}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
-                      <tr>
-                        <th>Название</th>
-                        <th>Статус</th>
-                        <th style={{ textAlign: "right" }}>Сумма</th>
-                      </tr>
+                      <tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th></tr>
                     </thead>
                     <tbody>
                       {expensesLoading ? (
-                        <tr>
-                          <td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>
-                            Загрузка...
-                          </td>
-                        </tr>
+                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
                       ) : expenses.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>
-                            Пока пусто
-                          </td>
-                        </tr>
+                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Пока пусто</td></tr>
                       ) : (
                         expenses.map((e) => (
-                          <tr
-                            key={e.id}
-                            onClick={() => {
-                              setExpenseEditing(e);
-                              setExpenseModalOpen(true);
-                            }}
-                          >
+                          <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseModalOpen(true); }}>
                             <td>{e.title}</td>
                             <td>
-                              <span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : "badge-amber"}`}>
+                              <span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
                                 {e.status}
                               </span>
                             </td>
-                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
-                              {e.amount} {e.currency}
-                            </td>
+                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{e.amount} {e.currency}</td>
                           </tr>
                         ))
                       )}
@@ -1389,39 +1084,19 @@ export default function AppPage() {
               </div>
 
               {expenseModalOpen && expenseEditing ? (
-                <div
-                  style={{
-                    position: "fixed",
-                    inset: 0,
-                    background: "rgba(0,0,0,0.35)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 24,
-                    zIndex: 50,
-                  }}
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget) setExpenseModalOpen(false);
-                  }}
-                >
-                  <div className="card" style={{ width: 720, maxWidth: "100%" }}>
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) setExpenseModalOpen(false); }}>
+                  <div className="card" style={{ width: 500, maxWidth: "100%" }}>
                     <div className="card-header">
                       <span className="card-title">Расход</span>
-                      <button className="btn btn-secondary" onClick={() => setExpenseModalOpen(false)}>
-                        Закрыть
-                      </button>
+                      <button className="btn btn-secondary" onClick={() => setExpenseModalOpen(false)}>Закрыть</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div className="form-label">Название</div>
-                        <div style={{ fontWeight: 600 }}>{expenseEditing.title}</div>
-                      </div>
+                      <div><div className="form-label">Название</div><div style={{ fontWeight: 600 }}>{expenseEditing.title}</div></div>
                       <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr 1fr" }}>
                         <div>
                           <div className="form-label">Сумма</div>
-                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
-                            {expenseEditing.amount} {expenseEditing.currency}
-                          </div>
+                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{expenseEditing.amount} {expenseEditing.currency}</div>
                         </div>
                         <div>
                           <div className="form-label">Оплата</div>
@@ -1434,22 +1109,14 @@ export default function AppPage() {
                           </span>
                         </div>
                       </div>
-
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
                         {expenseEditing.status === "DRAFT" ? (
-                          <button className="btn btn-primary" onClick={() => expenseAction("submit")}>
-                            Отправить на одобрение
-                          </button>
+                          <button className="btn btn-primary" onClick={() => expenseAction("submit")}>Отправить на одобрение</button>
                         ) : null}
-
                         {user?.role === "ADMIN" && expenseEditing.status === "SUBMITTED" ? (
                           <>
-                            <button className="btn btn-secondary" onClick={() => expenseAction("reject")}>
-                              Отклонить
-                            </button>
-                            <button className="btn btn-primary" onClick={() => expenseAction("approve")}>
-                              Одобрить
-                            </button>
+                            <button className="btn btn-secondary" onClick={() => expenseAction("reject")}>Отклонить</button>
+                            <button className="btn btn-primary" onClick={() => expenseAction("approve")}>Одобрить</button>
                           </>
                         ) : null}
                       </div>
@@ -1460,20 +1127,20 @@ export default function AppPage() {
             </div>
           ) : null}
 
+          {/* ===== SETTINGS ===== */}
           {tab === "settings" ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Пользователи</span>
-                  <button className="btn btn-secondary" onClick={loadUsers}>
-                    Обновить
-                  </button>
+                  <button className="btn btn-secondary" onClick={loadUsers}>Обновить</button>
                 </div>
-                <div className="card-body" style={{ color: "var(--text-secondary)", display: "grid", gap: 12 }}>
+                <div className="card-body" style={{ display: "grid", gap: 16 }}>
                   {user?.role !== "ADMIN" ? (
-                    <div>Доступно только для admin.</div>
+                    <div style={{ color: "var(--text-secondary)" }}>Доступно только для admin.</div>
                   ) : (
                     <>
+                      {/* create form */}
                       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr 180px 140px" }}>
                         <div>
                           <div className="form-label">Логин</div>
@@ -1481,7 +1148,7 @@ export default function AppPage() {
                         </div>
                         <div>
                           <div className="form-label">Пароль</div>
-                          <input className="form-input" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
+                          <input className="form-input" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
                         </div>
                         <div>
                           <div className="form-label">Роль</div>
@@ -1491,39 +1158,57 @@ export default function AppPage() {
                           </select>
                         </div>
                         <div style={{ display: "flex", alignItems: "end" }}>
-                          <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>
-                            + Создать
-                          </button>
+                          <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ Создать</button>
                         </div>
                       </div>
 
+                      {/* users table */}
                       <div className="card" style={{ border: "1px solid var(--border-light)" }}>
                         <div className="card-body" style={{ padding: 0 }}>
                           <table className="data-table">
                             <thead>
-                              <tr>
-                                <th>Логин</th>
-                                <th>Роль</th>
-                              </tr>
+                              <tr><th>Логин</th><th>Роль</th><th style={{ width: 300 }}>Действия</th></tr>
                             </thead>
                             <tbody>
                               {usersLoading ? (
-                                <tr>
-                                  <td colSpan={2} style={{ padding: 16 }}>
-                                    Загрузка...
-                                  </td>
-                                </tr>
+                                <tr><td colSpan={3} style={{ padding: 16 }}>Загрузка...</td></tr>
                               ) : users.length === 0 ? (
-                                <tr>
-                                  <td colSpan={2} style={{ padding: 16 }}>
-                                    Пока пусто
-                                  </td>
-                                </tr>
+                                <tr><td colSpan={3} style={{ padding: 16 }}>Пока пусто</td></tr>
                               ) : (
                                 users.map((u) => (
                                   <tr key={u.id}>
                                     <td>{u.email}</td>
-                                    <td style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{u.role}</td>
+                                    <td>
+                                      <select
+                                        className="form-input"
+                                        value={u.role}
+                                        style={{ width: 130 }}
+                                        onChange={(e) => changeUserRole(u.id, e.target.value as any)}
+                                      >
+                                        <option value="MANAGER">MANAGER</option>
+                                        <option value="ADMIN">ADMIN</option>
+                                      </select>
+                                    </td>
+                                    <td>
+                                      {userPwdId === u.id ? (
+                                        <div style={{ display: "flex", gap: 6 }}>
+                                          <input
+                                            className="form-input"
+                                            type="password"
+                                            placeholder="Новый пароль"
+                                            value={userPwdValue}
+                                            onChange={(e) => setUserPwdValue(e.target.value)}
+                                            style={{ width: 160 }}
+                                          />
+                                          <button className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => resetUserPassword(u.id)}>OK</button>
+                                          <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
+                                        </div>
+                                      ) : (
+                                        <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(u.id); setUserPwdValue(""); }}>
+                                          Сменить пароль
+                                        </button>
+                                      )}
+                                    </td>
                                   </tr>
                                 ))
                               )}
@@ -1542,4 +1227,3 @@ export default function AppPage() {
     </div>
   );
 }
-
