@@ -69,7 +69,7 @@ export class StaffService {
       select: { id: true, name: true },
     });
 
-    const result = [];
+    const result: { org: { id: string; name: string }; members: Awaited<ReturnType<typeof this.getStatsForOrg>> }[] = [];
     for (const org of orgs) {
       const members = await this.getStatsForOrg(org.id);
       result.push({ org, members });

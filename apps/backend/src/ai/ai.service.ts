@@ -97,7 +97,7 @@ export class AiService {
 
     // Build stats summary
     const totalDeals = deals.length;
-    const doneDeals = deals.filter(d => d.status === 'DONE' || d.status === 'CLOSED').length;
+    const doneDeals = deals.filter(d => d.status === 'CLOSED').length;
 
     const classicIncome = deals.reduce((s, d) => {
       return s + d.amounts.reduce((as, a) => as + Number(a.amountOut || 0), 0);
