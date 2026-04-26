@@ -45,6 +45,7 @@ type Org = {
 type DealWorker = {
   id: string;
   email: string;
+  name?: string | null;
   role: Role;
   position?: string | null;
   organizationId: string;
