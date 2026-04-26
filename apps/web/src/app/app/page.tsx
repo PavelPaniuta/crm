@@ -1489,15 +1489,15 @@ export default function AppPage() {
             <div style={{ display: "grid", gap: 16 }}>
 
               {/* Period bar */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, minWidth: 260 }}>
+              <div className="dash-period-bar" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div className="dash-period-dates" style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
                   <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} style={{ height: 36 }} />
-                  <span style={{ color: "var(--text-tertiary)" }}>—</span>
+                  <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>—</span>
                   <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ height: 36 }} />
-                  <button className="btn btn-secondary" style={{ height: 36, whiteSpace: "nowrap" }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>↻ Обновить</button>
+                  <button className="btn btn-secondary" style={{ height: 36, whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>↻ Обновить</button>
                 </div>
                 {isSuperAdmin ? (
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="dash-view-tabs" style={{ display: "flex", gap: 6 }}>
                     {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
                       <span key={v.id} onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}
                         style={{ padding: "6px 14px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
@@ -1544,7 +1544,7 @@ export default function AppPage() {
                       },
                     ];
                     return (
-                      <div className="g4" style={{ gap: 12 }}>
+                      <div className="metric-grid">
                         {metrics.map((m) => (
                           <div key={m.label} className="metric-card">
                             <div className="metric-icon" style={{ background: m.iconBg, color: m.iconColor }}>{m.icon}</div>
@@ -1560,7 +1560,7 @@ export default function AppPage() {
                   })()}
 
                   {/* Quick actions */}
-                  <div className="g3" style={{ gap: 10 }}>
+                  <div className="dash-quick-actions g3" style={{ gap: 10 }}>
                     {[
                       { title: "Новая сделка", desc: "Создать сделку с клиентом", action: () => { setTab("deals"); setTimeout(openDealModal, 50); },
                         icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> },
@@ -1650,7 +1650,7 @@ export default function AppPage() {
                       <div style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</div>
                     ) : (
                       <>
-                        <div className="g4" style={{ gap: 12, padding: 16, borderBottom: "1px solid var(--border)" }}>
+                        <div className="metric-grid" style={{ padding: 16, borderBottom: "1px solid var(--border)" }}>
                           {[
                             { label: "Сделок всего", value: String(globalDash.totals?.dealsCount ?? 0), color: "var(--text-primary)" },
                             { label: "Доход", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), color: "var(--green)" },
