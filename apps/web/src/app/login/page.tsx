@@ -5,8 +5,8 @@ import { useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -68,14 +68,17 @@ export default function LoginPage() {
           <span className="card-title">Вход в MyCRM</span>
         </div>
         <div className="card-body">
-          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }} autoComplete="off">
             <div>
-              <div className="form-label">Email</div>
+              <div className="form-label">Email / Логин</div>
               <input
                 className="form-input"
+                type="text"
+                name="login"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
+                autoComplete="off"
+                placeholder="Введите логин"
               />
             </div>
             <div>
@@ -83,9 +86,11 @@ export default function LoginPage() {
               <input
                 className="form-input"
                 type="password"
+                name="pwd"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                placeholder="Введите пароль"
               />
             </div>
 
