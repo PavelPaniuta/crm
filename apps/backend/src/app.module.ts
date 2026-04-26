@@ -12,6 +12,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { DealTemplatesModule } from './deal-templates/deal-templates.module';
+import { ProfileModule } from './profile/profile.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { DealTemplatesModule } from './deal-templates/deal-templates.module';
     DashboardModule,
     ReportsModule,
     DealTemplatesModule,
+    ProfileModule,
   ],
   controllers: [AppController],
   providers: [AppService],

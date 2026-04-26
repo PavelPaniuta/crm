@@ -51,7 +51,7 @@ type DealWorker = {
   organization?: { name: string };
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings";
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX";
@@ -234,6 +234,24 @@ export default function AppPage() {
   const [repLoading, setRepLoading] = useState(false);
   const [repWorkers, setRepWorkers] = useState<any>(null);
 
+  // --- Profile ---
+  const [profile, setProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileTelegram, setProfileTelegram] = useState("");
+  const [profileContacts, setProfileContacts] = useState("");
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
+  const [pwdOld, setPwdOld] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
+  const [pwdSaving, setPwdSaving] = useState(false);
+
   // Role helpers
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
@@ -254,7 +272,8 @@ export default function AppPage() {
     if (tab === "expenses") return "Расходы";
     if (tab === "reports") return "Отчёты";
     if (tab === "settings") return "Настройки";
-    return "BisCRM";
+    if (tab === "profile") return "Мой профиль";
+    return "MyCRM";
   }, [tab]);
 
   useEffect(() => {
@@ -276,6 +295,7 @@ export default function AppPage() {
     if (tab === "deals") { loadDeals(); loadTemplates(); }
     if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
+    if (tab === "profile") loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -329,6 +349,64 @@ export default function AppPage() {
   async function loadTemplates() {
     const res = await fetch("/api/deal-templates", { credentials: "include" });
     if (res.ok) setTemplates(await res.json());
+  }
+
+  async function loadProfile() {
+    setProfileLoading(true);
+    try {
+      const res = await fetch("/api/profile", { credentials: "include" });
+      if (!res.ok) return;
+      const j = await res.json();
+      setProfile(j);
+      setProfileName(j.name ?? "");
+      setProfileEmail(j.email ?? "");
+      setProfilePhone(j.phone ?? "");
+      setProfileTelegram(j.telegram ?? "");
+      setProfileContacts(j.contacts ?? "");
+    } finally { setProfileLoading(false); }
+  }
+
+  async function saveProfile() {
+    setProfileSaving(true); setProfileError(null); setProfileSuccess(null);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: profileName || null,
+          email: profileEmail || undefined,
+          phone: profilePhone || null,
+          telegram: profileTelegram || null,
+          contacts: profileContacts || null,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) { setProfileError(j?.message ?? "Ошибка сохранения"); return; }
+      setProfile(j);
+      setProfileSuccess("Профиль сохранён");
+      setTimeout(() => setProfileSuccess(null), 3000);
+    } finally { setProfileSaving(false); }
+  }
+
+  async function changePassword() {
+    setPwdError(null); setPwdSuccess(null);
+    if (!pwdOld) return setPwdError("Введите текущий пароль");
+    if (!pwdNew) return setPwdError("Введите новый пароль");
+    if (pwdNew.length < 6) return setPwdError("Новый пароль минимум 6 символов");
+    if (pwdNew !== pwdConfirm) return setPwdError("Пароли не совпадают");
+    setPwdSaving(true);
+    try {
+      const res = await fetch("/api/profile/password", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPassword: pwdOld, newPassword: pwdNew }),
+      });
+      const j = await res.json();
+      if (!res.ok) { setPwdError(j?.message ?? "Ошибка"); return; }
+      setPwdSuccess("Пароль изменён");
+      setPwdOld(""); setPwdNew(""); setPwdConfirm("");
+      setTimeout(() => setPwdSuccess(null), 3000);
+    } finally { setPwdSaving(false); }
   }
 
   function openTemplateModal(tpl?: DealTemplate) {
@@ -848,21 +926,20 @@ export default function AppPage() {
 
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[])
+          {(["dashboard", "deals", "clients", "expenses", "reports", "settings", "profile"] as Tab[])
             .filter((t) => {
-              if (isWorker) return t === "dashboard"; // Worker only sees dashboard (tasks)
-              if (!isAdmin) return t !== "reports" && t !== "settings"; // MANAGER: no reports/settings
-              if (!isSuperAdmin && t === "reports") return true; // ADMIN sees reports for own office
+              if (isWorker) return t === "dashboard" || t === "profile";
+              if (!isAdmin) return t !== "reports" && t !== "settings";
               return true;
             })
             .map((t) => {
               const NAV_ICONS: Record<string, string> = {
-                dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡", settings: "⊕"
+                dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡", settings: "⊕", profile: "◉"
               };
               const NAV_LABELS: Record<string, string> = {
                 dashboard: isWorker ? "Мой кабинет" : "Dashboard",
                 deals: "Сделки", clients: "Клиенты",
-                expenses: "Расходы", reports: "Отчёты", settings: "Настройки"
+                expenses: "Расходы", reports: "Отчёты", settings: "Настройки", profile: "Мой профиль"
               };
               return (
                 <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
@@ -2048,6 +2125,130 @@ export default function AppPage() {
               </div>
             </div>
           ) : null}
+
+          {/* ===== PROFILE ===== */}
+          {tab === "profile" ? (
+            <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
+
+              {profileLoading ? (
+                <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
+              ) : (
+                <>
+                  {/* Info card */}
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">Личные данные</span>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
+
+                      {/* Avatar placeholder */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "4px 0 12px", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{
+                          width: 56, height: 56, borderRadius: "50%",
+                          background: "var(--accent-light)", border: "2px solid var(--accent)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 22, fontWeight: 700, color: "var(--accent)", flexShrink: 0,
+                        }}>
+                          {(profile?.name || profile?.email || "?")[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 16 }}>{profile?.name || profile?.email}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                            {ROLE_LABELS[profile?.role as Role] ?? profile?.role} · {profile?.organization?.name}
+                          </div>
+                          {profile?.position && (
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{profile.position}</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="g2">
+                        <div>
+                          <div className="form-label">Имя</div>
+                          <input className="form-input" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Иван Иванов" />
+                        </div>
+                        <div>
+                          <div className="form-label">Email (логин)</div>
+                          <input className="form-input" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="email@example.com" />
+                        </div>
+                      </div>
+
+                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Контакты</div>
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div className="g2">
+                            <div>
+                              <div className="form-label">Телефон</div>
+                              <input className="form-input" value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="+380 XX XXX XXXX" />
+                            </div>
+                            <div>
+                              <div className="form-label">Telegram</div>
+                              <input className="form-input" value={profileTelegram} onChange={(e) => setProfileTelegram(e.target.value)} placeholder="@username" />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="form-label">Другие контакты</div>
+                            <textarea className="form-input" value={profileContacts} onChange={(e) => setProfileContacts(e.target.value)}
+                              placeholder="Viber, WhatsApp, другое..." style={{ height: 72 }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {profileError && (
+                        <div style={{ background: "var(--red-bg)", color: "var(--red-text)", borderRadius: "var(--radius)", padding: "10px 14px", fontSize: 13 }}>{profileError}</div>
+                      )}
+                      {profileSuccess && (
+                        <div style={{ background: "var(--green-bg)", color: "var(--green-text)", borderRadius: "var(--radius)", padding: "10px 14px", fontSize: 13 }}>{profileSuccess}</div>
+                      )}
+
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving}>
+                          {profileSaving ? "Сохраняем..." : "Сохранить"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Password change card */}
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">Смена пароля</span>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                      <div>
+                        <div className="form-label">Текущий пароль</div>
+                        <input className="form-input" type="password" value={pwdOld} onChange={(e) => setPwdOld(e.target.value)} autoComplete="current-password" />
+                      </div>
+                      <div className="g2">
+                        <div>
+                          <div className="form-label">Новый пароль</div>
+                          <input className="form-input" type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} autoComplete="new-password" />
+                        </div>
+                        <div>
+                          <div className="form-label">Повтор пароля</div>
+                          <input className="form-input" type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} autoComplete="new-password" />
+                        </div>
+                      </div>
+
+                      {pwdError && (
+                        <div style={{ background: "var(--red-bg)", color: "var(--red-text)", borderRadius: "var(--radius)", padding: "10px 14px", fontSize: 13 }}>{pwdError}</div>
+                      )}
+                      {pwdSuccess && (
+                        <div style={{ background: "var(--green-bg)", color: "var(--green-text)", borderRadius: "var(--radius)", padding: "10px 14px", fontSize: 13 }}>{pwdSuccess}</div>
+                      )}
+
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button className="btn btn-primary" onClick={changePassword} disabled={pwdSaving}>
+                          {pwdSaving ? "Меняем..." : "Изменить пароль"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+
         </div>
       </div>
 
