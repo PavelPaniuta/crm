@@ -21,15 +21,37 @@ export class UsersService {
   listPublic() {
     return this.prisma.user.findMany({
       select: {
-        id: true,
-        email: true,
-        role: true,
-        position: true,
-        organizationId: true,
-        organization: { select: { name: true } },
+        id: true, email: true, name: true, role: true, position: true,
+        organizationId: true, organization: { select: { name: true } },
       },
       orderBy: [{ organizationId: 'asc' }, { createdAt: 'asc' }],
     });
+  }
+
+  /** Returns workers visible when creating deals for a given org:
+   *  primary members of that org + users who have extra membership there */
+  async listPublicForOrg(orgId: string, role: string) {
+    if (role === 'SUPER_ADMIN') return this.listPublic();
+
+    const [primary, extra] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { organizationId: orgId },
+        select: { id: true, email: true, name: true, role: true, position: true,
+          organizationId: true, organization: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.userMembership.findMany({
+        where: { organizationId: orgId },
+        include: { user: { select: { id: true, email: true, name: true, role: true, position: true,
+          organizationId: true, organization: { select: { name: true } } } } },
+      }),
+    ]);
+    const seen = new Set(primary.map(u => u.id));
+    const result = [...primary];
+    for (const m of extra) {
+      if (!seen.has(m.user.id)) { seen.add(m.user.id); result.push(m.user); }
+    }
+    return result;
   }
 
   async create(

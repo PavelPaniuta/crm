@@ -15,6 +15,7 @@ import { DealTemplatesModule } from './deal-templates/deal-templates.module';
 import { ProfileModule } from './profile/profile.module';
 import { StaffModule } from './staff/staff.module';
 import { AiModule } from './ai/ai.module';
+import { MembershipsModule } from './memberships/memberships.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AiModule } from './ai/ai.module';
     ProfileModule,
     StaffModule,
     AiModule,
+    MembershipsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

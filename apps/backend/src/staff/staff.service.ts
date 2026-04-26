@@ -60,7 +60,25 @@ export class StaffService {
   }
 
   async listForAdmin(organizationId: string) {
-    return this.getStatsForOrg(organizationId);
+    // Include users who have extra membership in this org
+    const extraMemberships = await this.prisma.userMembership.findMany({
+      where: { organizationId },
+      select: { userId: true },
+    });
+    const extraUserIds = extraMemberships.map(m => m.userId);
+    const base = await this.getStatsForOrg(organizationId);
+    const baseIds = new Set(base.map(u => u.id));
+
+    // Add extra members who aren't primary members
+    const extraUsers = extraUserIds.filter(id => !baseIds.has(id));
+    if (extraUsers.length === 0) return base;
+
+    // Get stats for extra members but mark their org
+    const extraStats = await Promise.all(extraUsers.map(async (uid) => {
+      const tmpOrg = await this.prisma.user.findUnique({ where: { id: uid }, select: { organizationId: true } });
+      return this.getStatsForOrg(tmpOrg?.organizationId ?? organizationId).then(r => r.find(u => u.id === uid));
+    }));
+    return [...base, ...extraStats.filter(Boolean)] as typeof base;
   }
 
   async listAllGrouped() {

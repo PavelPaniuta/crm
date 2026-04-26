@@ -448,9 +448,31 @@ export default function AppPage() {
   async function loadStaffMember(id: string) {
     setStaffMemberLoading(true);
     try {
-      const res = await fetch(`/api/staff/${id}`, { credentials: "include" });
-      if (res.ok) setStaffMember(await res.json());
+      const [memberRes, membershipsRes] = await Promise.all([
+        fetch(`/api/staff/${id}`, { credentials: "include" }),
+        fetch(`/api/memberships/${id}`, { credentials: "include" }),
+      ]);
+      if (memberRes.ok) {
+        const member = await memberRes.json();
+        const memberships = membershipsRes.ok ? await membershipsRes.json() : [];
+        setStaffMember({ ...member, extraMemberships: memberships });
+      }
     } finally { setStaffMemberLoading(false); }
+  }
+
+  async function addMembership(userId: string, organizationId: string) {
+    const res = await fetch("/api/memberships", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, organizationId }),
+    });
+    if (res.ok) loadStaffMember(userId);
+    else { const e = await res.json().catch(() => ({})); alert(e.message ?? "Ошибка"); }
+  }
+
+  async function removeMembership(userId: string, orgId: string) {
+    const res = await fetch(`/api/memberships/${userId}/${orgId}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) loadStaffMember(userId);
   }
 
   async function sendAiMessage(msg?: string) {
@@ -2495,6 +2517,49 @@ export default function AppPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* extra orgs (memberships) */}
+                      {isAdmin && (
+                        <div className="card" style={{ padding: "16px 20px" }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Офисы сотрудника</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            {/* Primary org */}
+                            <span style={{ padding: "4px 12px", borderRadius: 20, background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
+                              {staffMember.organization?.name ?? "—"} (основной)
+                            </span>
+                            {/* Extra orgs */}
+                            {(staffMember.extraMemberships ?? []).map((m: any) => (
+                              <span key={m.id} style={{ padding: "4px 12px", borderRadius: 20, background: "var(--bg-hover)", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                                {m.organization.name}
+                                {isAdmin && (
+                                  <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontWeight: 700 }}
+                                    onClick={() => removeMembership(staffMember.id, m.organizationId)}>×</span>
+                                )}
+                              </span>
+                            ))}
+                            {/* Add to org dropdown */}
+                            {isAdmin && (() => {
+                              const existingOrgIds = new Set([
+                                staffMember.organizationId,
+                                ...(staffMember.extraMemberships ?? []).map((m: any) => m.organizationId),
+                              ]);
+                              const available = orgs.filter(o => !existingOrgIds.has(o.id));
+                              return available.length > 0 ? (
+                                <select className="form-input" style={{ width: "auto", fontSize: 12, height: 30, padding: "0 8px" }}
+                                  value="" onChange={e => { if (e.target.value) addMembership(staffMember.id, e.target.value); }}>
+                                  <option value="">+ Добавить в офис</option>
+                                  {available.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                </select>
+                              ) : null;
+                            })()}
+                          </div>
+                          {(staffMember.extraMemberships ?? []).length > 0 && (
+                            <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
+                              Сотрудник участвует в сделках и получает выплаты в {1 + (staffMember.extraMemberships?.length ?? 0)} офисах
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* stats */}
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>

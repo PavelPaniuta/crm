@@ -17,8 +17,8 @@ export class UsersController {
   }
 
   @Get('public')
-  listPublic() {
-    return this.users.listPublic();
+  listPublic(@Req() req: any) {
+    return this.users.listPublicForOrg(req.user.activeOrganizationId, req.user.role);
   }
 
   @Post()

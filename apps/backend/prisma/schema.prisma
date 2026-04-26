@@ -53,6 +53,7 @@ model Organization {
   deals         Deal[]
   expenses      Expense[]
   dealTemplates DealTemplate[]
+  memberships   UserMembership[]
 }
 
 model User {
@@ -73,6 +74,7 @@ model User {
 
   dealParticipants DealParticipant[]
   sessions         Session[]
+  memberships      UserMembership[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -213,6 +215,21 @@ model DealParticipant {
 
   @@unique([dealId, userId])
   @@index([dealId])
+}
+
+// Extra org memberships — user can belong to multiple offices
+model UserMembership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  createdAt      DateTime     @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
 }
 
 model Expense {
