@@ -29,6 +29,14 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-sistg20010101@gmail.com}
+      SMTP_PASS: ${SMTP_PASS:-jhcuzwwzzejzuwod}
+      SMTP_FROM: ${SMTP_FROM:-sistg20010101@gmail.com}
+      APP_URL: ${APP_URL:-https://my-crm.live}
     depends_on:
       db:
         condition: service_healthy
