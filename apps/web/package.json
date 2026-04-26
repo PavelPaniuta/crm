@@ -9,8 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "apexcharts": "^5.10.6",
     "next": "16.2.4",
     "react": "19.2.4",
+    "react-apexcharts": "^2.1.0",
     "react-dom": "19.2.4"
   },
   "devDependencies": {

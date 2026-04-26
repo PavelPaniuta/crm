@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+
+const AreaChart = dynamic(() => import("../../components/charts/AreaChart"), { ssr: false });
+const DonutChart = dynamic(() => import("../../components/charts/DonutChart"), { ssr: false });
+const BarChart = dynamic(() => import("../../components/charts/BarChart"), { ssr: false });
 
 type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "WORKER";
 
@@ -1574,49 +1579,54 @@ export default function AppPage() {
       <div className={`sidebar-overlay${sidebarOpen ? " is-open" : ""}`} onClick={() => setSidebarOpen(false)} />
 
       <aside className={`sidebar${sidebarOpen ? " is-open" : ""}`}>
+        {/* Logo */}
         <div className="sidebar-logo">
           <div className="logo-icon">M</div>
-          <span>MyCRM</span>
+          <div>
+            <span>MyCRM</span>
+            <div className="sidebar-logo-sub">Business Platform</div>
+          </div>
         </div>
 
         {/* Org switcher */}
-        <div style={{ padding: "8px 12px 4px", position: "relative" }}>
+        <div style={{ padding: "8px 12px 6px", position: "relative" }}>
           <div
             style={{
-              background: "rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 12px",
+              background: "rgba(255,255,255,0.06)", borderRadius: 9, padding: "9px 12px",
               cursor: isSuperAdmin ? "pointer" : "default",
-              display: "flex", alignItems: "center", gap: 8,
+              display: "flex", alignItems: "center", gap: 9,
+              border: "1px solid rgba(255,255,255,0.06)",
             }}
             onClick={() => isSuperAdmin && setOrgSwitchOpen((v) => !v)}
           >
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", flexShrink: 0, boxShadow: "0 0 6px var(--green)" }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1 }}>Офис</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Офис</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
                 {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "…"}
               </div>
             </div>
-            {isSuperAdmin && <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 16 }}>⌄</div>}
+            {isSuperAdmin && <svg width="12" height="12" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>}
           </div>
 
           {orgSwitchOpen && isSuperAdmin ? (
             <div style={{
-              position: "absolute", top: "100%", left: 12, right: 12, zIndex: 200,
-              background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.15)", overflow: "hidden",
+              position: "absolute", top: "calc(100% + 4px)", left: 12, right: 12, zIndex: 200,
+              background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.2)", overflow: "hidden",
             }}>
               {orgs.map((o) => (
-                <div
-                  key={o.id}
-                  onClick={() => switchOrg(o.id)}
-                  style={{
-                    padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--border-light)",
-                    background: o.id === user?.activeOrganizationId ? "var(--accent-light)" : "transparent",
-                    color: o.id === user?.activeOrganizationId ? "var(--accent)" : "var(--text-primary)",
-                  }}
-                >
-                  <div style={{ fontWeight: 600 }}>{o.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{o._count.users} польз. · {o._count.deals} сделок</div>
+                <div key={o.id} onClick={() => switchOrg(o.id)} style={{
+                  padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--border-light)",
+                  background: o.id === user?.activeOrganizationId ? "var(--accent-light)" : "transparent",
+                  color: o.id === user?.activeOrganizationId ? "var(--accent)" : "var(--text-primary)",
+                  display: "flex", alignItems: "center", gap: 10,
+                }}>
+                  {o.id === user?.activeOrganizationId && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />}
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{o.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>{o._count.users} польз. · {o._count.deals} сделок</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1626,122 +1636,137 @@ export default function AppPage() {
         <nav className="sidebar-nav">
           {(() => {
             const NAV_LABELS: Record<string, string> = {
-              dashboard: isWorker ? "Мой кабинет" : "Обзор",
+              dashboard: isWorker ? "Мой кабинет" : "Дашборд",
               deals: "Сделки", clients: "Клиенты",
               expenses: "Расходы", reports: "Отчёты",
               staff: "Сотрудники", tasks: "Задачи", chat: "Чат",
               assistant: "AI Ассистент", settings: "Настройки", profile: "Профиль"
             };
             const NAV_SVG: Record<string, ReactElement> = {
-              dashboard: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
-              deals: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>,
-              clients: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-              expenses: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
-              reports: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>,
-              staff: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>,
-              tasks: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
-              chat: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
-              assistant: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>,
-              settings: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-              profile: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+              dashboard: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
+              deals: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
+              clients: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+              expenses: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
+              reports: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>,
+              staff: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+              tasks: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
+              chat: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+              assistant: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 10 4a2 2 0 0 1 2-2z"/></svg>,
+              settings: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+              profile: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
             };
 
             const renderItem = (t: Tab) => (
               <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
-                <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: tab === t ? 1 : 0.55 }}>{NAV_SVG[t]}</span>
+                {NAV_SVG[t]}
                 <span style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
                   {NAV_LABELS[t]}
                   {t === "tasks" && taskPendingCount > 0 && (
-                    <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center" }}>{taskPendingCount > 9 ? "9+" : taskPendingCount}</span>
+                    <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center", marginLeft: "auto" }}>{taskPendingCount > 9 ? "9+" : taskPendingCount}</span>
                   )}
                   {t === "chat" && chatUnread > 0 && (
-                    <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center" }}>{chatUnread > 9 ? "9+" : chatUnread}</span>
+                    <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center", marginLeft: "auto" }}>{chatUnread > 9 ? "9+" : chatUnread}</span>
                   )}
                 </span>
               </a>
             );
 
             if (isWorker) {
-              return (
-                <>
-                  {renderItem("dashboard")}
-                  <div className="nav-divider" />
-                  <div className="nav-section">Задачи и чат</div>
-                  {renderItem("tasks")}
-                  {renderItem("chat")}
-                  <div className="nav-divider" />
-                  <div className="nav-section">Аккаунт</div>
-                  {renderItem("profile")}
-                </>
-              );
-            }
-
-            return (
-              <>
+              return (<>
                 {renderItem("dashboard")}
-
                 <div className="nav-divider" />
-                <div className="nav-section">Продажи</div>
-                {renderItem("deals")}
-                {renderItem("clients")}
-
-                <div className="nav-divider" />
-                <div className="nav-section">Финансы</div>
-                {renderItem("expenses")}
-                {isAdmin && renderItem("reports")}
-
-                <div className="nav-divider" />
-                <div className="nav-section">Команда</div>
-                {isAdmin && renderItem("staff")}
+                <div className="nav-section">Задачи и чат</div>
                 {renderItem("tasks")}
                 {renderItem("chat")}
-
                 <div className="nav-divider" />
-                <div className="nav-section">Система</div>
-                {renderItem("assistant")}
-                {isAdmin && renderItem("settings")}
+                <div className="nav-section">Аккаунт</div>
                 {renderItem("profile")}
-              </>
-            );
+              </>);
+            }
+
+            return (<>
+              {renderItem("dashboard")}
+              <div className="nav-divider" />
+              <div className="nav-section">Продажи</div>
+              {renderItem("deals")}
+              {renderItem("clients")}
+              <div className="nav-divider" />
+              <div className="nav-section">Финансы</div>
+              {renderItem("expenses")}
+              {isAdmin && renderItem("reports")}
+              <div className="nav-divider" />
+              <div className="nav-section">Команда</div>
+              {isAdmin && renderItem("staff")}
+              {renderItem("tasks")}
+              {renderItem("chat")}
+              <div className="nav-divider" />
+              <div className="nav-section">Система</div>
+              {renderItem("assistant")}
+              {isAdmin && renderItem("settings")}
+              {renderItem("profile")}
+            </>);
           })()}
-          <div className="nav-divider" />
-          <a className="nav-item" onClick={logout}>
-            <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: 0.55 }}>
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            </span>
-            <span>Выйти</span>
-          </a>
         </nav>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", opacity: 0.6 }}>
-                {theme === "dark"
-                  ? <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                  : <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                }
+          {/* User info */}
+          <div className="sidebar-user" onClick={() => { setTab("profile"); setSidebarOpen(false); }}>
+            <div className="sidebar-user-avatar">{(user?.email ?? "?")[0].toUpperCase()}</div>
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">{user?.email ?? "…"}</div>
+              <div className="sidebar-user-role">{user ? (ROLE_LABELS[user.role] ?? user.role) : "…"}</div>
+            </div>
+          </div>
+          {/* Theme + logout row */}
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="theme-toggle" style={{ flex: 1 }} onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}>
+              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ opacity: 0.6, display: "flex" }}>
+                  {theme === "dark"
+                    ? <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    : <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  }
+                </span>
+                <span>{theme === "dark" ? "Светлая" : "Тёмная"}</span>
               </span>
-              <span>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
-            </span>
-            <span className={`theme-toggle-pill${theme === "dark" ? " is-dark" : ""}`} />
-          </button>
+              <span className={`theme-toggle-pill${theme === "dark" ? " is-dark" : ""}`} />
+            </button>
+            <a className="nav-item" style={{ padding: "7px 10px", flexShrink: 0 }} onClick={logout} title="Выйти">
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </a>
+          </div>
         </div>
       </aside>
 
       <div className="main">
         <header className="header">
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>☰</button>
-            <h1 className="header-title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div>
+              <h1 className="header-title">{title}</h1>
+              {orgs.find((o) => o.id === user?.activeOrganizationId) && (
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>
+                  {orgs.find((o) => o.id === user?.activeOrganizationId)!.name}
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "right", flexShrink: 0 }}>
-            <div>{user ? `${user.email} · ${ROLE_LABELS[user.role] ?? user.role}` : "…"}</div>
-            {orgs.find((o) => o.id === user?.activeOrganizationId) ? (
-              <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
-                {orgs.find((o) => o.id === user?.activeOrganizationId)!.name}
-              </div>
-            ) : null}
+          <div className="header-right">
+            {/* Date display */}
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
+              <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span style={{ display: "none" }} className="sm:inline">{new Date().toLocaleDateString("ru", { day: "numeric", month: "short" })}</span>
+            </div>
+            {/* User avatar */}
+            <div
+              className="header-avatar"
+              onClick={() => setTab("profile")}
+              title={user?.email}
+            >
+              {(user?.email ?? "?")[0].toUpperCase()}
+            </div>
           </div>
         </header>
 
@@ -1782,25 +1807,26 @@ export default function AppPage() {
 
           {/* ===== DASHBOARD ===== */}
           {tab === "dashboard" && !isWorker ? (
-            <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gap: 20 }}>
 
               {/* Period bar */}
               <div className="dash-period-bar" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div className="dash-period-dates" style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
-                  <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} style={{ height: 36 }} />
+                  <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} style={{ maxWidth: 160 }} />
                   <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>—</span>
-                  <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ height: 36 }} />
-                  <button className="btn btn-secondary" style={{ height: 36, whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>↻ Обновить</button>
+                  <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ maxWidth: 160 }} />
+                  <button className="btn btn-secondary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Обновить
+                  </button>
                 </div>
                 {isSuperAdmin ? (
-                  <div className="dash-view-tabs" style={{ display: "flex", gap: 6 }}>
+                  <div className="filter-tabs dash-view-tabs">
                     {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
-                      <span key={v.id} onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}
-                        style={{ padding: "6px 14px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
-                          border: "1px solid var(--border)",
-                          background: dashView === v.id ? "var(--accent-light)" : "transparent",
-                          color: dashView === v.id ? "var(--accent)" : "var(--text-secondary)" }}
-                      >{v.label}</span>
+                      <button key={v.id} className={`filter-tab${dashView === v.id ? " active" : ""}`}
+                        onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}>
+                        {v.label}
+                      </button>
                     ))}
                   </div>
                 ) : null}
@@ -1808,45 +1834,74 @@ export default function AppPage() {
 
               {dashView === "current" ? (
                 <>
-                  {/* 4 Metric cards */}
+                  {/* 4 Metric cards — TailAdmin style */}
                   {dashLoading || !dash ? (
-                    <div style={{ color: "var(--text-secondary)", padding: "8px 0" }}>Загрузка...</div>
+                    <div className="metric-grid">
+                      {[0,1,2,3].map(i => (
+                        <div key={i} className="metric-card" style={{ minHeight: 110, animation: "pulse 1.5s ease infinite" }}>
+                          <div style={{ height: 44, width: 44, borderRadius: 10, background: "var(--bg-metric)" }} />
+                          <div style={{ height: 20, borderRadius: 6, background: "var(--bg-metric)", marginTop: 8 }} />
+                        </div>
+                      ))}
+                    </div>
                   ) : (() => {
                     const amountOut = dash.deals?.totalAmountOut ?? 0;
                     const expTotal = dash.expenses?.totalAmount ?? 0;
                     const profit = amountOut - expTotal;
                     const metrics = [
                       {
-                        label: "Сделки", value: String(dash.deals?.count ?? 0), sub: `новых: ${dash.deals?.byStatus?.NEW ?? 0}`,
-                        iconColor: "#6366F1", iconBg: "rgba(99,102,241,0.12)",
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>,
+                        label: "Сделки за период",
+                        value: String(dash.deals?.count ?? 0),
+                        sub: `Новых: ${dash.deals?.byStatus?.NEW ?? 0} · В работе: ${dash.deals?.byStatus?.IN_PROGRESS ?? 0}`,
+                        iconColor: "#6366F1", iconBg: "rgba(99,102,241,0.1)",
+                        trend: null,
+                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
                       },
                       {
-                        label: "Доход", value: amountOut.toLocaleString(), sub: `воркерам: ${(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}`,
-                        iconColor: "#059669", iconBg: "rgba(5,150,105,0.12)",
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>,
+                        label: "Доход (выход)",
+                        value: amountOut.toLocaleString(),
+                        sub: `Воркерам: ${(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}`,
+                        iconColor: "#059669", iconBg: "rgba(5,150,105,0.1)",
+                        trend: amountOut > 0 ? "up" : "neutral",
+                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>,
                       },
                       {
-                        label: "Расходы", value: expTotal.toLocaleString(), sub: `записей: ${dash.expenses?.count ?? 0}`,
-                        iconColor: "#D97706", iconBg: "rgba(217,119,6,0.12)",
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
+                        label: "Расходы",
+                        value: expTotal.toLocaleString(),
+                        sub: `Записей: ${dash.expenses?.count ?? 0}`,
+                        iconColor: "#D97706", iconBg: "rgba(217,119,6,0.1)",
+                        trend: expTotal > 0 ? "down" : "neutral",
+                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
                       },
                       {
-                        label: "Прибыль", value: profit.toLocaleString(), sub: "доход − расходы",
-                        iconColor: profit >= 0 ? "#059669" : "#DC2626", iconBg: profit >= 0 ? "rgba(5,150,105,0.12)" : "rgba(220,38,38,0.12)",
-                        icon: profit >= 0
-                          ? <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                          : <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+                        label: "Чистая прибыль",
+                        value: profit.toLocaleString(),
+                        sub: "Доход минус расходы",
+                        iconColor: profit >= 0 ? "#059669" : "#DC2626",
+                        iconBg: profit >= 0 ? "rgba(5,150,105,0.1)" : "rgba(220,38,38,0.1)",
+                        trend: profit >= 0 ? "up" : "down",
+                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
                       },
                     ];
                     return (
                       <div className="metric-grid">
                         {metrics.map((m) => (
                           <div key={m.label} className="metric-card">
-                            <div className="metric-icon" style={{ background: m.iconBg, color: m.iconColor }}>{m.icon}</div>
+                            <div className="metric-card-top">
+                              <div className="metric-icon" style={{ background: m.iconBg, color: m.iconColor }}>{m.icon}</div>
+                              {m.trend && (
+                                <div className={`metric-trend ${m.trend}`}>
+                                  {m.trend === "up" ? (
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+                                  ) : m.trend === "down" ? (
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
                             <div className="metric-body">
+                              <div className="metric-value">{m.value}</div>
                               <div className="metric-label">{m.label}</div>
-                              <div className="metric-value" style={{ color: m.iconColor }}>{m.value}</div>
                               <div className="metric-sub">{m.sub}</div>
                             </div>
                           </div>
@@ -1855,48 +1910,108 @@ export default function AppPage() {
                     );
                   })()}
 
+                  {/* Charts row */}
+                  {dash && !dashLoading && (
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+                      {/* Area chart — deals by status over time (simulated from current data) */}
+                      <div className="chart-card">
+                        <div className="chart-header">
+                          <div>
+                            <div className="chart-title">Динамика сделок</div>
+                            <div className="chart-sub">по статусам за период</div>
+                          </div>
+                          <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--text-tertiary)" }}>
+                            {[
+                              { label: "Новые", color: "#6366F1" },
+                              { label: "В работе", color: "#D97706" },
+                              { label: "Закрыты", color: "#059669" },
+                            ].map(l => (
+                              <span key={l.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.color, display: "inline-block" }} />
+                                {l.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="chart-body">
+                          <AreaChart
+                            data={deals.slice(0, 30).map((d, i) => ({
+                              label: d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru", { day: "numeric", month: "short" }) : `#${i + 1}`,
+                              value: d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0),
+                            })).reverse()}
+                            title="Выход (USDT)"
+                            height={230}
+                            color="#6366F1"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Donut — deals by status */}
+                      <div className="chart-card">
+                        <div className="chart-header">
+                          <div>
+                            <div className="chart-title">Статусы сделок</div>
+                            <div className="chart-sub">распределение</div>
+                          </div>
+                        </div>
+                        <div className="chart-body">
+                          <DonutChart
+                            data={[
+                              { label: "Новые", value: dash.deals?.byStatus?.NEW ?? 0, color: "#6366F1" },
+                              { label: "В работе", value: dash.deals?.byStatus?.IN_PROGRESS ?? 0, color: "#D97706" },
+                              { label: "Закрыты", value: dash.deals?.byStatus?.CLOSED ?? 0, color: "#059669" },
+                            ].filter(d => d.value > 0)}
+                            height={265}
+                            totalLabel="Сделок"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Quick actions */}
-                  <div className="dash-quick-actions g3" style={{ gap: 10 }}>
+                  <div className="dash-quick-actions g3" style={{ gap: 12 }}>
                     {[
-                      { title: "Новая сделка", desc: "Создать сделку с клиентом", action: () => { setTab("deals"); setTimeout(openDealModal, 50); },
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> },
-                      { title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => setTab("clients"),
+                      { title: "Новая сделка", desc: "Создать сделку с клиентом", action: () => { setTab("deals"); setTimeout(openDealModal, 50); }, color: "#6366F1", bg: "rgba(99,102,241,0.1)",
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
+                      { title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => setTab("clients"), color: "#059669", bg: "rgba(5,150,105,0.1)",
                         icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
-                      { title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses"),
+                      { title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses"), color: "#D97706", bg: "rgba(217,119,6,0.1)",
                         icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> },
                     ].map((a) => (
                       <button key={a.title} onClick={a.action} style={{
                         background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
-                        padding: "16px", display: "flex", alignItems: "center", gap: 12,
+                        padding: "16px 18px", display: "flex", alignItems: "center", gap: 14,
                         cursor: "pointer", transition: "var(--transition)", textAlign: "left",
-                        fontFamily: "inherit",
+                        fontFamily: "inherit", boxShadow: "var(--shadow-card)",
                       }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.background = "var(--accent-light)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.background = "var(--bg-card)"; }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = a.color; (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-card)"; }}
                       >
-                        <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)", flexShrink: 0 }}>{a.icon}</div>
+                        <div style={{ width: 42, height: 42, borderRadius: 11, background: a.bg, display: "flex", alignItems: "center", justifyContent: "center", color: a.color, flexShrink: 0 }}>{a.icon}</div>
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{a.title}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 1 }}>{a.desc}</div>
+                          <div style={{ fontWeight: 600, fontSize: 13.5 }}>{a.title}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--text-secondary)", marginTop: 2 }}>{a.desc}</div>
                         </div>
+                        <svg width="14" height="14" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" viewBox="0 0 24 24" style={{ marginLeft: "auto", flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
                       </button>
                     ))}
                   </div>
 
                   {/* Recent activity: deals + expenses */}
-                  <div className="dash-recent-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  <div className="dash-recent-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                     {/* Recent deals */}
                     <div className="card">
                       <div className="card-header">
                         <span className="card-title">Последние сделки</span>
-                        <span style={{ fontSize: 12, color: "var(--accent)", cursor: "pointer", fontWeight: 600 }} onClick={() => setTab("deals")}>Все сделки →</span>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setTab("deals")} style={{ color: "var(--accent)" }}>Все →</button>
                       </div>
                       <div className="table-scroll" style={{ padding: 0 }}>
                         <table className="data-table">
                           <thead><tr><th>Клиент</th><th>Статус</th><th style={{ textAlign: "right" }}>Выход</th></tr></thead>
                           <tbody>
                             {deals.length === 0 ? (
-                              <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет сделок</td></tr>
+                              <tr><td colSpan={3} style={{ padding: "20px 18px", color: "var(--text-secondary)" }}>Нет сделок за период</td></tr>
                             ) : deals.slice(0, 5).map((d) => {
                               const out = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
                               return (
@@ -1916,14 +2031,14 @@ export default function AppPage() {
                     <div className="card">
                       <div className="card-header">
                         <span className="card-title">Последние расходы</span>
-                        <span style={{ fontSize: 12, color: "var(--accent)", cursor: "pointer", fontWeight: 600 }} onClick={() => setTab("expenses")}>Все расходы →</span>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setTab("expenses")} style={{ color: "var(--accent)" }}>Все →</button>
                       </div>
                       <div className="table-scroll" style={{ padding: 0 }}>
                         <table className="data-table">
                           <thead><tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th></tr></thead>
                           <tbody>
                             {expenses.length === 0 ? (
-                              <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет расходов</td></tr>
+                              <tr><td colSpan={3} style={{ padding: "20px 18px", color: "var(--text-secondary)" }}>Нет расходов</td></tr>
                             ) : expenses.slice(0, 5).map((e) => (
                               <tr key={e.id}>
                                 <td style={{ fontWeight: 500 }}>{e.title}</td>
@@ -1939,25 +2054,23 @@ export default function AppPage() {
                 </>
               ) : (
                 /* Global view for ADMIN */
-                <div className="card">
-                  <div className="card-header"><span className="card-title">Сводка по всем офисам</span></div>
-                  <div className="card-body" style={{ padding: 0 }}>
-                    {globalDashLoading || !globalDash ? (
-                      <div style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</div>
-                    ) : (
-                      <>
-                        <div className="metric-grid" style={{ padding: 16, borderBottom: "1px solid var(--border)" }}>
-                          {[
-                            { label: "Сделок всего", value: String(globalDash.totals?.dealsCount ?? 0), color: "var(--text-primary)" },
-                            { label: "Доход", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), color: "var(--green)" },
-                            { label: "Воркерам", value: (globalDash.totals?.totalWorkersPayoutUsdt ?? 0).toLocaleString(), color: "var(--accent)" },
-                            { label: "Расходы", value: (globalDash.totals?.totalExpenses ?? 0).toLocaleString(), color: "var(--amber)" },
-                          ].map((c) => (
-                            <div key={c.label} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "14px 16px" }}>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 6 }}>{c.label}</div>
-                              <div style={{ fontWeight: 700, fontSize: 22, fontFamily: "'JetBrains Mono', monospace", color: c.color }}>{c.value}</div>
-                            </div>
-                          ))}
+                <div style={{ display: "grid", gap: 16 }}>
+                  {globalDashLoading || !globalDash ? (
+                    <div className="card" style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</div>
+                  ) : (
+                    <>
+                      <div className="metric-grid">
+                        {[
+                          { label: "Сделок всего", value: String(globalDash.totals?.dealsCount ?? 0), iconBg: "rgba(99,102,241,0.1)", iconColor: "#6366F1", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
+                          { label: "Доход", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), iconBg: "rgba(5,150,105,0.1)", iconColor: "#059669", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg> },
+                          { label: "Воркерам", value: (globalDash.totals?.totalWorkersPayoutUsdt ?? 0).toLocaleString(), iconBg: "rgba(99,102,241,0.1)", iconColor: "#6366F1", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> },
+                          { label: "Расходы", value: (globalDash.totals?.totalExpenses ?? 0).toLocaleString(), iconBg: "rgba(217,119,6,0.1)", iconColor: "#D97706", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> },
+                        ].map((c) => (
+                          <div key={c.label} className="metric-card">
+                            <div className="metric-card-top"><div className="metric-icon" style={{ background: c.iconBg, color: c.iconColor }}>{c.icon}</div></div>
+                            <div className="metric-body"><div className="metric-value">{c.value}</div><div className="metric-label">{c.label}</div></div>
+                          </div>
+                        ))}
                         </div>
                         <div className="table-scroll"><table className="data-table">
                           <thead>
@@ -1982,10 +2095,26 @@ export default function AppPage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table></div>
-                      </>
-                    )}
-                  </div>
+                          </table></div>
+
+                      {/* Bar chart: revenue by org */}
+                      {(globalDash.byOrg ?? []).length > 0 && (
+                        <div className="chart-card" style={{ margin: "0 0 0 0" }}>
+                          <div className="chart-header">
+                            <div className="chart-title">Доход по офисам</div>
+                          </div>
+                          <div className="chart-body">
+                            <BarChart
+                              data={(globalDash.byOrg ?? []).map((r: any) => ({ label: r.orgName, value: r.totalAmountOut ?? 0 }))}
+                              color="#6366F1"
+                              title="Доход"
+                              height={220}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
