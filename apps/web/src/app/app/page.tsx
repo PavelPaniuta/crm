@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "WORKER";
+
 type User = {
   id: string;
   email: string;
-  role: "ADMIN" | "MANAGER";
+  role: Role;
   activeOrganizationId: string;
 };
 
@@ -29,7 +31,7 @@ type Expense = {
 type AppUser = {
   id: string;
   email: string;
-  role: "ADMIN" | "MANAGER";
+  role: Role;
   position?: string | null;
   organizationId: string;
 };
@@ -43,7 +45,7 @@ type Org = {
 type DealWorker = {
   id: string;
   email: string;
-  role: string;
+  role: Role;
   position?: string | null;
   organizationId: string;
   organization?: { name: string };
@@ -157,7 +159,7 @@ export default function AppPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [newUserLogin, setNewUserLogin] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"ADMIN" | "MANAGER">("MANAGER");
+  const [newUserRole, setNewUserRole] = useState<Role>("MANAGER");
   const [newUserPosition, setNewUserPosition] = useState("");
   const [newUserTargetOrgId, setNewUserTargetOrgId] = useState("");
   const [userPwdId, setUserPwdId] = useState<string | null>(null);
@@ -232,6 +234,19 @@ export default function AppPage() {
   const [repLoading, setRepLoading] = useState(false);
   const [repWorkers, setRepWorkers] = useState<any>(null);
 
+  // Role helpers
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+  const isManager = user?.role === "MANAGER" || isAdmin;
+  const isWorker = user?.role === "WORKER";
+
+  const ROLE_LABELS: Record<Role, string> = {
+    SUPER_ADMIN: "Супер Админ",
+    ADMIN: "Админ офиса",
+    MANAGER: "Менеджер",
+    WORKER: "Работник",
+  };
+
   const title = useMemo(() => {
     if (tab === "dashboard") return "Dashboard";
     if (tab === "deals") return "Сделки";
@@ -259,7 +274,7 @@ export default function AppPage() {
     if (tab === "expenses") loadExpenses();
     if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); }
     if (tab === "deals") { loadDeals(); loadTemplates(); }
-    if (tab === "dashboard") { loadDashboard(); loadDeals(); loadExpenses(); }
+    if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -290,8 +305,8 @@ export default function AppPage() {
   async function loadUsers() {
     setUsersLoading(true);
     try {
-      // For ADMIN: fetch all users across orgs via /public; for MANAGER: own org only
-      const url = user?.role === "ADMIN" ? "/api/users/public" : "/api/users";
+      // SUPER_ADMIN fetches all users across orgs; ADMIN fetches own org users
+      const url = user?.role === "SUPER_ADMIN" ? "/api/users/public" : "/api/users";
       const res = await fetch(url, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
       if (!res.ok) { setUsers([]); return; }
@@ -792,10 +807,10 @@ export default function AppPage() {
           <div
             style={{
               background: "rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 12px",
-              cursor: user?.role === "ADMIN" ? "pointer" : "default",
+              cursor: isSuperAdmin ? "pointer" : "default",
               display: "flex", alignItems: "center", gap: 8,
             }}
-            onClick={() => user?.role === "ADMIN" && setOrgSwitchOpen((v) => !v)}
+            onClick={() => isSuperAdmin && setOrgSwitchOpen((v) => !v)}
           >
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -804,10 +819,10 @@ export default function AppPage() {
                 {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "…"}
               </div>
             </div>
-            {user?.role === "ADMIN" && <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 16 }}>⌄</div>}
+            {isSuperAdmin && <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 16 }}>⌄</div>}
           </div>
 
-          {orgSwitchOpen && user?.role === "ADMIN" ? (
+          {orgSwitchOpen && isSuperAdmin ? (
             <div style={{
               position: "absolute", top: "100%", left: 12, right: 12, zIndex: 200,
               background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12,
@@ -833,21 +848,29 @@ export default function AppPage() {
 
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[]).map((t) => {
-            const NAV_ICONS: Record<string, string> = {
-              dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡", settings: "⊕"
-            };
-            const NAV_LABELS: Record<string, string> = {
-              dashboard: "Dashboard", deals: "Сделки", clients: "Клиенты",
-              expenses: "Расходы", reports: "Отчёты", settings: "Настройки"
-            };
-            return (
-              <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
-                <span style={{ fontSize: 15, width: 18, textAlign: "center", opacity: tab === t ? 1 : 0.6 }}>{NAV_ICONS[t]}</span>
-                <span>{NAV_LABELS[t]}</span>
-              </a>
-            );
-          })}
+          {(["dashboard", "deals", "clients", "expenses", "reports", "settings"] as Tab[])
+            .filter((t) => {
+              if (isWorker) return t === "dashboard"; // Worker only sees dashboard (tasks)
+              if (!isAdmin) return t !== "reports" && t !== "settings"; // MANAGER: no reports/settings
+              if (!isSuperAdmin && t === "reports") return true; // ADMIN sees reports for own office
+              return true;
+            })
+            .map((t) => {
+              const NAV_ICONS: Record<string, string> = {
+                dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡", settings: "⊕"
+              };
+              const NAV_LABELS: Record<string, string> = {
+                dashboard: isWorker ? "Мой кабинет" : "Dashboard",
+                deals: "Сделки", clients: "Клиенты",
+                expenses: "Расходы", reports: "Отчёты", settings: "Настройки"
+              };
+              return (
+                <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
+                  <span style={{ fontSize: 15, width: 18, textAlign: "center", opacity: tab === t ? 1 : 0.6 }}>{NAV_ICONS[t]}</span>
+                  <span>{NAV_LABELS[t]}</span>
+                </a>
+              );
+            })}
           <div className="nav-section">Аккаунт</div>
           <a className="nav-item" onClick={logout}><span>Выйти</span></a>
         </nav>
@@ -870,7 +893,7 @@ export default function AppPage() {
             <h1 className="header-title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
           </div>
           <div style={{ color: "var(--text-secondary)", fontSize: 13, textAlign: "right", flexShrink: 0 }}>
-            <div>{user ? `${user.email} · ${user.role}` : "…"}</div>
+            <div>{user ? `${user.email} · ${ROLE_LABELS[user.role] ?? user.role}` : "…"}</div>
             {orgs.find((o) => o.id === user?.activeOrganizationId) ? (
               <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
                 {orgs.find((o) => o.id === user?.activeOrganizationId)!.name}
@@ -880,8 +903,42 @@ export default function AppPage() {
         </header>
 
         <div className="content">
+          {/* ===== WORKER CABINET ===== */}
+          {tab === "dashboard" && isWorker ? (
+            <div style={{ display: "grid", gap: 20 }}>
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">Мой кабинет</span>
+                </div>
+                <div className="card-body" style={{ padding: "32px 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>🏗️</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Раздел в разработке</div>
+                  <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                    Здесь будут отображаться ваши задачи, учёт рабочего времени и расчёт зарплаты.
+                  </div>
+                </div>
+              </div>
+              <div className="g3">
+                {[
+                  { icon: "📋", title: "Мои задачи", desc: "Список задач и их статус" },
+                  { icon: "💰", title: "Моя зарплата", desc: "История выплат и начислений" },
+                  { icon: "📊", title: "Моя статистика", desc: "Сделки в которых участвовал" },
+                ].map((card) => (
+                  <div key={card.title} className="card" style={{ opacity: 0.5 }}>
+                    <div className="card-body" style={{ padding: "20px", textAlign: "center" }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>{card.icon}</div>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{card.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{card.desc}</div>
+                      <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>Скоро</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {/* ===== DASHBOARD ===== */}
-          {tab === "dashboard" ? (
+          {tab === "dashboard" && !isWorker ? (
             <div style={{ display: "grid", gap: 20 }}>
 
               {/* Period bar */}
@@ -892,7 +949,7 @@ export default function AppPage() {
                   <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ height: 36 }} />
                   <button className="btn btn-secondary" style={{ height: 36, whiteSpace: "nowrap" }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>↻ Обновить</button>
                 </div>
-                {user?.role === "ADMIN" ? (
+                {isSuperAdmin ? (
                   <div style={{ display: "flex", gap: 6 }}>
                     {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
                       <span key={v.id} onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}
@@ -1718,7 +1775,7 @@ export default function AppPage() {
                         {expenseEditing.status === "DRAFT" ? (
                           <button className="btn btn-primary" onClick={() => expenseAction("submit")}>Отправить на одобрение</button>
                         ) : null}
-                        {user?.role === "ADMIN" && expenseEditing.status === "SUBMITTED" ? (
+                        {isAdmin && expenseEditing.status === "SUBMITTED" ? (
                           <>
                             <button className="btn btn-secondary" onClick={() => expenseAction("reject")}>Отклонить</button>
                             <button className="btn btn-primary" onClick={() => expenseAction("approve")}>Одобрить</button>
@@ -1736,8 +1793,8 @@ export default function AppPage() {
           {tab === "settings" ? (
             <div style={{ display: "grid", gap: 16 }}>
 
-              {/* Organisations block (ADMIN only) */}
-              {user?.role === "ADMIN" ? (
+              {/* Organisations block (SUPER_ADMIN only) */}
+              {isSuperAdmin ? (
                 <div className="card">
                   <div className="card-header">
                     <span className="card-title">Офисы / Организации</span>
@@ -1850,8 +1907,8 @@ export default function AppPage() {
                   <button className="btn btn-secondary" onClick={loadUsers}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 16 }}>
-                  {user?.role !== "ADMIN" ? (
-                    <div style={{ color: "var(--text-secondary)" }}>Доступно только для admin.</div>
+                  {!isAdmin ? (
+                    <div style={{ color: "var(--text-secondary)" }}>Доступно только для Админа и Супер Админа.</div>
                   ) : (
                     <>
                       {/* create form */}
@@ -1872,8 +1929,10 @@ export default function AppPage() {
                           <div>
                             <div className="form-label">Доступ</div>
                             <select className="form-input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
-                              <option value="MANAGER">MANAGER</option>
-                              <option value="ADMIN">ADMIN</option>
+                              <option value="WORKER">Работник</option>
+                              <option value="MANAGER">Менеджер</option>
+                              <option value="ADMIN">Админ офиса</option>
+                              {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
                             </select>
                           </div>
                           <div>
@@ -1943,8 +2002,10 @@ export default function AppPage() {
                                         style={{ width: 120 }}
                                         onChange={(e) => changeUserRole(u.id, e.target.value as any)}
                                       >
-                                        <option value="MANAGER">MANAGER</option>
-                                        <option value="ADMIN">ADMIN</option>
+                                        <option value="WORKER">Работник</option>
+                                        <option value="MANAGER">Менеджер</option>
+                                        <option value="ADMIN">Админ офиса</option>
+                                        {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
                                       </select>
                                     </td>
                                     <td>

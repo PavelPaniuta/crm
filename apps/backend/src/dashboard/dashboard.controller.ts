@@ -14,7 +14,7 @@ export class DashboardController {
 
   @Get('global')
   globalSummary(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
-    if (req.user.role !== 'ADMIN') throw new ForbiddenException();
+    if (req.user.role !== 'SUPER_ADMIN') throw new ForbiddenException();
     return this.dashboard.getGlobalSummary(from, to);
   }
 }

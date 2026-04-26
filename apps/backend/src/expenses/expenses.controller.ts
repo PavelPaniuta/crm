@@ -46,7 +46,7 @@ export class ExpensesController {
   }
 
   @Post(':id/approve')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN)  // ADMIN + SUPER_ADMIN via hierarchy
   approve(@Req() req: any, @Param('id') id: string) {
     return this.expenses.update(req.user.activeOrganizationId, id, { status: ExpenseStatus.APPROVED });
   }

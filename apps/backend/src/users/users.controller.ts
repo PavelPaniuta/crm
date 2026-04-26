@@ -11,7 +11,7 @@ export class UsersController {
   constructor(private users: UsersService) {}
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN)  // ADMIN and SUPER_ADMIN (guard uses hierarchy)
   list(@Req() req: any) {
     return this.users.list(req.user.activeOrganizationId);
   }
@@ -63,4 +63,3 @@ export class UsersController {
     return this.users.deleteUser(req.user.activeOrganizationId, id, req.user.id, req.user.role);
   }
 }
-

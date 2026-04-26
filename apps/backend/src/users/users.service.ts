@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+
+const isSuperAdmin = (role?: string) => role === 'SUPER_ADMIN';
+const isAtLeastAdmin = (role?: string) => role === 'SUPER_ADMIN' || role === 'ADMIN';
 
 @Injectable()
 export class UsersService {
@@ -16,7 +19,6 @@ export class UsersService {
   }
 
   listPublic() {
-    // Returns ALL users across ALL orgs so workers can be assigned to cross-org deals
     return this.prisma.user.findMany({
       select: {
         id: true,
@@ -39,8 +41,14 @@ export class UsersService {
     if (!data.password || data.password.length < 6)
       throw new BadRequestException('password too short');
 
-    // ADMIN can create user in any org via targetOrgId; MANAGER only in their own
-    const orgId = (requesterRole === 'ADMIN' && data.targetOrgId) ? data.targetOrgId : activeOrganizationId;
+    // SUPER_ADMIN can create in any org via targetOrgId
+    // ADMIN can only create in their own org
+    const orgId = (isSuperAdmin(requesterRole) && data.targetOrgId) ? data.targetOrgId : activeOrganizationId;
+
+    // ADMIN cannot create SUPER_ADMIN
+    if (!isSuperAdmin(requesterRole) && data.role === Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Недостаточно прав для создания SUPER_ADMIN');
+    }
 
     const passwordHash = await bcrypt.hash(data.password, 10);
     return this.prisma.user.create({
@@ -56,7 +64,11 @@ export class UsersService {
   }
 
   async setRole(organizationId: string, userId: string, role: Role, requesterRole?: string) {
-    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    // ADMIN cannot elevate to SUPER_ADMIN
+    if (!isSuperAdmin(requesterRole) && role === Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    const where = isSuperAdmin(requesterRole) ? { id: userId } : { id: userId, organizationId };
     const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
     return this.prisma.user.update({
@@ -68,7 +80,7 @@ export class UsersService {
 
   async resetPassword(organizationId: string, userId: string, password: string, requesterRole?: string) {
     if (!password || password.length < 6) throw new BadRequestException('password too short');
-    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    const where = isSuperAdmin(requesterRole) ? { id: userId } : { id: userId, organizationId };
     const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
     const passwordHash = await bcrypt.hash(password, 10);
@@ -80,7 +92,7 @@ export class UsersService {
   }
 
   async setPosition(organizationId: string, userId: string, position: string | null, requesterRole?: string) {
-    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    const where = isSuperAdmin(requesterRole) ? { id: userId } : { id: userId, organizationId };
     const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
     return this.prisma.user.update({
@@ -92,11 +104,10 @@ export class UsersService {
 
   async deleteUser(organizationId: string, userId: string, requesterId: string, requesterRole?: string) {
     if (userId === requesterId) throw new BadRequestException('Нельзя удалить себя');
-    const where = requesterRole === 'ADMIN' ? { id: userId } : { id: userId, organizationId };
+    const where = isSuperAdmin(requesterRole) ? { id: userId } : { id: userId, organizationId };
     const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
     await this.prisma.user.delete({ where: { id: userId } });
     return { ok: true };
   }
 }
-

@@ -9,6 +9,14 @@ import { Reflector } from '@nestjs/core';
 import { Role } from '@prisma/client';
 import { ROLES_KEY } from './roles.decorator';
 
+// Hierarchy: SUPER_ADMIN > ADMIN > MANAGER > WORKER
+const ROLE_LEVEL: Record<string, number> = {
+  SUPER_ADMIN: 4,
+  ADMIN: 3,
+  MANAGER: 2,
+  WORKER: 1,
+};
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -23,8 +31,12 @@ export class RolesGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     const user = req.user;
     if (!user) throw new UnauthorizedException();
-    if (!roles.includes(user.role)) throw new ForbiddenException();
+
+    // User passes if their level is >= the minimum required level
+    const requiredLevel = Math.min(...roles.map((r) => ROLE_LEVEL[r] ?? 0));
+    const userLevel = ROLE_LEVEL[user.role] ?? 0;
+
+    if (userLevel < requiredLevel) throw new ForbiddenException();
     return true;
   }
 }
-

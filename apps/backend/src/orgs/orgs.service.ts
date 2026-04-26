@@ -6,8 +6,8 @@ export class OrgsService {
   constructor(private prisma: PrismaService) {}
 
   async listForUser(userId: string, role: string) {
-    // ADMIN sees ALL organizations; MANAGER only sees their own
-    if (role === 'ADMIN') {
+    // SUPER_ADMIN sees ALL organizations
+    if (role === 'SUPER_ADMIN') {
       return this.prisma.organization.findMany({
         orderBy: { name: 'asc' },
         include: { _count: { select: { users: true, deals: true } } },

@@ -8,8 +8,10 @@ datasource db {
 }
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   MANAGER
+  WORKER
 }
 
 enum DealStatus {

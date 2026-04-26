@@ -21,14 +21,14 @@ export class OrgsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN)
   async create(@Body() body: { name: string }) {
     return this.orgs.create(body.name);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN)
   deleteOrg(@Req() req: any, @Param('id') id: string) {
     return this.orgs.deleteOrg(id, req.user.id);
   }
@@ -39,8 +39,8 @@ export class OrgsController {
     const token = req.cookies?.[cookieName] as string | undefined;
     if (!token) return { ok: false };
 
-    // ADMIN can switch to any org; MANAGER can only stay in their own org
-    if (req.user.role !== 'ADMIN') {
+    // Only SUPER_ADMIN can switch between orgs
+    if (req.user.role !== 'SUPER_ADMIN') {
       if (body.organizationId !== req.user.organizationId) {
         return { ok: false, error: 'Access denied' };
       }
