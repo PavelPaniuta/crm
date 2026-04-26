@@ -1231,31 +1231,48 @@ export default function AppPage() {
               return true;
             })
             .map((t) => {
-              const NAV_ICONS: Record<string, string> = {
-                dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡",
-                staff: "◫", assistant: "✦", settings: "⊕", profile: "◉"
-              };
               const NAV_LABELS: Record<string, string> = {
                 dashboard: isWorker ? "Мой кабинет" : "Dashboard",
                 deals: "Сделки", clients: "Клиенты",
                 expenses: "Расходы", reports: "Отчёты", staff: "Сотрудники",
                 assistant: "AI Ассистент", settings: "Настройки", profile: "Мой профиль"
               };
+              const NAV_SVG: Record<string, JSX.Element> = {
+                dashboard: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
+                deals: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>,
+                clients: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+                expenses: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
+                reports: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>,
+                staff: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>,
+                assistant: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>,
+                settings: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+                profile: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+              };
               return (
                 <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
-                  <span style={{ fontSize: 15, width: 18, textAlign: "center", opacity: tab === t ? 1 : 0.6 }}>{NAV_ICONS[t]}</span>
+                  <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: tab === t ? 1 : 0.55 }}>{NAV_SVG[t]}</span>
                   <span>{NAV_LABELS[t]}</span>
                 </a>
               );
             })}
           <div className="nav-section">Аккаунт</div>
-          <a className="nav-item" onClick={logout}><span>Выйти</span></a>
+          <a className="nav-item" onClick={logout}>
+            <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: 0.55 }}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </span>
+            <span>Выйти</span>
+          </a>
         </nav>
 
         <div className="sidebar-footer">
           <button className="theme-toggle" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 15 }}>{theme === "dark" ? "☀️" : "🌙"}</span>
+              <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", opacity: 0.6 }}>
+                {theme === "dark"
+                  ? <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                  : <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                }
+              </span>
               <span>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
             </span>
             <span className={`theme-toggle-pill${theme === "dark" ? " is-dark" : ""}`} />
@@ -1316,7 +1333,7 @@ export default function AppPage() {
 
           {/* ===== DASHBOARD ===== */}
           {tab === "dashboard" && !isWorker ? (
-            <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ display: "grid", gap: 16 }}>
 
               {/* Period bar */}
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1347,21 +1364,41 @@ export default function AppPage() {
                     <div style={{ color: "var(--text-secondary)", padding: "8px 0" }}>Загрузка...</div>
                   ) : (() => {
                     const amountOut = dash.deals?.totalAmountOut ?? 0;
-                    const expenses = dash.expenses?.totalAmount ?? 0;
-                    const profit = amountOut - expenses;
+                    const expTotal = dash.expenses?.totalAmount ?? 0;
+                    const profit = amountOut - expTotal;
+                    const metrics = [
+                      {
+                        label: "Сделки", value: String(dash.deals?.count ?? 0), sub: `новых: ${dash.deals?.byStatus?.NEW ?? 0}`,
+                        iconColor: "#6366F1", iconBg: "rgba(99,102,241,0.12)",
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>,
+                      },
+                      {
+                        label: "Доход", value: amountOut.toLocaleString(), sub: `воркерам: ${(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}`,
+                        iconColor: "#059669", iconBg: "rgba(5,150,105,0.12)",
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>,
+                      },
+                      {
+                        label: "Расходы", value: expTotal.toLocaleString(), sub: `записей: ${dash.expenses?.count ?? 0}`,
+                        iconColor: "#D97706", iconBg: "rgba(217,119,6,0.12)",
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
+                      },
+                      {
+                        label: "Прибыль", value: profit.toLocaleString(), sub: "доход − расходы",
+                        iconColor: profit >= 0 ? "#059669" : "#DC2626", iconBg: profit >= 0 ? "rgba(5,150,105,0.12)" : "rgba(220,38,38,0.12)",
+                        icon: profit >= 0
+                          ? <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                          : <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+                      },
+                    ];
                     return (
-                      <div className="g4" style={{ gap: 14 }}>
-                        {[
-                          { label: "Сделки за период", value: String(dash.deals?.count ?? 0), sub: `новых: ${dash.deals?.byStatus?.NEW ?? 0}`, color: "var(--text-primary)" },
-                          { label: "Доход", value: amountOut.toLocaleString(), sub: `воркерам: ${(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}`, color: "var(--green)" },
-                          { label: "Расходы", value: expenses.toLocaleString(), sub: `записей: ${dash.expenses?.count ?? 0}`, color: "var(--amber)" },
-                          { label: "Чистая прибыль", value: profit.toLocaleString(), sub: "доход − расходы", color: profit >= 0 ? "var(--text-primary)" : "var(--red)" },
-                        ].map((m) => (
-                          <div key={m.label} className="card" style={{ border: "1px solid var(--border-light)" }}>
-                            <div className="card-body" style={{ padding: "18px 20px" }}>
-                              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-tertiary)", marginBottom: 10 }}>{m.label}</div>
-                              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: m.color, lineHeight: 1 }}>{m.value}</div>
-                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>{m.sub}</div>
+                      <div className="g4" style={{ gap: 12 }}>
+                        {metrics.map((m) => (
+                          <div key={m.label} className="metric-card">
+                            <div className="metric-icon" style={{ background: m.iconBg, color: m.iconColor }}>{m.icon}</div>
+                            <div className="metric-body">
+                              <div className="metric-label">{m.label}</div>
+                              <div className="metric-value" style={{ color: m.iconColor }}>{m.value}</div>
+                              <div className="metric-sub">{m.sub}</div>
                             </div>
                           </div>
                         ))}
@@ -1369,25 +1406,31 @@ export default function AppPage() {
                     );
                   })()}
 
-                  {/* 3 Quick action cards */}
-                  <div className="g3" style={{ gap: 14 }}>
+                  {/* Quick actions */}
+                  <div className="g3" style={{ gap: 10 }}>
                     {[
-                      { icon: "+", title: "Новая сделка", desc: "Создать сделку с клиентом или без", action: () => { setTab("deals"); setTimeout(openDealModal, 50); } },
-                      { icon: "+", title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => setTab("clients") },
-                      { icon: "+", title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses") },
+                      { title: "Новая сделка", desc: "Создать сделку с клиентом", action: () => { setTab("deals"); setTimeout(openDealModal, 50); },
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> },
+                      { title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => setTab("clients"),
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
+                      { title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses"),
+                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> },
                     ].map((a) => (
-                      <div key={a.title} onClick={a.action} style={{
-                        background: "var(--bg-card)", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg)",
-                        padding: "28px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", gap: 8, transition: "var(--transition)", textAlign: "center",
+                      <button key={a.title} onClick={a.action} style={{
+                        background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
+                        padding: "16px", display: "flex", alignItems: "center", gap: 12,
+                        cursor: "pointer", transition: "var(--transition)", textAlign: "left",
+                        fontFamily: "inherit",
                       }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.background = "var(--accent-light)"; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.background = "var(--bg-card)"; }}
                       >
-                        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "var(--accent)", fontWeight: 300 }}>{a.icon}</div>
-                        <div style={{ fontWeight: 700, fontSize: 15 }}>{a.title}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{a.desc}</div>
-                      </div>
+                        <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--accent-light)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)", flexShrink: 0 }}>{a.icon}</div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{a.title}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 1 }}>{a.desc}</div>
+                        </div>
+                      </button>
                     ))}
                   </div>
 
@@ -1502,10 +1545,18 @@ export default function AppPage() {
           {/* ===== REPORTS ===== */}
           {tab === "reports" ? (
             <div style={{ display: "grid", gap: 16 }}>
+              <div className="page-header">
+                <div className="page-header-left">
+                  <div className="page-header-title">Отчёты</div>
+                  <div className="page-header-sub">Аналитика выплат и статистика по воркерам</div>
+                </div>
+                <div className="page-header-actions">
+                  <button className="btn btn-secondary" onClick={loadReportsWorkers}>↻ Обновить</button>
+                </div>
+              </div>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Период</span>
-                  <button className="btn btn-secondary" onClick={loadReportsWorkers}>Обновить</button>
                 </div>
                 <div className="card-body g2">
                   <div>
@@ -1553,42 +1604,46 @@ export default function AppPage() {
           {/* ===== DEALS ===== */}
           {tab === "deals" ? (
             <div style={{ display: "grid", gap: 16 }}>
-              {/* filter bar */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {([{ id: "ALL", label: "Все" }, { id: "NEW", label: "Новые" }, { id: "IN_PROGRESS", label: "В работе" }, { id: "CLOSED", label: "Закрытые" }] as const).map((f) => (
-                    <span
-                      key={f.id}
-                      onClick={() => setDealFilter(f.id as any)}
-                      style={{
-                        padding: "6px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600,
-                        border: "1px solid var(--border)",
-                        background: dealFilter === f.id ? "var(--accent-light)" : "transparent",
-                        color: dealFilter === f.id ? "var(--accent)" : "var(--text-secondary)",
-                      }}
-                    >{f.label}</span>
-                  ))}
+              {/* Page header */}
+              <div className="page-header">
+                <div className="page-header-left">
+                  <div className="page-header-title">Сделки</div>
+                  <div className="page-header-sub">Управляйте сделками, участниками и выплатами</div>
+                </div>
+                <div className="page-header-actions">
+                  <div className="filter-tabs">
+                    {([{ id: "ALL", label: "Все" }, { id: "NEW", label: "Новые" }, { id: "IN_PROGRESS", label: "В работе" }, { id: "CLOSED", label: "Закрытые" }] as const).map((f) => (
+                      <button key={f.id} className={`filter-tab ${dealFilter === f.id ? "active" : ""}`} onClick={() => setDealFilter(f.id as any)}>{f.label}</button>
+                    ))}
+                  </div>
+                  <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Сделки</span>
-                  <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
-                </div>
                 <div className="card-body table-scroll" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
                       <tr>
                         <th>Дата</th><th>Клиент</th><th>Воркеры</th><th>Статус</th>
-                        <th style={{ textAlign: "right" }}>Сумма выхода</th>
+                        <th style={{ textAlign: "right" }}>Выход</th>
+                        {isAdmin && <th style={{ width: 40 }}></th>}
                       </tr>
                     </thead>
                     <tbody>
                       {dealsLoading ? (
-                        <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
+                        <tr><td colSpan={6} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
                       ) : deals.filter((d) => dealFilter === "ALL" || d.status === dealFilter).length === 0 ? (
-                        <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Пока пусто</td></tr>
+                        <tr><td colSpan={6}>
+                          <div className="empty-state">
+                            <div className="empty-state-icon">
+                              <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                            </div>
+                            <div className="empty-state-title">Нет сделок</div>
+                            <div className="empty-state-desc">Создайте первую сделку чтобы начать вести учёт</div>
+                            <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
+                          </div>
+                        </td></tr>
                       ) : (
                         deals
                           .filter((d) => dealFilter === "ALL" || d.status === dealFilter)
@@ -1614,12 +1669,15 @@ export default function AppPage() {
                                   {totalOut.toLocaleString()}
                                 </td>
                                 {isAdmin && (
-                                  <td style={{ width: 36, padding: "0 4px" }}>
+                                  <td style={{ width: 40, padding: "0 8px 0 0" }}>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); deleteDeal(d.id); }}
-                                      style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
+                                      className="btn btn-ghost"
+                                      style={{ width: 28, height: 28, padding: 0, color: "var(--text-tertiary)" }}
                                       title="Удалить сделку"
-                                    >✕</button>
+                                    >
+                                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
+                                    </button>
                                   </td>
                                 )}
                               </tr>
@@ -2026,9 +2084,15 @@ export default function AppPage() {
           {/* ===== CLIENTS ===== */}
           {tab === "clients" ? (
             <div style={{ display: "grid", gap: 16 }}>
+              <div className="page-header">
+                <div className="page-header-left">
+                  <div className="page-header-title">Клиенты</div>
+                  <div className="page-header-sub">База клиентов вашего офиса</div>
+                </div>
+              </div>
               <div className="card">
                 <div className="card-header">
-                  <span className="card-title">Новый клиент</span>
+                  <span className="card-title">Добавить клиента</span>
                   <button className="btn btn-primary" onClick={createClient} disabled={!newClientName || !newClientPhone}>+ Создать</button>
                 </div>
                 <div className="card-body g2">
@@ -2055,18 +2119,26 @@ export default function AppPage() {
                     </thead>
                     <tbody>
                       {clientsLoading ? (
-                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
+                        <tr><td colSpan={3} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
                       ) : clients.length === 0 ? (
-                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Пока пусто</td></tr>
+                        <tr><td colSpan={3}>
+                          <div className="empty-state">
+                            <div className="empty-state-icon">
+                              <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </div>
+                            <div className="empty-state-title">Нет клиентов</div>
+                            <div className="empty-state-desc">Добавьте первого клиента используя форму выше</div>
+                          </div>
+                        </td></tr>
                       ) : (
                         clients.map((c) => (
                           <tr key={c.id}>
-                            <td>{c.name}</td>
-                            <td style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{c.phone}</td>
-                            <td>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openClientEdit(c)}>Ред.</button>
-                                <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteClient(c.id)}>Удал.</button>
+                            <td style={{ fontWeight: 500 }}>{c.name}</td>
+                            <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)" }}>{c.phone}</td>
+                            <td style={{ padding: "8px 16px 8px 8px" }}>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button className="btn btn-secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }} onClick={() => openClientEdit(c)}>Изменить</button>
+                                <button className="btn btn-ghost" style={{ height: 28, padding: "0 8px", fontSize: 12, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
                               </div>
                             </td>
                           </tr>
@@ -2109,6 +2181,12 @@ export default function AppPage() {
           {/* ===== EXPENSES ===== */}
           {tab === "expenses" ? (
             <div style={{ display: "grid", gap: 16 }}>
+              <div className="page-header">
+                <div className="page-header-left">
+                  <div className="page-header-title">Расходы</div>
+                  <div className="page-header-sub">Учёт расходов офиса: аренда, крипта, материалы</div>
+                </div>
+              </div>
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Новый расход</span>
@@ -2154,19 +2232,27 @@ export default function AppPage() {
                     </thead>
                     <tbody>
                       {expensesLoading ? (
-                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
+                        <tr><td colSpan={3} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
                       ) : expenses.length === 0 ? (
-                        <tr><td colSpan={3} style={{ padding: 16, color: "var(--text-secondary)" }}>Пока пусто</td></tr>
+                        <tr><td colSpan={3}>
+                          <div className="empty-state">
+                            <div className="empty-state-icon">
+                              <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                            </div>
+                            <div className="empty-state-title">Нет расходов</div>
+                            <div className="empty-state-desc">Добавьте первый расход используя форму выше</div>
+                          </div>
+                        </td></tr>
                       ) : (
                         expenses.map((e) => (
                           <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseModalOpen(true); }}>
-                            <td>{e.title}</td>
+                            <td style={{ fontWeight: 500 }}>{e.title}</td>
                             <td>
                               <span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
-                                {e.status}
+                                {e.status === "APPROVED" ? "Одобрен" : e.status === "SUBMITTED" ? "На проверке" : e.status === "REJECTED" ? "Отклонён" : "Черновик"}
                               </span>
                             </td>
-                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{e.amount} {e.currency}</td>
+                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{Number(e.amount).toLocaleString()} {e.currency}</td>
                           </tr>
                         ))
                       )}
@@ -2459,7 +2545,15 @@ export default function AppPage() {
 
           {/* ===== STAFF ===== */}
           {tab === "staff" ? (
-            <div>
+            <div style={{ display: "grid", gap: 16 }}>
+              {!staffMember && (
+                <div className="page-header">
+                  <div className="page-header-left">
+                    <div className="page-header-title">Сотрудники</div>
+                    <div className="page-header-sub">Управляйте командой, офисами и статистикой сотрудников</div>
+                  </div>
+                </div>
+              )}
               {staffLoading ? (
                 <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
               ) : staffMember ? (
