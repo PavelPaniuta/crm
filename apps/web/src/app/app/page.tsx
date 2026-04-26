@@ -105,7 +105,7 @@ type Deal = {
   participants: Array<{
     id: string;
     pct: number;
-    user: { id: string; email: string; role: "ADMIN" | "MANAGER" };
+    user: { id: string; email: string; name?: string | null; role: "ADMIN" | "MANAGER" };
   }>;
 };
 
