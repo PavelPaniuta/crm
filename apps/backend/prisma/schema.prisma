@@ -62,6 +62,8 @@ model Organization {
   dealTemplates DealTemplate[]
   memberships   UserMembership[]
   tasks         Task[]
+  chatMessages  ChatMessage[]
+  chatLastReads ChatLastRead[]
 }
 
 model User {
@@ -84,8 +86,11 @@ model User {
   sessions           Session[]
   memberships        UserMembership[]
   passwordResetTokens PasswordResetToken[]
-  tasksAssigned        Task[] @relation("TaskAssignee")
-  tasksCreated         Task[] @relation("TaskCreator")
+  tasksAssigned        Task[]         @relation("TaskAssignee")
+  tasksCreated         Task[]         @relation("TaskCreator")
+  taskComments         TaskComment[]
+  chatMessages         ChatMessage[]
+  chatLastReads        ChatLastRead[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -291,9 +296,51 @@ model Task {
   createdById    String
   createdBy      User         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
 
+  comments       TaskComment[]
+
   @@index([organizationId])
   @@index([assigneeId])
   @@index([createdById])
   @@index([status])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  body           String       // AES-256-GCM encrypted: iv:authTag:ciphertext
+  createdAt      DateTime     @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}
+
+model ChatLastRead {
+  lastReadAt     DateTime     @default(now())
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, organizationId])
 }
 

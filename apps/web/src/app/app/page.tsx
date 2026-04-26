@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 
 type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "WORKER";
@@ -67,7 +67,21 @@ type CrmTask = {
   createdBy: { id: string; email: string; name: string | null };
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "tasks" | "assistant";
+type TaskComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string | null; email: string };
+};
+
+type ChatMessage = {
+  id: string;
+  body: string;
+  createdAt: string;
+  sender: { id: string; name: string | null; email: string };
+};
+
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "tasks" | "assistant" | "chat";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX";
@@ -355,6 +369,28 @@ export default function AppPage() {
   const [taskFormStart, setTaskFormStart] = useState("");
   const [taskUsersForSelect, setTaskUsersForSelect] = useState<AppUser[]>([]);
 
+  // --- Task detail drawer ---
+  const [taskDetail, setTaskDetail] = useState<CrmTask | null>(null);
+  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
+  const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
+  const [taskCommentInput, setTaskCommentInput] = useState("");
+  const [taskCommentSending, setTaskCommentSending] = useState(false);
+  const [taskEditMode, setTaskEditMode] = useState(false);
+  const [taskEditTitle, setTaskEditTitle] = useState("");
+  const [taskEditDesc, setTaskEditDesc] = useState("");
+  const [taskEditDue, setTaskEditDue] = useState("");
+  const [taskEditStart, setTaskEditStart] = useState("");
+  const [taskEditAssigneeId, setTaskEditAssigneeId] = useState("");
+
+  // --- Chat ---
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+  const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
   // Role helpers
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
@@ -378,6 +414,7 @@ export default function AppPage() {
     if (tab === "profile") return "Мой профиль";
     if (tab === "staff") return "Сотрудники";
     if (tab === "tasks") return "Задачи";
+    if (tab === "chat") return "Чат";
     if (tab === "assistant") return "AI Ассистент";
     return "MyCRM";
   }, [tab]);
@@ -395,9 +432,19 @@ export default function AppPage() {
   }, [router]);
 
   useEffect(() => {
-    if (user) void loadTaskPendingCount();
+    if (user) {
+      void loadTaskPendingCount();
+      void loadChatUnread();
+      const unreadTimer = setInterval(() => void loadChatUnread(), 30000);
+      return () => clearInterval(unreadTimer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Scroll chat to bottom when messages arrive on chat tab
+  useEffect(() => {
+    if (tab === "chat") setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+  }, [chatMessages, tab]);
 
   useEffect(() => {
     if (tab === "clients") loadClients();
@@ -411,6 +458,14 @@ export default function AppPage() {
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
       fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
+    }
+    if (tab === "chat") {
+      void loadChatMessages();
+      void markChatRead();
+      if (chatPollRef.current) clearInterval(chatPollRef.current);
+      chatPollRef.current = setInterval(() => void pollChatMessages(), 5000);
+    } else {
+      if (chatPollRef.current) { clearInterval(chatPollRef.current); chatPollRef.current = null; }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -567,7 +622,114 @@ export default function AppPage() {
   async function deleteTaskById(id: string) {
     if (!confirm("Удалить задачу?")) return;
     const res = await fetch(`/api/tasks/${id}`, { method: "DELETE", credentials: "include" });
-    if (res.ok) await loadTasks();
+    if (res.ok) { if (taskDetail?.id === id) setTaskDetail(null); await loadTasks(); }
+  }
+
+  async function openTaskDetail(t: CrmTask) {
+    setTaskDetail(t);
+    setTaskEditMode(false);
+    setTaskComments([]);
+    setTaskCommentInput("");
+    setTaskCommentsLoading(true);
+    try {
+      const res = await fetch(`/api/tasks/${t.id}/comments`, { credentials: "include" });
+      if (res.ok) setTaskComments(await res.json());
+    } finally { setTaskCommentsLoading(false); }
+  }
+
+  async function submitTaskComment() {
+    if (!taskDetail || !taskCommentInput.trim() || taskCommentSending) return;
+    setTaskCommentSending(true);
+    try {
+      const res = await fetch(`/api/tasks/${taskDetail.id}/comments`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: taskCommentInput.trim() }),
+      });
+      if (res.ok) {
+        const c = await res.json();
+        setTaskComments(prev => [...prev, c]);
+        setTaskCommentInput("");
+      }
+    } finally { setTaskCommentSending(false); }
+  }
+
+  async function saveTaskEdit() {
+    if (!taskDetail || !taskEditTitle.trim()) return;
+    await patchTask(taskDetail.id, {
+      title: taskEditTitle.trim(),
+      description: taskEditDesc.trim() || null,
+      dueAt: taskEditDue || null,
+      startsAt: taskEditStart || null,
+      assigneeId: taskEditAssigneeId || undefined,
+    });
+    // reload updated task
+    const res = await fetch("/api/tasks", { credentials: "include" });
+    if (res.ok) {
+      const all: CrmTask[] = await res.json();
+      const updated = all.find(t => t.id === taskDetail.id);
+      if (updated) setTaskDetail(updated);
+    }
+    setTaskEditMode(false);
+  }
+
+  // --- Chat functions ---
+  async function loadChatMessages(append = false) {
+    setChatLoading(true);
+    try {
+      const before = append && chatMessages.length > 0 ? `&before=${chatMessages[0].createdAt}` : "";
+      const res = await fetch(`/api/chat/messages?limit=50${before}`, { credentials: "include" });
+      if (res.ok) {
+        const msgs: ChatMessage[] = await res.json();
+        setChatMessages(prev => append ? [...msgs, ...prev] : msgs);
+      }
+    } finally { setChatLoading(false); }
+  }
+
+  async function pollChatMessages() {
+    try {
+      const res = await fetch("/api/chat/messages?limit=20", { credentials: "include" });
+      if (res.ok) {
+        const msgs: ChatMessage[] = await res.json();
+        setChatMessages(prev => {
+          if (prev.length === 0) return msgs;
+          const existIds = new Set(prev.map(m => m.id));
+          const newOnes = msgs.filter(m => !existIds.has(m.id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function sendChatMessage() {
+    const text = chatInput.trim();
+    if (!text || chatSending) return;
+    setChatSending(true);
+    setChatInput("");
+    try {
+      const res = await fetch("/api/chat/messages", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) {
+        const msg: ChatMessage = await res.json();
+        setChatMessages(prev => [...prev, msg]);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      }
+    } finally { setChatSending(false); }
+  }
+
+  async function loadChatUnread() {
+    try {
+      const res = await fetch("/api/chat/unread", { credentials: "include" });
+      if (res.ok) { const j = await res.json(); setChatUnread(j.count ?? 0); }
+    } catch { /* ignore */ }
+  }
+
+  async function markChatRead() {
+    await fetch("/api/chat/read", { method: "POST", credentials: "include" });
+    setChatUnread(0);
   }
 
   async function addMembership(userId: string, organizationId: string) {
@@ -1339,7 +1501,7 @@ export default function AppPage() {
               dashboard: isWorker ? "Мой кабинет" : "Обзор",
               deals: "Сделки", clients: "Клиенты",
               expenses: "Расходы", reports: "Отчёты",
-              staff: "Сотрудники", tasks: "Задачи",
+              staff: "Сотрудники", tasks: "Задачи", chat: "Чат",
               assistant: "AI Ассистент", settings: "Настройки", profile: "Профиль"
             };
             const NAV_SVG: Record<string, ReactElement> = {
@@ -1350,7 +1512,8 @@ export default function AppPage() {
               reports: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>,
               staff: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>,
               tasks: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
-              assistant: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+              chat: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+              assistant: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>,
               settings: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
               profile: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
             };
@@ -1363,6 +1526,9 @@ export default function AppPage() {
                   {t === "tasks" && taskPendingCount > 0 && (
                     <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center" }}>{taskPendingCount > 9 ? "9+" : taskPendingCount}</span>
                   )}
+                  {t === "chat" && chatUnread > 0 && (
+                    <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center" }}>{chatUnread > 9 ? "9+" : chatUnread}</span>
+                  )}
                 </span>
               </a>
             );
@@ -1372,8 +1538,9 @@ export default function AppPage() {
                 <>
                   {renderItem("dashboard")}
                   <div className="nav-divider" />
-                  <div className="nav-section">Задачи</div>
+                  <div className="nav-section">Задачи и чат</div>
                   {renderItem("tasks")}
+                  {renderItem("chat")}
                   <div className="nav-divider" />
                   <div className="nav-section">Аккаунт</div>
                   {renderItem("profile")}
@@ -1399,6 +1566,7 @@ export default function AppPage() {
                 <div className="nav-section">Команда</div>
                 {isAdmin && renderItem("staff")}
                 {renderItem("tasks")}
+                {renderItem("chat")}
 
                 <div className="nav-divider" />
                 <div className="nav-section">Система</div>
@@ -2584,6 +2752,8 @@ export default function AppPage() {
                         <div
                           key={t.id}
                           className={`task-card${isMine && t.status !== "DONE" && t.status !== "CANCELLED" ? " task-card--mine" : ""}${overdue ? " task-card--due" : ""}${t.status === "DONE" ? " task-card--done" : ""}`}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => void openTaskDetail(t)}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                             <h3 style={{ margin: 0, flex: 1 }}>{t.title}</h3>
@@ -2603,7 +2773,7 @@ export default function AppPage() {
                               </>
                             )}
                           </div>
-                          <div className="task-card-actions">
+                          <div className="task-card-actions" onClick={e => e.stopPropagation()}>
                             {isMine && t.status !== "DONE" && t.status !== "CANCELLED" && (
                               <>
                                 {t.status === "PENDING" && (
@@ -2615,6 +2785,7 @@ export default function AppPage() {
                             {isManager && (
                               <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>Удалить</button>
                             )}
+                            <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, marginLeft: "auto" }}>Открыть →</button>
                           </div>
                         </div>
                       );
@@ -2677,6 +2848,101 @@ export default function AppPage() {
                   </div>
                 </div>
               )}
+            </div>
+          ) : null}
+
+          {/* ===== CHAT ===== */}
+          {tab === "chat" ? (
+            <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", maxWidth: 860, margin: "0 auto" }}>
+              <div className="page-header" style={{ marginBottom: 12, flexShrink: 0 }}>
+                <div className="page-header-left">
+                  <div className="page-header-title">Командный чат</div>
+                  <div className="page-header-sub">Сообщения шифруются AES-256 перед сохранением в базе данных</div>
+                </div>
+              </div>
+
+              <div className="card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                {/* Messages */}
+                <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {chatLoading && chatMessages.length === 0 ? (
+                    <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Загрузка…</div>
+                  ) : chatMessages.length === 0 ? (
+                    <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>Чат пока пуст</div>
+                      <div style={{ fontSize: 13 }}>Напишите первое сообщение команде</div>
+                    </div>
+                  ) : chatMessages.map((m, i) => {
+                    const isMe = m.sender.id === user?.id;
+                    const prev = chatMessages[i - 1];
+                    const showSender = !prev || prev.sender.id !== m.sender.id;
+                    const msgDate = new Date(m.createdAt);
+                    const prevDate = prev ? new Date(prev.createdAt) : null;
+                    const showDate = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+                    return (
+                      <div key={m.id}>
+                        {showDate && (
+                          <div style={{ textAlign: "center", fontSize: 11, color: "var(--text-tertiary)", margin: "8px 0 4px", display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+                            {msgDate.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
+                            <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+                          </div>
+                        )}
+                        <div style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", gap: 8, alignItems: "flex-end" }}>
+                          {!isMe && (
+                            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, marginBottom: 2 }}>
+                              {(m.sender.name || m.sender.email)[0].toUpperCase()}
+                            </div>
+                          )}
+                          <div style={{ maxWidth: "72%", minWidth: 60 }}>
+                            {showSender && !isMe && (
+                              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginBottom: 3, paddingLeft: 4 }}>
+                                {m.sender.name || m.sender.email}
+                              </div>
+                            )}
+                            <div style={{
+                              background: isMe ? "var(--accent)" : "var(--bg-hover)",
+                              color: isMe ? "#fff" : "var(--text-primary)",
+                              borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                              padding: "10px 14px",
+                              fontSize: 14, lineHeight: 1.5,
+                              wordBreak: "break-word",
+                              boxShadow: isMe ? "0 2px 8px rgba(99,102,241,0.25)" : "var(--shadow-sm)",
+                            }}>
+                              {m.body}
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 3, textAlign: isMe ? "right" : "left", paddingLeft: isMe ? 0 : 4, paddingRight: isMe ? 4 : 0 }}>
+                              {msgDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={chatBottomRef} />
+                </div>
+
+                {/* Input */}
+                <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0 }}>
+                  <textarea
+                    className="form-input"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); } }}
+                    placeholder="Написать сообщение… (Enter — отправить, Shift+Enter — перенос)"
+                    rows={1}
+                    style={{ flex: 1, resize: "none", minHeight: 40, maxHeight: 120, overflowY: "auto", lineHeight: 1.5 }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    style={{ height: 40, minWidth: 40, padding: "0 14px" }}
+                    disabled={!chatInput.trim() || chatSending}
+                    onClick={() => void sendChatMessage()}
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -3595,6 +3861,181 @@ export default function AppPage() {
           </div>
         </div>
       ) : null}
+
+      {/* ===== TASK DETAIL DRAWER ===== */}
+      {taskDetail && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 70, backdropFilter: "blur(2px)" }}
+            onClick={() => setTaskDetail(null)}
+          />
+          <div style={{
+            position: "fixed", top: 0, right: 0, bottom: 0, width: "min(500px, 100vw)", zIndex: 71,
+            background: "var(--bg-card)", boxShadow: "-8px 0 40px rgba(0,0,0,0.2)",
+            display: "flex", flexDirection: "column", overflow: "hidden",
+          }}>
+            {/* Header */}
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {taskEditMode ? (
+                  <input
+                    className="form-input"
+                    value={taskEditTitle}
+                    onChange={e => setTaskEditTitle(e.target.value)}
+                    style={{ fontWeight: 700, fontSize: 16 }}
+                    autoFocus
+                  />
+                ) : (
+                  <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.3 }}>{taskDetail.title}</div>
+                )}
+                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 3 }}>
+                  от {taskDetail.createdBy.name || taskDetail.createdBy.email} · {new Date(taskDetail.createdAt).toLocaleDateString("ru-RU")}
+                </div>
+              </div>
+              {isManager && !taskEditMode && (
+                <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => {
+                  setTaskEditMode(true);
+                  setTaskEditTitle(taskDetail.title);
+                  setTaskEditDesc(taskDetail.description ?? "");
+                  setTaskEditDue(taskDetail.dueAt ? taskDetail.dueAt.slice(0, 16) : "");
+                  setTaskEditStart(taskDetail.startsAt ? taskDetail.startsAt.slice(0, 16) : "");
+                  setTaskEditAssigneeId(taskDetail.assignee.id);
+                  void loadTaskUserOptions();
+                }}>Редактировать</button>
+              )}
+              {taskEditMode && (
+                <>
+                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12 }} onClick={() => void saveTaskEdit()}>Сохранить</button>
+                  <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => setTaskEditMode(false)}>Отмена</button>
+                </>
+              )}
+              <button className="btn btn-ghost" style={{ height: 32, width: 32, padding: 0, fontSize: 18, flexShrink: 0 }} onClick={() => setTaskDetail(null)}>×</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Status + badge */}
+              {!taskEditMode && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {(() => {
+                    const stLabel: Record<TaskStatus, string> = { PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена" };
+                    const stClass: Record<TaskStatus, string> = { PENDING: "badge-amber", IN_PROGRESS: "badge-blue", DONE: "badge-green", CANCELLED: "badge-gray" };
+                    return <span className={`badge ${stClass[taskDetail.status]}`}>{stLabel[taskDetail.status]}</span>;
+                  })()}
+                  {taskDetail.dueAt && (
+                    <span style={{ fontSize: 12, color: new Date(taskDetail.dueAt) < new Date() && taskDetail.status !== "DONE" ? "var(--amber)" : "var(--text-tertiary)" }}>
+                      Срок: {new Date(taskDetail.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                  {/* Quick status actions for assignee */}
+                  {user?.id === taskDetail.assignee.id && taskDetail.status !== "DONE" && taskDetail.status !== "CANCELLED" && (
+                    <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+                      {taskDetail.status === "PENDING" && (
+                        <button className="btn btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "IN_PROGRESS" }).then(() => setTaskDetail(prev => prev ? { ...prev, status: "IN_PROGRESS" } : null))}>Взять в работу</button>
+                      )}
+                      <button className="btn btn-primary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "DONE" }).then(() => { setTaskDetail(prev => prev ? { ...prev, status: "DONE" } : null); void loadTaskPendingCount(); })}>Выполнено ✓</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Edit form */}
+              {taskEditMode && (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div>
+                    <div className="form-label">Описание</div>
+                    <textarea className="form-input" rows={3} value={taskEditDesc} onChange={e => setTaskEditDesc(e.target.value)} placeholder="Детали задачи" />
+                  </div>
+                  <div>
+                    <div className="form-label">Исполнитель</div>
+                    <select className="form-input" value={taskEditAssigneeId} onChange={e => setTaskEditAssigneeId(e.target.value)}>
+                      {taskUsersForSelect.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+                    </select>
+                  </div>
+                  <div className="g2">
+                    <div>
+                      <div className="form-label">Начало</div>
+                      <input className="form-input" type="datetime-local" value={taskEditStart} onChange={e => setTaskEditStart(e.target.value)} />
+                    </div>
+                    <div>
+                      <div className="form-label">Срок</div>
+                      <input className="form-input" type="datetime-local" value={taskEditDue} onChange={e => setTaskEditDue(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Description (view) */}
+              {!taskEditMode && taskDetail.description && (
+                <div>
+                  <div className="form-label" style={{ marginBottom: 6 }}>Описание</div>
+                  <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)", background: "var(--bg-metric)", borderRadius: 10, padding: "12px 14px" }}>
+                    {taskDetail.description}
+                  </div>
+                </div>
+              )}
+
+              {/* Info row */}
+              {!taskEditMode && (
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
+                  <span>👤 Исполнитель: <strong>{taskDetail.assignee.name || taskDetail.assignee.email}</strong></span>
+                  {taskDetail.startsAt && <span>📅 Начало: {new Date(taskDetail.startsAt).toLocaleDateString("ru-RU")}</span>}
+                </div>
+              )}
+
+              {/* Comments */}
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>
+                  Комментарии {taskComments.length > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({taskComments.length})</span>}
+                </div>
+                {taskCommentsLoading ? (
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
+                ) : taskComments.length === 0 ? (
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Комментариев пока нет — напишите первым!</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {taskComments.map(c => (
+                      <div key={c.id} style={{ display: "flex", gap: 10 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>
+                          {(c.author.name || c.author.email)[0].toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 3 }}>
+                            {c.author.name || c.author.email}
+                            <span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 8 }}>{new Date(c.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <div style={{ fontSize: 13, lineHeight: 1.5, background: "var(--bg-hover)", borderRadius: 10, padding: "8px 12px" }}>{c.body}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Comment input */}
+            <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0 }}>
+              <textarea
+                className="form-input"
+                value={taskCommentInput}
+                onChange={e => setTaskCommentInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitTaskComment(); } }}
+                placeholder="Написать комментарий… (Enter — отправить)"
+                rows={1}
+                style={{ flex: 1, resize: "none", minHeight: 38, maxHeight: 100, overflowY: "auto" }}
+              />
+              <button
+                className="btn btn-primary"
+                style={{ height: 38, minWidth: 38, padding: "0 12px" }}
+                disabled={!taskCommentInput.trim() || taskCommentSending}
+                onClick={() => void submitTaskComment()}
+              >
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -198,4 +198,25 @@ export class TasksService {
     await this.prisma.task.delete({ where: { id: taskId } });
     return { ok: true };
   }
+
+  async getComments(organizationId: string, taskId: string) {
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, organizationId } });
+    if (!task) throw new NotFoundException();
+    return this.prisma.taskComment.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async addComment(organizationId: string, taskId: string, authorId: string, body: string) {
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, organizationId } });
+    if (!task) throw new NotFoundException();
+    const text = body?.trim();
+    if (!text) throw new BadRequestException('body required');
+    return this.prisma.taskComment.create({
+      data: { taskId, authorId, body: text },
+      include: { author: { select: { id: true, name: true, email: true } } },
+    });
+  }
 }

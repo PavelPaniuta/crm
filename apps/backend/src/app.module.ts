@@ -18,6 +18,7 @@ import { AiModule } from './ai/ai.module';
 import { MembershipsModule } from './memberships/memberships.module';
 import { MailModule } from './mail/mail.module';
 import { TasksModule } from './tasks/tasks.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { TasksModule } from './tasks/tasks.module';
     MembershipsModule,
     MailModule,
     TasksModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -104,4 +104,28 @@ export class TasksController {
       id,
     );
   }
+
+  @Get(':id/comments')
+  @Roles(Role.WORKER)
+  listComments(
+    @Req() req: { user: { activeOrganizationId: string } },
+    @Param('id') id: string,
+  ) {
+    return this.tasks.getComments(req.user.activeOrganizationId, id);
+  }
+
+  @Post(':id/comments')
+  @Roles(Role.WORKER)
+  addComment(
+    @Req() req: { user: { id: string; activeOrganizationId: string } },
+    @Param('id') id: string,
+    @Body() body: { body: string },
+  ) {
+    return this.tasks.addComment(
+      req.user.activeOrganizationId,
+      id,
+      req.user.id,
+      body.body,
+    );
+  }
 }
