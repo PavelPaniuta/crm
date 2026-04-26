@@ -300,6 +300,17 @@ export default function AppPage() {
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
   const [pwdSaving, setPwdSaving] = useState(false);
 
+  // --- AI ---
+  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+  const [aiChatHistory, setAiChatHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatLoading, setAiChatLoading] = useState(false);
+  // AI template parser (inside template modal)
+  const [aiParseOpen, setAiParseOpen] = useState(false);
+  const [aiParseSample, setAiParseSample] = useState("");
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiParseError, setAiParseError] = useState<string | null>(null);
+
   // --- Staff ---
   const [staffData, setStaffData] = useState<any>(null);
   const [staffLoading, setStaffLoading] = useState(false);
@@ -352,6 +363,9 @@ export default function AppPage() {
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") loadProfile();
     if (tab === "staff") loadStaff();
+    if (tab === "reports" && aiConfigured === null) {
+      fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -417,6 +431,52 @@ export default function AppPage() {
       const res = await fetch(`/api/staff/${id}`, { credentials: "include" });
       if (res.ok) setStaffMember(await res.json());
     } finally { setStaffMemberLoading(false); }
+  }
+
+  async function sendAiMessage(msg?: string) {
+    const question = (msg ?? aiChatInput).trim();
+    if (!question) return;
+    const newHistory = [...aiChatHistory, { role: "user" as const, content: question }];
+    setAiChatHistory(newHistory);
+    setAiChatInput("");
+    setAiChatLoading(true);
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, history: aiChatHistory }),
+      });
+      const j = await res.json();
+      setAiChatHistory(h => [...h, { role: "assistant", content: j.answer }]);
+    } finally { setAiChatLoading(false); }
+  }
+
+  async function aiParseTemplate() {
+    if (!aiParseSample.trim()) return;
+    setAiParsing(true);
+    setAiParseError(null);
+    try {
+      const res = await fetch("/api/ai/parse-template", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sampleRows: aiParseSample }),
+      });
+      const j = await res.json();
+      if (j.error) { setAiParseError(j.error); return; }
+      // Fill template fields from AI response
+      setTplName(j.name ?? "");
+      setTplHasWorkers(j.hasWorkers ?? false);
+      setTplIncomeFieldKey(j.incomeFieldKey ?? "");
+      setTplFields((j.fields ?? []).map((f: any, i: number) => ({
+        _id: crypto.randomUUID(),
+        label: f.label ?? `Поле ${i + 1}`,
+        type: (f.type as FieldType) ?? "TEXT",
+        required: f.required ?? false,
+        options: f.options ?? "",
+      })));
+      setAiParseOpen(false);
+      setAiParseSample("");
+    } finally { setAiParsing(false); }
   }
 
   async function loadTemplates() {
@@ -1978,6 +2038,86 @@ export default function AppPage() {
                   </div>
                 </div>
               ) : null}
+              {/* ===== AI ANALYTICS CHAT ===== */}
+              <div className="card" style={{ padding: "20px 24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+                  <span style={{ fontSize: 22 }}>🤖</span>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>AI Аналитик</div>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                      {aiConfigured === false
+                        ? "Не настроен — добавьте OPENAI_API_KEY на сервере"
+                        : "Задайте вопрос по сделкам, воркерам, статистике"}
+                    </div>
+                  </div>
+                  {aiChatHistory.length > 0 && (
+                    <button className="btn btn-secondary" style={{ marginLeft: "auto", fontSize: 12 }}
+                      onClick={() => setAiChatHistory([])}>Очистить</button>
+                  )}
+                </div>
+
+                {aiChatHistory.length === 0 && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, marginBottom: 12 }}>
+                    {[
+                      "Кто топ воркер этого месяца?",
+                      "Какой общий доход?",
+                      "Проанализируй последние сделки",
+                      "Сравни воркеров по выплатам",
+                    ].map(q => (
+                      <button key={q} className="btn btn-secondary"
+                        style={{ fontSize: 12, padding: "6px 12px" }}
+                        onClick={() => sendAiMessage(q)}
+                        disabled={aiChatLoading || aiConfigured === false}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {aiChatHistory.length > 0 && (
+                  <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginTop: 14, marginBottom: 14, paddingRight: 4 }}>
+                    {aiChatHistory.map((m, i) => (
+                      <div key={i} style={{
+                        alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                        maxWidth: "80%",
+                        padding: "10px 14px",
+                        borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                        background: m.role === "user" ? "var(--accent)" : "var(--bg-metric)",
+                        color: m.role === "user" ? "#fff" : "var(--text-primary)",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        whiteSpace: "pre-wrap",
+                      }}>
+                        {m.content}
+                      </div>
+                    ))}
+                    {aiChatLoading && (
+                      <div style={{ alignSelf: "flex-start", padding: "10px 14px", borderRadius: "14px 14px 14px 4px", background: "var(--bg-metric)", fontSize: 13, color: "var(--text-tertiary)" }}>
+                        ⏳ Анализирую...
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <input
+                    className="form-input"
+                    value={aiChatInput}
+                    onChange={e => setAiChatInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
+                    placeholder={aiConfigured === false ? "AI не настроен..." : "Напишите вопрос..."}
+                    disabled={aiChatLoading || aiConfigured === false}
+                    style={{ flex: 1 }}
+                  />
+                  <button className="btn btn-primary"
+                    onClick={() => sendAiMessage()}
+                    disabled={aiChatLoading || !aiChatInput.trim() || aiConfigured === false}
+                    style={{ padding: "0 20px" }}>
+                    {aiChatLoading ? "..." : "→"}
+                  </button>
+                </div>
+              </div>
+
             </div>
           ) : null}
 
@@ -2529,6 +2669,39 @@ export default function AppPage() {
               <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>Отмена</button>
             </div>
             <div className="card-body" style={{ display: "grid", gap: 18 }}>
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setAiParseOpen(p => !p)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
+                >
+                  <span>🤖</span> {aiParseOpen ? "Скрыть AI" : "Создать шаблон с помощью AI"}
+                </button>
+              </div>
+
+              {aiParseOpen && (
+                <div style={{ border: "1px solid var(--accent)44", borderRadius: 12, padding: 16, background: "var(--accent)08" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "var(--accent)" }}>🤖 AI-парсер шаблона</div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
+                    Вставь 2–5 строк из твоей таблицы. AI определит колонки, типы полей и базу для расчёта выплат воркеров.
+                  </div>
+                  <textarea
+                    className="form-input"
+                    value={aiParseSample}
+                    onChange={e => setAiParseSample(e.target.value)}
+                    style={{ height: 100, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", paddingTop: 10 }}
+                    placeholder={"21,04  Ди+олх(Н)  75/25  DP  eurocom  6838  lealnoshdf@gazeta.pl  )cvhLG8Nl8  Ант\n22.04  Ди+Вл+Бо  45/30/25  DP  eurocom  5809  kolakn@gazeta.pl  47qDV1)WS3  Раф"}
+                  />
+                  {aiParseError && <div style={{ marginTop: 8, fontSize: 12, color: "var(--red)" }}>{aiParseError}</div>}
+                  <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button className="btn btn-secondary" onClick={() => { setAiParseOpen(false); setAiParseSample(""); setAiParseError(null); }}>Отмена</button>
+                    <button className="btn btn-primary" onClick={aiParseTemplate} disabled={aiParsing || !aiParseSample.trim()}>
+                      {aiParsing ? "Анализирую..." : "Анализировать →"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="form-label">Название шаблона *</div>

@@ -14,6 +14,7 @@ import { ReportsModule } from './reports/reports.module';
 import { DealTemplatesModule } from './deal-templates/deal-templates.module';
 import { ProfileModule } from './profile/profile.module';
 import { StaffModule } from './staff/staff.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { StaffModule } from './staff/staff.module';
     DealTemplatesModule,
     ProfileModule,
     StaffModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
