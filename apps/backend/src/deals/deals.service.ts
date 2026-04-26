@@ -51,6 +51,7 @@ export class DealsService {
       title: string;
       clientId?: string | null;
       dealDate?: string;
+      status?: DealStatus;
       comment?: string | null;
       templateId?: string | null;
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
@@ -62,6 +63,7 @@ export class DealsService {
         title: data.title,
         clientId: data.clientId ?? null,
         dealDate: data.dealDate ? new Date(data.dealDate) : new Date(),
+        status: data.status ?? 'NEW',
         comment: data.comment ?? null,
         templateId: data.templateId ?? null,
         dataRows: data.dataRows
@@ -70,6 +72,16 @@ export class DealsService {
       },
       include: this.dealInclude,
     });
+  }
+
+  async delete(organizationId: string, id: string) {
+    const deal = await this.prisma.deal.findFirst({ where: { id, organizationId } });
+    if (!deal) throw new NotFoundException();
+    await this.prisma.dealDataRow.deleteMany({ where: { dealId: id } });
+    await this.prisma.dealAmount.deleteMany({ where: { dealId: id } });
+    await this.prisma.dealParticipant.deleteMany({ where: { dealId: id } });
+    await this.prisma.deal.delete({ where: { id } });
+    return { ok: true };
   }
 
   async update(

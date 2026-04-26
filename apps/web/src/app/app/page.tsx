@@ -415,6 +415,16 @@ export default function AppPage() {
     } finally { setUsersLoading(false); }
   }
 
+  async function deleteDeal(id: string) {
+    if (!confirm("Удалить сделку? Это действие нельзя отменить.")) return;
+    const res = await fetch(`/api/deals/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok || res.status === 204) {
+      setDeals(ds => ds.filter(d => d.id !== id));
+    } else {
+      alert("Не удалось удалить сделку");
+    }
+  }
+
   async function loadDeals() {
     setDealsLoading(true);
     try {
@@ -495,29 +505,54 @@ export default function AppPage() {
 
   async function confirmAgentAction() {
     if (!agentPending) return;
+    setAgentPending(null);
     try {
       if (agentPending.type === "create_deal") {
         const p = agentPending.params;
-        const body: any = {
-          dealDate: p.date,
-          status: p.status,
-          title: p.title ?? "",
-          comment: p.comment ?? "",
-          participants: p.participants ?? [],
-          amounts: p.amounts ?? [],
-          dataRows: p.dataRows ?? [],
-          templateId: p.templateId ?? null,
-        };
+        // Step 1: create deal
         const res = await fetch("/api/deals", {
           method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: p.title ?? "",
+            dealDate: p.date,
+            status: p.status ?? "NEW",
+            comment: p.comment ?? "",
+            templateId: p.templateId ?? null,
+            dataRows: (p.dataRows ?? []).map((r: any, i: number) => ({ data: r, order: i })),
+          }),
         });
-        if (res.ok) {
-          setAgentHistory(h => [...h, { role: "assistant", content: "✅ Сделка создана! Можете просмотреть её во вкладке «Сделки»." }]);
-        } else {
+        if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка создания: ${err.message ?? res.status}` }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка создания сделки: ${err.message ?? res.status}` }]);
+          return;
         }
+        const deal = await res.json();
+        // Step 2: set participants
+        const parts = (p.participants ?? []).filter((x: any) => x.userId);
+        if (parts.length > 0) {
+          await fetch(`/api/deals/${deal.id}/participants`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ participants: parts }),
+          });
+        }
+        // Step 3: set amounts (classic deal)
+        const amounts = (p.amounts ?? []).filter((a: any) => a.amountOut);
+        if (amounts.length > 0) {
+          await fetch(`/api/deals/${deal.id}/amounts`, {
+            method: "PUT", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amounts: amounts.map((a: any) => ({
+              amountIn: a.amountIn ?? 0, currencyIn: a.currencyIn ?? "USD",
+              amountOut: a.amountOut, currencyOut: a.currencyOut ?? "USD",
+              bank: a.bank ?? "", operationType: a.operationType ?? "ATM",
+            })) }),
+          });
+        }
+        const wMap = agentPending.workersMap ?? {};
+        const partsText = parts.map((x: any) => `${wMap[x.userId] ?? x.userId} (${x.pct}%)`).join(" + ");
+        setAgentHistory(h => [...h, { role: "assistant", content: `✅ Сделка создана!\n${partsText ? `👥 ${partsText}` : ""}\nОткройте вкладку «Сделки» чтобы посмотреть.` }]);
       } else if (agentPending.type === "create_expense") {
         const p = agentPending.params;
         const res = await fetch("/api/expenses", {
@@ -528,10 +563,12 @@ export default function AppPage() {
         if (res.ok) {
           setAgentHistory(h => [...h, { role: "assistant", content: "✅ Расход записан!" }]);
         } else {
-          setAgentHistory(h => [...h, { role: "assistant", content: "❌ Ошибка создания расхода" }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: "❌ Ошибка записи расхода" }]);
         }
       }
-    } finally { setAgentPending(null); }
+    } catch (e: any) {
+      setAgentHistory(h => [...h, { role: "assistant", content: `❌ ${e.message}` }]);
+    }
   }
 
   function startVoice() {
@@ -1529,22 +1566,34 @@ export default function AppPage() {
                           .filter((d) => dealFilter === "ALL" || d.status === dealFilter)
                           .map((d) => {
                             const totalOut = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-                            const workerNames = d.participants.map((p) => p.user.email.split("@")[0]).join(", ");
+                            const workerParts = d.participants.map((p) => {
+                              const label = p.user.name || p.user.email.split("@")[0];
+                              return `${label} ${p.pct}%`;
+                            }).join(" · ");
                             return (
-                              <tr key={d.id} onClick={() => openDealEditModal(d)} style={{ cursor: "pointer" }}>
-                                <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                              <tr key={d.id} style={{ cursor: "pointer" }}>
+                                <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} onClick={() => openDealEditModal(d)}>
                                   {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}
                                 </td>
-                                <td>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
-                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>{workerNames || "—"}</td>
-                                <td>
+                                <td onClick={() => openDealEditModal(d)}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
+                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }} onClick={() => openDealEditModal(d)}>{workerParts || "—"}</td>
+                                <td onClick={() => openDealEditModal(d)}>
                                   <span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>
                                     {d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}
                                   </span>
                                 </td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} onClick={() => openDealEditModal(d)}>
                                   {totalOut.toLocaleString()}
                                 </td>
+                                {isAdmin && (
+                                  <td style={{ width: 36, padding: "0 4px" }}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); deleteDeal(d.id); }}
+                                      style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
+                                      title="Удалить сделку"
+                                    >✕</button>
+                                  </td>
+                                )}
                               </tr>
                             );
                           })

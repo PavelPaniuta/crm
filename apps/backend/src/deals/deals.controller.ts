@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { DealsService } from './deals.service';
 import { DealStatus, OperationType } from '@prisma/client';
@@ -31,9 +31,15 @@ export class DealsController {
   @Post()
   create(
     @Req() req: any,
-    @Body() body: { title: string; clientId?: string | null; dealDate?: string; comment?: string | null },
+    @Body() body: { title: string; clientId?: string | null; dealDate?: string; status?: DealStatus; comment?: string | null; templateId?: string | null; dataRows?: Array<{ data: Record<string, unknown>; order?: number }> },
   ) {
     return this.deals.create(req.user.activeOrganizationId, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async delete(@Req() req: any, @Param('id') id: string) {
+    return this.deals.delete(req.user.activeOrganizationId, id);
   }
 
   @Patch(':id')
