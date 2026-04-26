@@ -46,4 +46,21 @@ export class AiController {
       return { answer: `Ошибка: ${e.message ?? 'неизвестная ошибка'}` };
     }
   }
+
+  @Post('agent')
+  async agent(@Req() req: any, @Body() body: { message: string; history?: { role: 'user' | 'assistant'; content: string }[] }) {
+    if (!this.ai.isConfigured()) {
+      return { text: 'AI не настроен. Добавьте OPENAI_API_KEY в переменные окружения.' };
+    }
+    try {
+      return await this.ai.agentChat(
+        req.user.activeOrganizationId,
+        req.user.role,
+        body.message,
+        body.history ?? [],
+      );
+    } catch (e: any) {
+      return { text: `Ошибка: ${e.message ?? 'неизвестная ошибка'}` };
+    }
+  }
 }

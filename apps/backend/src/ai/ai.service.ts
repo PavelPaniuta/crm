@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -177,5 +178,258 @@ ${recentSummary}
     });
 
     return completion.choices[0]?.message?.content ?? 'Нет ответа';
+  }
+
+  // ─── AI Agent with Function Calling ───────────────────────────────────────
+
+  async agentChat(
+    orgId: string,
+    role: string,
+    message: string,
+    history: { role: 'user' | 'assistant'; content: string }[],
+  ): Promise<{ text: string; pendingAction?: Record<string, unknown> }> {
+    if (!this.openai) throw new Error('AI не настроен');
+
+    // Load context: workers + templates for this org
+    const [workers, templates, recentDeals] = await Promise.all([
+      this.prisma.user.findMany({
+        where: role === 'SUPER_ADMIN' ? {} : { organizationId: orgId },
+        select: { id: true, name: true, email: true, position: true, organizationId: true,
+          organization: { select: { name: true } } },
+      }),
+      this.prisma.dealTemplate.findMany({
+        where: role === 'SUPER_ADMIN' ? {} : { organizationId: orgId },
+        include: { fields: { orderBy: { order: 'asc' } } },
+      }),
+      this.prisma.deal.findMany({
+        where: role === 'SUPER_ADMIN' ? {} : { organizationId: orgId },
+        select: { id: true, title: true, status: true, dealDate: true,
+          participants: { select: { pct: true, user: { select: { id: true, name: true, email: true } } } },
+          amounts: { select: { amountOut: true, currencyOut: true } },
+          template: { select: { name: true } },
+        },
+        orderBy: { dealDate: 'desc' },
+        take: 30,
+      }),
+    ]);
+
+    const workersCtx = workers.map(w =>
+      `- ${w.name || w.email} | ID: ${w.id}${w.position ? ` | должность: ${w.position}` : ''}${(w as any).organization ? ` | офис: ${(w as any).organization.name}` : ''}`
+    ).join('\n');
+
+    const templatesCtx = templates.map(t =>
+      `- "${t.name}" | ID: ${t.id} | поля: ${t.fields.map(f => f.label).join(', ')}`
+    ).join('\n');
+
+    const dealsCtx = recentDeals.slice(0, 10).map(d => {
+      const income = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+      const parts = d.participants.map(p => `${p.user.name || p.user.email} ${p.pct}%`).join('+');
+      return `ID:${d.id.slice(-6)} | ${d.status} | ${income || '—'}${d.amounts[0]?.currencyOut || ''} | ${parts || 'нет'} | ${d.dealDate ? new Date(d.dealDate).toLocaleDateString('ru-RU') : '—'}`;
+    }).join('\n');
+
+    const systemPrompt = `Ты — AI ассистент CRM системы. Отвечай на русском языке.
+
+ВОРКЕРЫ (сотрудники):
+${workersCtx || 'нет данных'}
+
+ШАБЛОНЫ СДЕЛОК:
+${templatesCtx || 'нет шаблонов'}
+
+ПОСЛЕДНИЕ СДЕЛКИ:
+${dealsCtx || 'нет сделок'}
+
+ПРАВИЛА:
+1. При создании сделки — используй точные ID из списка воркеров выше
+2. Если имя неоднозначно — уточни у пользователя
+3. Перед созданием — покажи summary и используй tool confirm_create_deal
+4. Дату "вчера" = ${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}, "сегодня" = ${new Date().toISOString().slice(0, 10)}
+5. Если чего-то не знаешь (ID, шаблон) — спроси
+6. Для статистики — используй get_stats tool`;
+
+    const tools: ChatCompletionTool[] = [
+      {
+        type: 'function',
+        function: {
+          name: 'confirm_create_deal',
+          description: 'Подготовить сделку для подтверждения пользователем. Вызывай ТОЛЬКО когда у тебя есть все данные.',
+          parameters: {
+            type: 'object',
+            properties: {
+              date: { type: 'string', description: 'Дата в формате YYYY-MM-DD' },
+              templateId: { type: 'string', description: 'ID шаблона или null для классической сделки' },
+              participants: {
+                type: 'array',
+                items: { type: 'object', properties: { userId: { type: 'string' }, pct: { type: 'number' } }, required: ['userId', 'pct'] },
+                description: 'Участники с процентами',
+              },
+              amounts: {
+                type: 'array',
+                items: { type: 'object', properties: { amountOut: { type: 'number' }, currencyOut: { type: 'string' }, bank: { type: 'string' } } },
+                description: 'Суммы для классической сделки',
+              },
+              dataRows: {
+                type: 'array',
+                items: { type: 'object' },
+                description: 'Данные для шаблонной сделки (массив объектов с ключами из шаблона)',
+              },
+              title: { type: 'string', description: 'Заголовок/описание сделки' },
+              status: { type: 'string', enum: ['NEW', 'IN_PROGRESS', 'CLOSED'], description: 'Статус сделки' },
+              comment: { type: 'string', description: 'Комментарий' },
+            },
+            required: ['date', 'status'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'confirm_create_expense',
+          description: 'Подготовить расход для подтверждения пользователем.',
+          parameters: {
+            type: 'object',
+            properties: {
+              description: { type: 'string', description: 'Описание расхода' },
+              amount: { type: 'number', description: 'Сумма' },
+              currency: { type: 'string', description: 'Валюта (USD, EUR, UAH...)' },
+            },
+            required: ['description', 'amount'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_stats',
+          description: 'Получить текущую статистику по сделкам и воркерам',
+          parameters: {
+            type: 'object',
+            properties: {
+              period: { type: 'string', enum: ['today', 'week', 'month', 'all'], description: 'Период' },
+            },
+            required: [],
+          },
+        },
+      },
+    ];
+
+    const messages: ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...history.map(h => ({ role: h.role, content: h.content } as ChatCompletionMessageParam)),
+      { role: 'user', content: message },
+    ];
+
+    const response = await this.openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages,
+      tools,
+      tool_choice: 'auto',
+      temperature: 0.3,
+    });
+
+    const msg = response.choices[0].message;
+
+    // Handle tool calls
+    if (msg.tool_calls?.length) {
+      const call = msg.tool_calls[0];
+      const args = JSON.parse(call.function.arguments);
+
+      if (call.function.name === 'confirm_create_deal') {
+        // Build human-readable preview
+        const partsText = (args.participants || []).map((p: any) => {
+          const w = workers.find(x => x.id === p.userId);
+          return `${w?.name || w?.email || p.userId} (${p.pct}%)`;
+        }).join(' + ');
+        const amountText = (args.amounts || []).map((a: any) => `${a.amountOut} ${a.currencyOut || 'USD'}`).join(', ');
+        const tpl = args.templateId ? templates.find(t => t.id === args.templateId) : null;
+
+        const preview = [
+          `📅 Дата: ${args.date}`,
+          tpl ? `📋 Шаблон: ${tpl.name}` : '',
+          partsText ? `👥 Участники: ${partsText}` : '',
+          amountText ? `💰 Сумма: ${amountText}` : '',
+          args.title ? `📝 ${args.title}` : '',
+          `✅ Статус: ${{ NEW: 'Новая', IN_PROGRESS: 'В работе', CLOSED: 'Закрыта' }[args.status as string] || args.status}`,
+          args.comment ? `💬 ${args.comment}` : '',
+        ].filter(Boolean).join('\n');
+
+        return {
+          text: `Создаю сделку:\n\n${preview}\n\nПодтвердить?`,
+          pendingAction: { type: 'create_deal', params: args, workersMap: Object.fromEntries(workers.map(w => [w.id, w.name || w.email])) },
+        };
+      }
+
+      if (call.function.name === 'confirm_create_expense') {
+        return {
+          text: `Записываю расход:\n\n💸 ${args.description}\n💰 ${args.amount} ${args.currency || 'USD'}\n\nПодтвердить?`,
+          pendingAction: { type: 'create_expense', params: args },
+        };
+      }
+
+      if (call.function.name === 'get_stats') {
+        const stats = await this.getStatsForAgent(orgId, role, args.period || 'all');
+        // Continue conversation with stats
+        const followUp = await this.openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          messages: [
+            ...messages,
+            { role: 'assistant', content: null, tool_calls: msg.tool_calls } as ChatCompletionMessageParam,
+            { role: 'tool', tool_call_id: call.id, content: JSON.stringify(stats) } as ChatCompletionMessageParam,
+          ],
+          temperature: 0.3,
+        });
+        return { text: followUp.choices[0].message.content ?? 'Нет ответа' };
+      }
+    }
+
+    return { text: msg.content ?? 'Нет ответа' };
+  }
+
+  private async getStatsForAgent(orgId: string, role: string, period: string) {
+    const now = new Date();
+    let fromDate: Date | undefined;
+    if (period === 'today') fromDate = new Date(now.toISOString().slice(0, 10));
+    else if (period === 'week') { fromDate = new Date(now); fromDate.setDate(now.getDate() - 7); }
+    else if (period === 'month') { fromDate = new Date(now); fromDate.setMonth(now.getMonth() - 1); }
+
+    const where: any = role === 'SUPER_ADMIN' ? {} : { organizationId: orgId };
+    if (fromDate) where.dealDate = { gte: fromDate };
+
+    const [deals, expenses] = await Promise.all([
+      this.prisma.deal.findMany({
+        where,
+        include: { amounts: true, participants: { include: { user: { select: { name: true, email: true } } } }, template: { select: { incomeFieldKey: true } }, dataRows: { select: { data: true } } },
+      }),
+      this.prisma.expense.findMany({ where: role === 'SUPER_ADMIN' ? (fromDate ? { createdAt: { gte: fromDate } } : {}) : (fromDate ? { organizationId: orgId, createdAt: { gte: fromDate } } : { organizationId: orgId }) }),
+    ]);
+
+    const income = deals.reduce((s, d) => {
+      const classic = d.amounts.reduce((a, x) => a + Number(x.amountOut || 0), 0);
+      const tpl = d.template?.incomeFieldKey ? d.dataRows.reduce((a, r) => a + (Number((r.data as Record<string,unknown>)[d.template!.incomeFieldKey!]) || 0), 0) : 0;
+      return s + classic + tpl;
+    }, 0);
+
+    const expTotal = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+    const wMap: Record<string, { name: string; deals: number; payout: number }> = {};
+    for (const d of deals) {
+      const base = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0) ||
+        (d.template?.incomeFieldKey ? d.dataRows.reduce((s, r) => s + (Number((r.data as Record<string,unknown>)[d.template!.incomeFieldKey!]) || 0), 0) : 0);
+      for (const p of d.participants) {
+        const uid = p.user.name || p.user.email;
+        if (!wMap[uid]) wMap[uid] = { name: uid, deals: 0, payout: 0 };
+        wMap[uid].deals++;
+        wMap[uid].payout += Math.round(base * p.pct / 100 * 100) / 100;
+      }
+    }
+
+    return {
+      period,
+      totalDeals: deals.length,
+      closedDeals: deals.filter(d => d.status === 'CLOSED').length,
+      income: Math.round(income * 100) / 100,
+      expenses: Math.round(expTotal * 100) / 100,
+      profit: Math.round((income - expTotal) * 100) / 100,
+      workers: Object.values(wMap).sort((a, b) => b.payout - a.payout),
+    };
   }
 }

@@ -52,7 +52,7 @@ type DealWorker = {
   organization?: { name: string };
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff";
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "assistant";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX";
@@ -301,6 +301,14 @@ export default function AppPage() {
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
   const [pwdSaving, setPwdSaving] = useState(false);
 
+  // --- AI Agent ---
+  const [agentHistory, setAgentHistory] = useState<{ role: "user" | "assistant"; content: string; pendingAction?: any }[]>([]);
+  const [agentInput, setAgentInput] = useState("");
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentPending, setAgentPending] = useState<{ type: string; params: any; workersMap?: Record<string, string> } | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const agentEndRef = typeof window !== "undefined" ? null : null;
+
   // --- AI ---
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [aiChatHistory, setAiChatHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
@@ -340,6 +348,7 @@ export default function AppPage() {
     if (tab === "settings") return "Настройки";
     if (tab === "profile") return "Мой профиль";
     if (tab === "staff") return "Сотрудники";
+    if (tab === "assistant") return "AI Ассистент";
     return "MyCRM";
   }, [tab]);
 
@@ -450,6 +459,88 @@ export default function AppPage() {
       const j = await res.json();
       setAiChatHistory(h => [...h, { role: "assistant", content: j.answer }]);
     } finally { setAiChatLoading(false); }
+  }
+
+  async function sendAgentMessage(msg?: string) {
+    const text = (msg ?? agentInput).trim();
+    if (!text || agentLoading) return;
+    const newHistory = [...agentHistory, { role: "user" as const, content: text }];
+    setAgentHistory(newHistory);
+    setAgentInput("");
+    setAgentPending(null);
+    setAgentLoading(true);
+    try {
+      const res = await fetch("/api/ai/agent", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: agentHistory.map(h => ({ role: h.role, content: h.content })),
+        }),
+      });
+      const j = await res.json();
+      const assistantMsg = { role: "assistant" as const, content: j.text ?? "", pendingAction: j.pendingAction };
+      setAgentHistory(h => [...h, assistantMsg]);
+      if (j.pendingAction) setAgentPending(j.pendingAction);
+    } finally { setAgentLoading(false); }
+  }
+
+  async function confirmAgentAction() {
+    if (!agentPending) return;
+    try {
+      if (agentPending.type === "create_deal") {
+        const p = agentPending.params;
+        const body: any = {
+          dealDate: p.date,
+          status: p.status,
+          title: p.title ?? "",
+          comment: p.comment ?? "",
+          participants: p.participants ?? [],
+          amounts: p.amounts ?? [],
+          dataRows: p.dataRows ?? [],
+          templateId: p.templateId ?? null,
+        };
+        const res = await fetch("/api/deals", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          setAgentHistory(h => [...h, { role: "assistant", content: "✅ Сделка создана! Можете просмотреть её во вкладке «Сделки»." }]);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка создания: ${err.message ?? res.status}` }]);
+        }
+      } else if (agentPending.type === "create_expense") {
+        const p = agentPending.params;
+        const res = await fetch("/api/expenses", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: p.description, amount: p.amount, currency: p.currency ?? "USD" }),
+        });
+        if (res.ok) {
+          setAgentHistory(h => [...h, { role: "assistant", content: "✅ Расход записан!" }]);
+        } else {
+          setAgentHistory(h => [...h, { role: "assistant", content: "❌ Ошибка создания расхода" }]);
+        }
+      }
+    } finally { setAgentPending(null); }
+  }
+
+  function startVoice() {
+    if (typeof window === "undefined") return;
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("Браузер не поддерживает голосовой ввод. Используйте Chrome или Edge."); return; }
+    const rec = new SR();
+    rec.lang = "ru-RU";
+    rec.interimResults = false;
+    rec.onstart = () => setIsListening(true);
+    rec.onend = () => setIsListening(false);
+    rec.onerror = () => setIsListening(false);
+    rec.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript;
+      setAgentInput(transcript);
+    };
+    rec.start();
   }
 
   async function aiParseTemplate() {
@@ -1060,7 +1151,7 @@ export default function AppPage() {
 
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          {(["dashboard", "deals", "clients", "expenses", "reports", "staff", "settings", "profile"] as Tab[])
+          {(["dashboard", "deals", "clients", "expenses", "reports", "staff", "assistant", "settings", "profile"] as Tab[])
             .filter((t) => {
               if (isWorker) return t === "dashboard" || t === "profile";
               if (!isAdmin) return t !== "reports" && t !== "settings" && t !== "staff";
@@ -1069,12 +1160,13 @@ export default function AppPage() {
             .map((t) => {
               const NAV_ICONS: Record<string, string> = {
                 dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡",
-                staff: "◫", settings: "⊕", profile: "◉"
+                staff: "◫", assistant: "✦", settings: "⊕", profile: "◉"
               };
               const NAV_LABELS: Record<string, string> = {
                 dashboard: isWorker ? "Мой кабинет" : "Dashboard",
                 deals: "Сделки", clients: "Клиенты",
-                expenses: "Расходы", reports: "Отчёты", staff: "Сотрудники", settings: "Настройки", profile: "Мой профиль"
+                expenses: "Расходы", reports: "Отчёты", staff: "Сотрудники",
+                assistant: "AI Ассистент", settings: "Настройки", profile: "Мой профиль"
               };
               return (
                 <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
@@ -2116,6 +2208,155 @@ export default function AppPage() {
                     style={{ padding: "0 20px" }}>
                     {aiChatLoading ? "..." : "→"}
                   </button>
+                </div>
+              </div>
+
+            </div>
+          ) : null}
+
+          {/* ===== AI ASSISTANT ===== */}
+          {tab === "assistant" ? (
+            <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", maxWidth: 820, margin: "0 auto", gap: 0 }}>
+
+              {/* Header */}
+              <div className="card" style={{ padding: "16px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>✦</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>AI Ассистент</div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                    Создавайте сделки и расходы голосом или текстом — на любом языке
+                  </div>
+                </div>
+                {agentHistory.length > 0 && (
+                  <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { setAgentHistory([]); setAgentPending(null); }}>
+                    Очистить
+                  </button>
+                )}
+              </div>
+
+              {/* Messages */}
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingBottom: 8 }}>
+                {agentHistory.length === 0 ? (
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "40px 20px" }}>
+                    <div style={{ fontSize: 48 }}>✦</div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Чем могу помочь?</div>
+                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>Надиктуйте или напишите — я создам сделку, подсчитаю статистику или отвечу на вопрос</div>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 600 }}>
+                      {[
+                        "Запиши сделку: вчера Ди и олх взяли 6838 от eurocom 75/25, закрыл Ант",
+                        "Сколько заработал каждый воркер за этот месяц?",
+                        "Запиши расход: аренда офиса 500$",
+                        "Покажи статистику за неделю",
+                        "Какой доход за апрель?",
+                      ].map(q => (
+                        <button key={q} className="btn btn-secondary" style={{ fontSize: 12, padding: "8px 14px", textAlign: "left", lineHeight: 1.4 }}
+                          onClick={() => sendAgentMessage(q)} disabled={agentLoading}>
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  agentHistory.map((m, i) => (
+                    <div key={i} style={{
+                      display: "flex",
+                      justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                    }}>
+                      {m.role === "assistant" && (
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, marginRight: 8, marginTop: 2 }}>✦</div>
+                      )}
+                      <div style={{
+                        maxWidth: "75%",
+                        padding: "12px 16px",
+                        borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                        background: m.role === "user" ? "var(--accent)" : "var(--bg-card)",
+                        border: m.role === "assistant" ? "1px solid var(--border-light)" : "none",
+                        color: m.role === "user" ? "#fff" : "var(--text-primary)",
+                        fontSize: 14,
+                        lineHeight: 1.6,
+                        whiteSpace: "pre-wrap",
+                      }}>
+                        {m.content}
+                        {/* Confirm buttons */}
+                        {m.role === "assistant" && m.pendingAction && agentPending && i === agentHistory.length - 1 && (
+                          <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-light)" }}>
+                            <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={confirmAgentAction}>
+                              ✅ Подтвердить
+                            </button>
+                            <button className="btn btn-secondary" style={{ fontSize: 13 }}
+                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено. Что нужно изменить?" }]); }}>
+                              ✏️ Изменить
+                            </button>
+                            <button className="btn btn-secondary" style={{ fontSize: 13, color: "var(--red)" }}
+                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено." }]); }}>
+                              ✕ Отмена
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+                {agentLoading && (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✦</div>
+                    <div style={{ padding: "12px 16px", borderRadius: "18px 18px 18px 4px", background: "var(--bg-card)", border: "1px solid var(--border-light)", fontSize: 14, color: "var(--text-tertiary)" }}>
+                      <span style={{ display: "inline-flex", gap: 4 }}>
+                        <span style={{ animation: "pulse 1s ease-in-out infinite" }}>●</span>
+                        <span style={{ animation: "pulse 1s ease-in-out 0.2s infinite" }}>●</span>
+                        <span style={{ animation: "pulse 1s ease-in-out 0.4s infinite" }}>●</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input */}
+              <div className="card" style={{ padding: "12px 16px", flexShrink: 0, marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                  <textarea
+                    className="form-input"
+                    value={agentInput}
+                    onChange={e => setAgentInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAgentMessage(); } }}
+                    placeholder="Напишите или надиктуйте... (Enter — отправить, Shift+Enter — новая строка)"
+                    disabled={agentLoading}
+                    rows={2}
+                    style={{ flex: 1, resize: "none", lineHeight: 1.5, paddingTop: 10 }}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button
+                      onClick={startVoice}
+                      disabled={agentLoading}
+                      title="Голосовой ввод (Chrome/Edge)"
+                      style={{
+                        width: 44, height: 44, borderRadius: 12, border: "none",
+                        background: isListening ? "#ef4444" : "var(--bg-hover)",
+                        cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.2s",
+                        boxShadow: isListening ? "0 0 0 4px #ef444433" : "none",
+                      }}
+                    >
+                      {isListening ? "⏹" : "🎤"}
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => sendAgentMessage()}
+                      disabled={agentLoading || !agentInput.trim()}
+                      style={{ width: 44, height: 44, padding: 0, borderRadius: 12, fontSize: 18 }}
+                    >→</button>
+                  </div>
+                </div>
+                {isListening && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#ef4444", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1s ease-in-out infinite" }} />
+                    Говорите... (Chrome слушает)
+                  </div>
+                )}
+                <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-tertiary)" }}>
+                  Можно вставить несколько строк из таблицы — AI создаст все сделки сразу
                 </div>
               </div>
 
