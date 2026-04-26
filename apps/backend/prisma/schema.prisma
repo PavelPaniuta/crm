@@ -92,16 +92,21 @@ model User {
   receivedMessages  ChatMessage[] @relation("MsgReceiver")
   chatReadAs        ChatLastRead[] @relation("ChatReader")
   chatReadOther     ChatLastRead[] @relation("ChatOther")
+  auditLogs         AuditLog[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  createdAt DateTime @default(now())
-  expiresAt DateTime
+  id           String   @id @default(cuid())
+  token        String   @unique
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  lastActiveAt DateTime @default(now())
+
+  ip        String?
+  userAgent String?
 
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -109,6 +114,26 @@ model Session {
   activeOrganizationId String?
 
   @@index([userId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String   // LOGIN, LOGOUT, CREATE_DEAL, UPDATE_DEAL, etc.
+  entityType     String?  // deal | client | expense | task | user | session
+  entityId       String?
+  details        Json?    // snapshot of what changed
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  @@index([userId])
+  @@index([organizationId, createdAt])
+  @@index([createdAt])
 }
 
 model Client {

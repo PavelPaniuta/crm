@@ -14,6 +14,7 @@ import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { AuditService, getIp, getUa } from '../audit/audit.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -23,17 +24,37 @@ export class AuthController {
     private auth: AuthService,
     private prisma: PrismaService,
     private mail: MailService,
+    private audit: AuditService,
   ) {}
 
   @Post('login')
   async login(
     @Body() body: { email: string; password: string },
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { token, expiresAt, user } = await this.auth.login(
-      body.email,
-      body.password,
-    );
+    const ip = getIp(req);
+    const ua = getUa(req);
+
+    let loginResult: Awaited<ReturnType<AuthService['login']>>;
+    try {
+      loginResult = await this.auth.login(body.email, body.password, ip, ua);
+    } catch (err) {
+      // Log failed login attempt (no userId available, use email as detail)
+      const user = await this.prisma.user.findFirst({ where: { email: body.email } });
+      if (user) {
+        void this.audit.log({
+          userId: user.id,
+          organizationId: user.organizationId,
+          action: 'LOGIN_FAILED',
+          ip,
+          userAgent: ua,
+          details: { email: body.email },
+        });
+      }
+      throw err;
+    }
+    const { token, expiresAt, user } = loginResult;
 
     const cookieName = process.env.SESSION_COOKIE_NAME ?? 'biscrm_sid';
     const secure = (process.env.COOKIE_SECURE ?? 'false') === 'true';
@@ -48,17 +69,36 @@ export class AuthController {
       path: '/',
     });
 
+    void this.audit.log({
+      userId: user.id,
+      organizationId: user.organizationId,
+      action: 'LOGIN',
+      ip,
+      userAgent: ua,
+    });
+
     return { ok: true, user: { id: user.id, email: user.email, role: user.role } };
   }
 
   @Post('logout')
   async logout(
-    @Req() req: Request,
+    @Req() req: Request & { user?: { id: string; activeOrganizationId: string } },
     @Res({ passthrough: true }) res: Response,
   ) {
     const cookieName = process.env.SESSION_COOKIE_NAME ?? 'biscrm_sid';
     const token = req.cookies?.[cookieName] as string | undefined;
-    if (token) await this.auth.logout(token);
+    if (token) {
+      await this.auth.logout(token);
+      if (req.user) {
+        void this.audit.log({
+          userId: req.user.id,
+          organizationId: req.user.activeOrganizationId,
+          action: 'LOGOUT',
+          ip: getIp(req),
+          userAgent: getUa(req),
+        });
+      }
+    }
     res.clearCookie(cookieName, { path: '/' });
     return { ok: true };
   }

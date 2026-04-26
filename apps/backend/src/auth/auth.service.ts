@@ -7,7 +7,7 @@ import { randomBytes } from 'crypto';
 export class AuthService {
   constructor(private prisma: PrismaService) {}
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, ip?: string, userAgent?: string) {
     const user = await this.prisma.user.findFirst({
       where: { email },
     });
@@ -25,6 +25,8 @@ export class AuthService {
         expiresAt,
         userId: user.id,
         activeOrganizationId: user.organizationId,
+        ip,
+        userAgent,
       },
     });
 

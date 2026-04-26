@@ -27,7 +27,17 @@ export class AuthMiddleware implements NestMiddleware {
       role: session.user.role,
       organizationId: session.user.organizationId,
       activeOrganizationId: activeOrgId,
+      sessionId: session.id,
     };
+
+    // Update lastActiveAt throttled to once per minute to avoid excessive writes
+    const oneMinuteAgo = new Date(Date.now() - 60_000);
+    if (!session.lastActiveAt || session.lastActiveAt < oneMinuteAgo) {
+      this.prisma.session.update({
+        where: { id: session.id },
+        data: { lastActiveAt: new Date() },
+      }).catch(() => undefined);
+    }
 
     return next();
   }

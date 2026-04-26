@@ -19,6 +19,7 @@ import { MembershipsModule } from './memberships/memberships.module';
 import { MailModule } from './mail/mail.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ChatModule } from './chat/chat.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ChatModule } from './chat/chat.module';
     MailModule,
     TasksModule,
     ChatModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

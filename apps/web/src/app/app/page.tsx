@@ -415,6 +415,34 @@ export default function AppPage() {
   // AbortController for task comment loading — cancels previous request on rapid clicks
   const taskCommentAbortRef = useRef<AbortController | null>(null);
 
+  // --- Sessions & Audit ---
+  type SessionInfo = {
+    id: string;
+    createdAt: string;
+    lastActiveAt: string;
+    ip: string | null;
+    userAgent: string | null;
+    activeOrganizationId: string | null;
+  };
+  type AuditRow = {
+    id: string;
+    action: string;
+    entityType: string | null;
+    entityId: string | null;
+    ip: string | null;
+    userAgent: string | null;
+    createdAt: string;
+    user: { id: string; email: string; name: string | null };
+  };
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionRevoking, setSessionRevoking] = useState<string | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditRow[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditOffset, setAuditOffset] = useState(0);
+  const AUDIT_LIMIT = 50;
+
   // Role helpers
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
@@ -473,11 +501,11 @@ export default function AppPage() {
   useEffect(() => {
     if (tab === "clients") loadClients();
     if (tab === "expenses") loadExpenses();
-    if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); }
     if (tab === "deals") { loadDeals(); loadTemplates(); }
     if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
-    if (tab === "profile") loadProfile();
+    if (tab === "profile") { loadProfile(); void loadSessions(); }
+    if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") void loadAuditLog(0); }
     if (tab === "staff") loadStaff();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
@@ -1040,6 +1068,43 @@ export default function AppPage() {
       setPwdOld(""); setPwdNew(""); setPwdConfirm("");
       setTimeout(() => setPwdSuccess(null), 3000);
     } finally { setPwdSaving(false); }
+  }
+
+  // --- Sessions ---
+  async function loadSessions() {
+    setSessionsLoading(true);
+    try {
+      const res = await fetch("/api/sessions", { credentials: "include" });
+      if (!res.ok) return;
+      setSessions(await res.json());
+    } finally { setSessionsLoading(false); }
+  }
+
+  async function revokeSession(id: string) {
+    setSessionRevoking(id);
+    try {
+      await fetch(`/api/sessions/${id}`, { method: "DELETE", credentials: "include" });
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } finally { setSessionRevoking(null); }
+  }
+
+  async function revokeAllSessions() {
+    if (!confirm("Завершить все другие сессии?")) return;
+    await fetch("/api/sessions/revoke-all", { method: "POST", credentials: "include" });
+    await loadSessions();
+  }
+
+  // --- Audit log ---
+  async function loadAuditLog(offset = 0) {
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/audit-log?limit=${AUDIT_LIMIT}&offset=${offset}`, { credentials: "include" });
+      if (!res.ok) return;
+      const j = await res.json();
+      setAuditLog(j.rows);
+      setAuditTotal(j.total);
+      setAuditOffset(offset);
+    } finally { setAuditLoading(false); }
   }
 
   function openTemplateModal(tpl?: DealTemplate) {
@@ -3737,6 +3802,76 @@ export default function AppPage() {
                   )}
                 </div>
               </div>
+
+              {/* Audit log — admin only */}
+              {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">Журнал действий</span>
+                    <button className="btn btn-secondary" onClick={() => loadAuditLog(0)} style={{ fontSize: 12 }}>Обновить</button>
+                  </div>
+                  <div className="card-body" style={{ padding: 0 }}>
+                    {auditLoading ? (
+                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Загрузка...</div>
+                    ) : auditLog.length === 0 ? (
+                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Нет записей</div>
+                    ) : (
+                      <>
+                        <div className="table-scroll">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th>Время</th>
+                                <th>Сотрудник</th>
+                                <th>Действие</th>
+                                <th>Объект</th>
+                                <th>IP</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {auditLog.map((row) => (
+                                <tr key={row.id}>
+                                  <td style={{ whiteSpace: "nowrap", fontSize: 11, color: "var(--text-secondary)" }}>
+                                    {new Date(row.createdAt).toLocaleString("ru")}
+                                  </td>
+                                  <td style={{ fontSize: 12 }}>
+                                    <div style={{ fontWeight: 600 }}>{row.user.name || row.user.email}</div>
+                                    {row.user.name && <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{row.user.email}</div>}
+                                  </td>
+                                  <td>
+                                    <span style={{
+                                      fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                                      background: row.action.startsWith("DELETE") ? "var(--red-bg)" : row.action.startsWith("CREATE") ? "var(--green-bg)" : row.action === "LOGIN" ? "#dbeafe" : row.action === "LOGIN_FAILED" ? "var(--red-bg)" : "var(--bg-secondary)",
+                                      color: row.action.startsWith("DELETE") ? "var(--red-text)" : row.action.startsWith("CREATE") ? "var(--green-text)" : row.action === "LOGIN" ? "#1d4ed8" : row.action === "LOGIN_FAILED" ? "var(--red-text)" : "var(--text-secondary)",
+                                    }}>
+                                      {row.action}
+                                    </span>
+                                  </td>
+                                  <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                                    {row.entityType ? `${row.entityType}${row.entityId ? ` #${row.entityId.slice(0, 8)}` : ""}` : "—"}
+                                  </td>
+                                  <td style={{ fontSize: 11, color: "var(--text-tertiary)", fontFamily: "monospace" }}>
+                                    {row.ip ?? "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {/* Pagination */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderTop: "1px solid var(--border-light)", fontSize: 12, color: "var(--text-secondary)" }}>
+                          <span>{auditTotal} записей</span>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset === 0} onClick={() => loadAuditLog(Math.max(0, auditOffset - AUDIT_LIMIT))}>← Назад</button>
+                            <span style={{ lineHeight: "28px" }}>{Math.floor(auditOffset / AUDIT_LIMIT) + 1} / {Math.ceil(auditTotal / AUDIT_LIMIT) || 1}</span>
+                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset + AUDIT_LIMIT >= auditTotal} onClick={() => loadAuditLog(auditOffset + AUDIT_LIMIT)}>Вперёд →</button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -3856,6 +3991,67 @@ export default function AppPage() {
                           {pwdSaving ? "Меняем..." : "Изменить пароль"}
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Active sessions card */}
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">Активные сессии</span>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button className="btn btn-secondary" onClick={loadSessions} style={{ fontSize: 12 }}>Обновить</button>
+                        <button className="btn btn-secondary" onClick={revokeAllSessions} style={{ fontSize: 12, color: "var(--red)" }}>Завершить все другие</button>
+                      </div>
+                    </div>
+                    <div className="card-body" style={{ padding: 0 }}>
+                      {sessionsLoading ? (
+                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Загрузка...</div>
+                      ) : sessions.length === 0 ? (
+                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Нет активных сессий</div>
+                      ) : (
+                        <div style={{ display: "grid" }}>
+                          {sessions.map((s, i) => {
+                            const ua = s.userAgent ?? "";
+                            const isMobile = /mobile|android|iphone|ipad/i.test(ua);
+                            const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/ ]([\d.]+)/)?.[0] ?? "Браузер неизвестен";
+                            const isFirst = i === 0;
+                            return (
+                              <div key={s.id} style={{
+                                display: "flex", alignItems: "center", gap: 12,
+                                padding: "12px 16px",
+                                borderTop: i > 0 ? "1px solid var(--border-light)" : undefined,
+                                background: isFirst ? "var(--accent)06" : undefined,
+                              }}>
+                                <div style={{ fontSize: 22, flexShrink: 0 }}>{isMobile ? "📱" : "💻"}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                    {browser}
+                                    {isFirst && (
+                                      <span style={{ marginLeft: 8, fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>текущая</span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                                    IP: {s.ip ?? "—"} · Последняя активность: {new Date(s.lastActiveAt).toLocaleString("ru")}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                                    Создана: {new Date(s.createdAt).toLocaleString("ru")}
+                                  </div>
+                                </div>
+                                {!isFirst && (
+                                  <button
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: 12, flexShrink: 0, color: "var(--red)" }}
+                                    onClick={() => revokeSession(s.id)}
+                                    disabled={sessionRevoking === s.id}
+                                  >
+                                    {sessionRevoking === s.id ? "..." : "Завершить"}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>
