@@ -612,6 +612,98 @@ select.form-input { cursor: pointer; }
 
 .fade-in { animation: fadeIn 0.2s ease forwards; }
 
+/* ===== CHAT (DM) ===== */
+.chat-container {
+  display: flex;
+  gap: 0;
+  height: calc(100vh - 100px);
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.chat-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  overflow: hidden;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-left: none;
+}
+
+.chat-back-btn { display: none; }
+
+@media (max-width: 768px) {
+  .chat-container {
+    height: calc(100vh - 90px);
+    position: relative;
+  }
+
+  .chat-sidebar {
+    width: 100%;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: var(--radius-lg);
+    border-right: none;
+    transition: transform 0.25s ease, opacity 0.2s ease;
+  }
+
+  .chat-sidebar.chat-sidebar--hidden {
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .chat-main {
+    width: 100%;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.25s ease, opacity 0.2s ease;
+  }
+
+  .chat-main.chat-main--visible {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 3;
+  }
+
+  .chat-back-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+}
+
 /* ===== TASK CARDS ===== */
 .task-card {
   position: relative;

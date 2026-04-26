@@ -2896,14 +2896,10 @@ export default function AppPage() {
 
           {/* ===== CHAT (DM) ===== */}
           {tab === "chat" ? (
-            <div style={{ display: "flex", gap: 0, height: "calc(100vh - 100px)", maxWidth: 1000, margin: "0 auto", width: "100%" }}>
+            <div className="chat-container">
 
               {/* Left: contacts / conversations */}
-              <div style={{
-                width: 260, flexShrink: 0, display: "flex", flexDirection: "column",
-                borderRight: "1px solid var(--border)", background: "var(--bg-card)",
-                borderRadius: "var(--radius-lg) 0 0 var(--radius-lg)", overflow: "hidden",
-              }}>
+              <div className={`chat-sidebar${chatActiveUser ? " chat-sidebar--hidden" : ""}`}>
                 <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>Сообщения</div>
                   <button
@@ -2992,7 +2988,7 @@ export default function AppPage() {
               </div>
 
               {/* Right: message area */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-card)", borderRadius: "0 var(--radius-lg) var(--radius-lg) 0", overflow: "hidden", border: "1px solid var(--border)", borderLeft: "none" }}>
+              <div className={`chat-main${chatActiveUser ? " chat-main--visible" : ""}`}>
                 {!chatActiveUser ? (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-tertiary)", gap: 12 }}>
                     <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.2" viewBox="0 0 24 24" style={{ opacity: 0.3 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -3002,16 +2998,19 @@ export default function AppPage() {
                 ) : (
                   <>
                     {/* Chat header */}
-                    <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                      <button className="chat-back-btn" onClick={() => setChatActiveUser(null)}>
+                        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+                      </button>
                       <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
                         {(chatActiveUser.name || chatActiveUser.email)[0].toUpperCase()}
                       </div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{chatActiveUser.name || chatActiveUser.email}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chatActiveUser.name || chatActiveUser.email}</div>
                         <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{chatActiveUser.position || chatActiveUser.role}</div>
                       </div>
-                      <div style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 5 }}>
-                        <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         AES-256
                       </div>
                     </div>
