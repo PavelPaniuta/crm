@@ -330,7 +330,7 @@ ${dealsCtx || 'нет сделок'}
 
     // Handle tool calls
     if (msg.tool_calls?.length) {
-      const call = msg.tool_calls[0];
+      const call = msg.tool_calls[0] as OpenAI.Chat.ChatCompletionMessageToolCall & { function: { name: string; arguments: string } };
       const args = JSON.parse(call.function.arguments);
 
       if (call.function.name === 'confirm_create_deal') {
