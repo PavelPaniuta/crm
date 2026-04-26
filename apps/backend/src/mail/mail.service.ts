@@ -1,41 +1,35 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter | null = null;
+  private resend: Resend | null = null;
+  private from: string;
 
   constructor() {
-    const host = process.env.SMTP_HOST;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    const apiKey = process.env.RESEND_API_KEY;
+    this.from = process.env.RESEND_FROM || 'onboarding@resend.dev';
 
-    if (host && user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port: parseInt(process.env.SMTP_PORT ?? '587'),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: { user, pass },
-      });
+    if (apiKey) {
+      this.resend = new Resend(apiKey);
     } else {
-      this.logger.warn('SMTP not configured — password reset emails will not be sent');
+      this.logger.warn('RESEND_API_KEY not set — password reset emails will not be sent');
     }
   }
 
   isConfigured() {
-    return !!this.transporter;
+    return !!this.resend;
   }
 
   async sendPasswordReset(to: string, resetUrl: string, appUrl: string) {
-    if (!this.transporter) {
+    if (!this.resend) {
       this.logger.warn(`[MOCK] Reset email to ${to}: ${resetUrl}`);
       return;
     }
 
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-    await this.transporter.sendMail({
-      from: `MyCRM <${from}>`,
+    const { error } = await this.resend.emails.send({
+      from: `MyCRM <${this.from}>`,
       to,
       subject: 'Восстановление пароля — MyCRM',
       html: `
@@ -44,7 +38,7 @@ export class MailService {
           <h3 style="margin-top: 0;">Восстановление пароля</h3>
           <p>Вы запросили сброс пароля для вашего аккаунта.</p>
           <p>Нажмите на кнопку ниже чтобы задать новый пароль:</p>
-          <a href="${resetUrl}" 
+          <a href="${resetUrl}"
              style="display:inline-block;background:#6366f1;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">
             Сменить пароль
           </a>
@@ -55,5 +49,10 @@ export class MailService {
         </div>
       `,
     });
+
+    if (error) {
+      this.logger.error(`Failed to send reset email: ${JSON.stringify(error)}`);
+      throw new Error(`Email send failed: ${error.message}`);
+    }
   }
 }
