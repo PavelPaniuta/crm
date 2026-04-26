@@ -72,9 +72,10 @@ model User {
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  dealParticipants DealParticipant[]
-  sessions         Session[]
-  memberships      UserMembership[]
+  dealParticipants   DealParticipant[]
+  sessions           Session[]
+  memberships        UserMembership[]
+  passwordResetTokens PasswordResetToken[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -215,6 +216,19 @@ model DealParticipant {
 
   @@unique([dealId, userId])
   @@index([dealId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Extra org memberships — user can belong to multiple offices

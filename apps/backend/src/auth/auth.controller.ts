@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  NotFoundException,
   Post,
   Req,
   Res,
@@ -10,10 +12,18 @@ import {
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
+import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
+import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) {}
+  constructor(
+    private auth: AuthService,
+    private prisma: PrismaService,
+    private mail: MailService,
+  ) {}
 
   @Post('login')
   async login(
@@ -57,6 +67,78 @@ export class AuthController {
   @UseGuards(AuthGuard)
   me(@Req() req: any) {
     return { user: req.user };
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() body: { email: string }) {
+    const email = body.email?.trim().toLowerCase();
+    if (!email) throw new BadRequestException('Email обязателен');
+
+    const user = await this.prisma.user.findFirst({ where: { email } });
+    // Always return ok to avoid user enumeration
+    if (!user) return { ok: true };
+
+    // Invalidate old tokens
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, used: false },
+      data: { used: true },
+    });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+    await this.prisma.passwordResetToken.create({
+      data: { userId: user.id, token, expiresAt },
+    });
+
+    const appUrl = process.env.APP_URL || 'https://my-crm.live';
+    const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+    if (this.mail.isConfigured()) {
+      await this.mail.sendPasswordReset(user.email, resetUrl, appUrl);
+    } else {
+      // Log the reset URL so admin can share it manually
+      console.log(`[RESET] ${user.email} → ${resetUrl}`);
+    }
+
+    return { ok: true };
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() body: { token: string; password: string }) {
+    if (!body.token) throw new BadRequestException('Токен обязателен');
+    if (!body.password || body.password.length < 6)
+      throw new BadRequestException('Пароль должен быть минимум 6 символов');
+
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { token: body.token },
+    });
+
+    if (!record || record.used || record.expiresAt < new Date()) {
+      throw new NotFoundException('Ссылка недействительна или истекла');
+    }
+
+    const passwordHash = await bcrypt.hash(body.password, 10);
+    await this.prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash },
+    });
+    await this.prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { used: true },
+    });
+
+    return { ok: true };
+  }
+
+  @Get('check-reset-token')
+  async checkResetToken(@Req() req: Request) {
+    const token = req.query.token as string;
+    if (!token) throw new BadRequestException('Токен обязателен');
+    const record = await this.prisma.passwordResetToken.findUnique({ where: { token } });
+    if (!record || record.used || record.expiresAt < new Date()) {
+      return { valid: false };
+    }
+    return { valid: true };
   }
 }
 

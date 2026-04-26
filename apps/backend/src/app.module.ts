@@ -16,6 +16,7 @@ import { ProfileModule } from './profile/profile.module';
 import { StaffModule } from './staff/staff.module';
 import { AiModule } from './ai/ai.module';
 import { MembershipsModule } from './memberships/memberships.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { MembershipsModule } from './memberships/memberships.module';
     StaffModule,
     AiModule,
     MembershipsModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
