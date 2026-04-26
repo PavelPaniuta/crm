@@ -373,7 +373,7 @@ export default function AppPage() {
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") loadProfile();
     if (tab === "staff") loadStaff();
-    if (tab === "reports" && aiConfigured === null) {
+    if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
       fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -478,10 +478,18 @@ export default function AppPage() {
           history: agentHistory.map(h => ({ role: h.role, content: h.content })),
         }),
       });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => `HTTP ${res.status}`);
+        setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сервера (${res.status}): ${errText.slice(0, 200)}` }]);
+        return;
+      }
       const j = await res.json();
-      const assistantMsg = { role: "assistant" as const, content: j.text ?? "", pendingAction: j.pendingAction };
+      const content = j.text || j.answer || j.message || j.error || "Нет ответа от AI";
+      const assistantMsg = { role: "assistant" as const, content, pendingAction: j.pendingAction };
       setAgentHistory(h => [...h, assistantMsg]);
       if (j.pendingAction) setAgentPending(j.pendingAction);
+    } catch (e: any) {
+      setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сети: ${e.message}` }]);
     } finally { setAgentLoading(false); }
   }
 
@@ -2217,6 +2225,15 @@ export default function AppPage() {
           {/* ===== AI ASSISTANT ===== */}
           {tab === "assistant" ? (
             <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", maxWidth: 820, margin: "0 auto", gap: 0 }}>
+
+              {/* Not configured banner */}
+              {aiConfigured === false && (
+                <div style={{ marginBottom: 12, padding: "12px 16px", borderRadius: 12, background: "#f59e0b22", border: "1px solid #f59e0b55", fontSize: 13, color: "#f59e0b", flexShrink: 0 }}>
+                  ⚠️ <strong>AI не настроен.</strong> На сервере нет OPENAI_API_KEY. Добавьте в файл <code>.env</code> на VPS:<br/>
+                  <code style={{ display: "block", marginTop: 6, padding: "4px 8px", background: "#0005", borderRadius: 6, fontFamily: "monospace" }}>OPENAI_API_KEY=sk-proj-...</code>
+                  Затем: <code>docker compose up -d backend</code>
+                </div>
+              )}
 
               {/* Header */}
               <div className="card" style={{ padding: "16px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
