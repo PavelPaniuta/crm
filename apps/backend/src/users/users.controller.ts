@@ -25,7 +25,7 @@ export class UsersController {
   @Roles(Role.ADMIN)
   create(
     @Req() req: any,
-    @Body() body: { email: string; password: string; role: Role; position?: string | null; targetOrgId?: string | null },
+    @Body() body: { email: string; password: string; role: Role; name?: string | null; position?: string | null; targetOrgId?: string | null },
   ) {
     return this.users.create(req.user.activeOrganizationId, body, req.user.role);
   }

@@ -13,7 +13,7 @@ export class UsersService {
   list(organizationId: string) {
     return this.prisma.user.findMany({
       where: { organizationId },
-      select: { id: true, email: true, role: true, position: true, organizationId: true, createdAt: true, updatedAt: true },
+      select: { id: true, email: true, name: true, role: true, position: true, organizationId: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -56,7 +56,7 @@ export class UsersService {
 
   async create(
     activeOrganizationId: string,
-    data: { email: string; password: string; role: Role; position?: string | null; targetOrgId?: string | null },
+    data: { email: string; password: string; role: Role; name?: string | null; position?: string | null; targetOrgId?: string | null },
     requesterRole?: string,
   ) {
     if (!data.email?.trim()) throw new BadRequestException('login required');
@@ -79,9 +79,10 @@ export class UsersService {
         email: data.email.trim(),
         passwordHash,
         role: data.role ?? Role.MANAGER,
+        name: data.name?.trim() || null,
         position: data.position?.trim() || null,
       },
-      select: { id: true, email: true, role: true, position: true, organizationId: true, createdAt: true, updatedAt: true },
+      select: { id: true, email: true, name: true, role: true, position: true, organizationId: true, createdAt: true, updatedAt: true },
     });
   }
 

@@ -31,6 +31,7 @@ type Expense = {
 type AppUser = {
   id: string;
   email: string;
+  name?: string | null;
   role: Role;
   position?: string | null;
   organizationId: string;
@@ -207,6 +208,7 @@ export default function AppPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [newUserLogin, setNewUserLogin] = useState("");
+  const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<Role>("MANAGER");
   const [newUserPosition, setNewUserPosition] = useState("");
@@ -906,6 +908,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: newUserLogin, password: newUserPassword, role: newUserRole,
+        name: newUserName || null,
         position: newUserPosition || null,
         targetOrgId: newUserTargetOrgId || null,
       }),
@@ -915,7 +918,7 @@ export default function AppPage() {
       const msg = errBody?.message ?? `HTTP ${res.status}`;
       return alert(`Не удалось создать пользователя:\n${Array.isArray(msg) ? msg.join("\n") : msg}`);
     }
-    setNewUserLogin(""); setNewUserPassword(""); setNewUserPosition(""); setNewUserTargetOrgId("");
+    setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserPosition(""); setNewUserTargetOrgId("");
     await loadUsers();
     await loadOrgs();
   }
@@ -2871,8 +2874,12 @@ export default function AppPage() {
                       {/* create form */}
                       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                         <div>
-                          <div className="form-label">Логин</div>
+                          <div className="form-label">Логин (email)</div>
                           <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} placeholder="email или username" />
+                        </div>
+                        <div>
+                          <div className="form-label">Имя (отображается в CRM)</div>
+                          <input className="form-input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Иван Петров" />
                         </div>
                         <div>
                           <div className="form-label">Пароль</div>
@@ -2912,6 +2919,7 @@ export default function AppPage() {
                             <thead>
                               <tr>
                                 <th>Логин</th>
+                                <th>Имя</th>
                                 <th>Должность</th>
                                 <th>Офис</th>
                                 <th>Доступ</th>
@@ -2920,13 +2928,14 @@ export default function AppPage() {
                             </thead>
                             <tbody>
                               {usersLoading ? (
-                                <tr><td colSpan={5} style={{ padding: 16 }}>Загрузка...</td></tr>
+                                <tr><td colSpan={6} style={{ padding: 16 }}>Загрузка...</td></tr>
                               ) : users.length === 0 ? (
-                                <tr><td colSpan={5} style={{ padding: 16 }}>Пока пусто</td></tr>
+                                <tr><td colSpan={6} style={{ padding: 16 }}>Пока пусто</td></tr>
                               ) : (
                                 users.map((u) => (
                                   <tr key={u.id}>
-                                    <td style={{ fontWeight: 600 }}>{u.email}</td>
+                                    <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{u.email}</td>
+                                    <td style={{ fontWeight: 600 }}>{u.name || <span style={{ color: "var(--text-tertiary)", fontStyle: "italic", fontWeight: 400 }}>не задано</span>}</td>
                                     <td>
                                       {userPositionId === u.id ? (
                                         <div style={{ display: "flex", gap: 4 }}>
