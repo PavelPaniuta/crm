@@ -16,9 +16,9 @@ export class DashboardService {
   async getSummary(organizationId: string, from?: string, to?: string) {
     const now = new Date();
     const fromDate = from
-      ? new Date(from)
+      ? startOfDay(new Date(from))
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
-    const toDate = to ? new Date(to) : endOfDay(now);
+    const toDate = to ? endOfDay(new Date(to)) : endOfDay(now);
 
     const deals = await this.prisma.deal.findMany({
       where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
@@ -84,9 +84,9 @@ export class DashboardService {
   async getGlobalSummary(from?: string, to?: string) {
     const now = new Date();
     const fromDate = from
-      ? new Date(from)
+      ? startOfDay(new Date(from))
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
-    const toDate = to ? new Date(to) : endOfDay(now);
+    const toDate = to ? endOfDay(new Date(to)) : endOfDay(now);
 
     const orgs = await this.prisma.organization.findMany({ orderBy: { name: 'asc' } });
 
