@@ -288,11 +288,12 @@ ${dealsCtx || 'нет сделок'}
           parameters: {
             type: 'object',
             properties: {
-              description: { type: 'string', description: 'Описание расхода' },
+              title: { type: 'string', description: 'Название расхода (аренда, зарплата, оборудование...)' },
               amount: { type: 'number', description: 'Сумма' },
-              currency: { type: 'string', description: 'Валюта (USD, EUR, UAH...)' },
+              currency: { type: 'string', description: 'Валюта (USD, EUR, UAH...) — по умолчанию USD' },
+              payMethod: { type: 'string', description: 'Способ оплаты (Наличные, Карта, Криптo...) — по умолчанию Наличные' },
             },
-            required: ['description', 'amount'],
+            required: ['title', 'amount'],
           },
         },
       },
@@ -360,7 +361,7 @@ ${dealsCtx || 'нет сделок'}
 
       if (call.function.name === 'confirm_create_expense') {
         return {
-          text: `Записываю расход:\n\n💸 ${args.description}\n💰 ${args.amount} ${args.currency || 'USD'}\n\nПодтвердить?`,
+          text: `Записываю расход:\n\n💸 ${args.title}\n💰 ${args.amount} ${args.currency || 'USD'}\n💳 ${args.payMethod || 'Наличные'}\n\nПодтвердить?`,
           pendingAction: { type: 'create_expense', params: args },
         };
       }

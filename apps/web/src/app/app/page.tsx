@@ -580,12 +580,18 @@ export default function AppPage() {
         const res = await fetch("/api/expenses", {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: p.description, amount: p.amount, currency: p.currency ?? "USD" }),
+          body: JSON.stringify({
+            title: p.title || p.description || "Расход",
+            amount: p.amount,
+            currency: p.currency ?? "USD",
+            payMethod: p.payMethod ?? "Наличные",
+          }),
         });
         if (res.ok) {
           setAgentHistory(h => [...h, { role: "assistant", content: "✅ Расход записан!" }]);
         } else {
-          setAgentHistory(h => [...h, { role: "assistant", content: "❌ Ошибка записи расхода" }]);
+          const err = await res.json().catch(() => ({}));
+          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка записи расхода: ${err.message ?? res.status}` }]);
         }
       }
     } catch (e: any) {
