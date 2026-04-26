@@ -1674,52 +1674,93 @@ export default function AppPage() {
                       )}
 
                       {/* Participants */}
-                      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div>
-                            <div className="form-label" style={{ margin: 0 }}>Участники (воркеры)</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>% от суммы выхода</div>
-                          </div>
-                          <button className="btn btn-secondary" onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: "0" }])}>
-                            + Добавить
-                          </button>
-                        </div>
-                        <div style={{ display: "grid", gap: 6 }}>
-                          {dealParticipants.map((p) => {
-                            const pct = Number(p.pct) || 0;
-                            const earn = Math.round((dealTotals.tAmountOut * pct) / 100 * 100) / 100;
-                            return (
-                              <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--bg-metric)", borderRadius: 10 }}>
-                                <select
-                                  className="form-input"
-                                  value={p.userId}
-                                  onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
-                                  style={{ flex: 1 }}
-                                >
-                                  <option value="">— выбрать —</option>
-                                  {dealWorkers.map((w) => (
-                                    <option key={w.id} value={w.id}>
-                                      {w.email}{w.organization ? ` [${w.organization.name}]` : ""}{w.position ? ` · ${w.position}` : ""}
-                                    </option>
-                                  ))}
-                                </select>
-                                <input
-                                  className="form-input"
-                                  value={p.pct}
-                                  onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, pct: e.target.value } : x))}
-                                  style={{ width: 70, textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}
-                                />
-                                <span style={{ color: "var(--text-secondary)" }}>%</span>
-                                <span style={{ minWidth: 110, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)" }}>
-                                  {dealTotals.tAmountOut > 0 ? `${earn.toLocaleString()}` : "—"}
-                                </span>
-                                <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16, padding: "4px 8px" }} onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}>×</span>
+                      {(() => {
+                        // Determine income base for payout preview
+                        const activeTplForParts = dealTemplateId ? templates.find(t => t.id === dealTemplateId) : null;
+                        let incomeBase = dealTotals.tAmountOut; // classic deal
+                        let incomeLabel = "";
+                        if (activeTplForParts?.incomeFieldKey) {
+                          incomeBase = dealDataRows.reduce((s, row) => {
+                            const val = row.data[activeTplForParts.incomeFieldKey!];
+                            return s + (Number(val) || 0);
+                          }, 0);
+                          const incField = activeTplForParts.fields.find(f =>
+                            (f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f.id) === activeTplForParts.incomeFieldKey
+                          );
+                          incomeLabel = incField ? incField.label : activeTplForParts.incomeFieldKey;
+                        }
+                        return (
+                          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                              <div>
+                                <div className="form-label" style={{ margin: 0 }}>Участники (воркеры)</div>
+                                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                                  {incomeBase > 0
+                                    ? <span>База выплат: <strong style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong>{incomeLabel ? ` (${incomeLabel})` : ""}</span>
+                                    : "Выплата = % × сумма сделки"}
+                                </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: pctStatus.color }}>{pctStatus.text}</div>
-                      </div>
+                              <button className="btn btn-secondary" onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: "0" }])}>
+                                + Добавить
+                              </button>
+                            </div>
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {dealParticipants.map((p) => {
+                                const pct = Number(p.pct) || 0;
+                                const earn = Math.round(incomeBase * pct / 100 * 100) / 100;
+                                const worker = dealWorkers.find(w => w.id === p.userId);
+                                return (
+                                  <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--bg-metric)", borderRadius: 10 }}>
+                                    <select
+                                      className="form-input"
+                                      value={p.userId}
+                                      onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
+                                      style={{ flex: 1 }}
+                                    >
+                                      <option value="">— выбрать —</option>
+                                      {dealWorkers.map((w) => (
+                                        <option key={w.id} value={w.id}>
+                                          {w.name || w.email}{w.position ? ` · ${w.position}` : ""}{w.organization ? ` [${w.organization.name}]` : ""}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      className="form-input"
+                                      value={p.pct}
+                                      onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, pct: e.target.value } : x))}
+                                      style={{ width: 70, textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}
+                                      placeholder="0"
+                                    />
+                                    <span style={{ color: "var(--text-secondary)" }}>%</span>
+                                    <div style={{ minWidth: 110, textAlign: "right" }}>
+                                      {incomeBase > 0 ? (
+                                        <>
+                                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)", fontSize: 14 }}>{earn.toLocaleString()}</div>
+                                          {worker?.name && <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{worker.name}</div>}
+                                        </>
+                                      ) : <span style={{ color: "var(--text-tertiary)" }}>—</span>}
+                                    </div>
+                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16, padding: "4px 8px" }} onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}>×</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {dealParticipants.length > 1 && incomeBase > 0 && (
+                              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                                  Итого %: <strong style={{ color: dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0) === 100 ? "var(--green)" : "var(--amber)" }}>
+                                    {dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0)}%
+                                  </strong>
+                                </div>
+                                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)" }}>
+                                  Распределено: {dealParticipants.reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()}
+                                </div>
+                              </div>
+                            )}
+                            <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: pctStatus.color }}>{pctStatus.text}</div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Comment */}
                       <div>
@@ -2502,7 +2543,14 @@ export default function AppPage() {
 
               <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div className="form-label" style={{ margin: 0 }}>Поля шаблона *</div>
+                  <div>
+                    <div className="form-label" style={{ margin: 0 }}>Поля шаблона *</div>
+                    {tplHasWorkers && (
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                        Отметьте 💰 у числового поля, от которого считаются % воркеров
+                      </div>
+                    )}
+                  </div>
                   <button className="btn btn-secondary" onClick={addTplField}>+ Добавить поле</button>
                 </div>
 
@@ -2512,52 +2560,72 @@ export default function AppPage() {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 10 }}>
-                    {tplFields.map((f, i) => (
-                      <div key={f._id} style={{ background: "var(--bg-metric)", borderRadius: 8, padding: "10px 12px" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 110px 28px", gap: 8, alignItems: "end" }}>
-                          <div>
-                            <div className="form-label" style={{ marginBottom: 3 }}>Название поля</div>
-                            <input className="form-input" value={f.label} placeholder="Банк, Сумма, Тип..."
-                              onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
+                    {tplFields.map((f, i) => {
+                      const fieldKey = f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f._id;
+                      const isIncomeField = tplIncomeFieldKey === fieldKey;
+                      const canBeIncome = f.type === "NUMBER" || f.type === "PERCENT";
+                      return (
+                        <div key={f._id} style={{ background: isIncomeField ? "var(--accent)11" : "var(--bg-metric)", borderRadius: 8, padding: "10px 12px", border: isIncomeField ? "1px solid var(--accent)44" : "1px solid transparent" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 110px auto 28px", gap: 8, alignItems: "end" }}>
+                            <div>
+                              <div className="form-label" style={{ marginBottom: 3 }}>Название поля</div>
+                              <input className="form-input" value={f.label} placeholder="Банк, Сумма, Тип..."
+                                onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
+                            </div>
+                            <div>
+                              <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
+                              <select className="form-input" value={f.type}
+                                onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, type: e.target.value as FieldType } : x))}>
+                                <option value="TEXT">Текст</option>
+                                <option value="NUMBER">Число</option>
+                                <option value="SELECT">Список</option>
+                                <option value="DATE">Дата</option>
+                                <option value="PERCENT">Процент</option>
+                                <option value="CHECKBOX">Флаг</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div className="form-label" style={{ marginBottom: 3 }}>&nbsp;</div>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, height: 38, cursor: "pointer" }}>
+                                <input type="checkbox" checked={f.required}
+                                  onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, required: e.target.checked } : x))}
+                                  style={{ accentColor: "var(--accent)" }} />
+                                <span style={{ fontSize: 12, fontWeight: 500 }}>Обязательное</span>
+                              </label>
+                            </div>
+                            {tplHasWorkers && canBeIncome ? (
+                              <div>
+                                <div className="form-label" style={{ marginBottom: 3 }}>&nbsp;</div>
+                                <button
+                                  title="База для расчёта выплат воркеров"
+                                  style={{ height: 38, padding: "0 10px", borderRadius: 8, border: isIncomeField ? "2px solid var(--accent)" : "1px solid var(--border)", background: isIncomeField ? "var(--accent)" : "var(--bg-card)", cursor: "pointer", fontSize: 16, transition: "all 0.15s" }}
+                                  onClick={() => setTplIncomeFieldKey(isIncomeField ? "" : fieldKey)}
+                                >💰</button>
+                              </div>
+                            ) : <div />}
+                            <div style={{ height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
+                              onClick={() => { setTplFields(p => p.filter((_, xi) => xi !== i)); if (isIncomeField) setTplIncomeFieldKey(""); }}>×</div>
                           </div>
-                          <div>
-                            <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
-                            <select className="form-input" value={f.type}
-                              onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, type: e.target.value as FieldType } : x))}>
-                              <option value="TEXT">Текст</option>
-                              <option value="NUMBER">Число</option>
-                              <option value="SELECT">Список</option>
-                              <option value="DATE">Дата</option>
-                              <option value="PERCENT">Процент</option>
-                              <option value="CHECKBOX">Флаг</option>
-                            </select>
-                          </div>
-                          <div>
-                            <div className="form-label" style={{ marginBottom: 3 }}>&nbsp;</div>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, height: 38, cursor: "pointer" }}>
-                              <input type="checkbox" checked={f.required}
-                                onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, required: e.target.checked } : x))}
-                                style={{ accentColor: "var(--accent)" }} />
-                              <span style={{ fontSize: 12, fontWeight: 500 }}>Обязательное</span>
-                            </label>
-                          </div>
-                          <div style={{ height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
-                            onClick={() => setTplFields(p => p.filter((_, xi) => xi !== i))}>×</div>
+                          {isIncomeField && (
+                            <div style={{ marginTop: 6, fontSize: 11, color: "var(--accent)", display: "flex", alignItems: "center", gap: 4 }}>
+                              💰 База выплат — % воркеров считается от значения этого поля
+                            </div>
+                          )}
+                          {f.type === "SELECT" && (
+                            <div style={{ marginTop: 8 }}>
+                              <div className="form-label" style={{ marginBottom: 3 }}>Варианты (через запятую)</div>
+                              <input className="form-input" value={f.options} placeholder="Вариант 1, Вариант 2, Вариант 3"
+                                onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, options: e.target.value } : x))} />
+                            </div>
+                          )}
                         </div>
-                        {f.type === "SELECT" && (
-                          <div style={{ marginTop: 8 }}>
-                            <div className="form-label" style={{ marginBottom: 3 }}>Варианты (через запятую)</div>
-                            <input className="form-input" value={f.options} placeholder="Вариант 1, Вариант 2, Вариант 3"
-                              onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, options: e.target.value } : x))} />
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {tplFields.some(f => f.type === "NUMBER" || f.type === "PERCENT") && (
+              {!tplHasWorkers && tplFields.some(f => f.type === "NUMBER" || f.type === "PERCENT") && (
                 <div>
                   <div className="form-label">Поле для отчёта (доход)</div>
                   <select className="form-input" value={tplIncomeFieldKey} onChange={(e) => setTplIncomeFieldKey(e.target.value)}>
@@ -2566,7 +2634,7 @@ export default function AppPage() {
                       <option key={f._id} value={f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f._id}>{f.label}</option>
                     ))}
                   </select>
-                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Это поле будет использоваться в Dashboard и Отчётах как «Доход»</div>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Поле-доход для Dashboard и Отчётов</div>
                 </div>
               )}
 
