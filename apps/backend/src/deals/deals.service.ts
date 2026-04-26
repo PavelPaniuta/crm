@@ -65,7 +65,7 @@ export class DealsService {
         comment: data.comment ?? null,
         templateId: data.templateId ?? null,
         dataRows: data.dataRows
-          ? { create: data.dataRows.map((r, i) => ({ data: r.data, order: r.order ?? i })) }
+          ? { create: data.dataRows.map((r, i) => ({ data: r.data as object, order: r.order ?? i })) }
           : undefined,
       },
       include: this.dealInclude,
@@ -92,7 +92,7 @@ export class DealsService {
       await this.prisma.dealDataRow.deleteMany({ where: { dealId: id } });
       if (data.dataRows.length > 0) {
         await this.prisma.dealDataRow.createMany({
-          data: data.dataRows.map((r, i) => ({ dealId: id, data: r.data, order: r.order ?? i })),
+          data: data.dataRows.map((r, i) => ({ dealId: id, data: r.data as object, order: r.order ?? i })),
         });
       }
     }
