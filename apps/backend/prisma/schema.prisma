@@ -62,8 +62,7 @@ model Organization {
   dealTemplates DealTemplate[]
   memberships   UserMembership[]
   tasks         Task[]
-  chatMessages  ChatMessage[]
-  chatLastReads ChatLastRead[]
+  chatMessages  ChatMessage[] @relation("OrgMessages")
 }
 
 model User {
@@ -88,9 +87,11 @@ model User {
   passwordResetTokens PasswordResetToken[]
   tasksAssigned        Task[]         @relation("TaskAssignee")
   tasksCreated         Task[]         @relation("TaskCreator")
-  taskComments         TaskComment[]
-  chatMessages         ChatMessage[]
-  chatLastReads        ChatLastRead[]
+  taskComments      TaskComment[]
+  sentMessages      ChatMessage[] @relation("MsgSender")
+  receivedMessages  ChatMessage[] @relation("MsgReceiver")
+  chatReadAs        ChatLastRead[] @relation("ChatReader")
+  chatReadOther     ChatLastRead[] @relation("ChatOther")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -318,29 +319,36 @@ model TaskComment {
   @@index([taskId])
 }
 
+// Direct messages between two users in same org
 model ChatMessage {
   id             String       @id @default(cuid())
   body           String       // AES-256-GCM encrypted: iv:authTag:ciphertext
   createdAt      DateTime     @default(now())
 
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation("OrgMessages", fields: [organizationId], references: [id], onDelete: Cascade)
 
   senderId       String
-  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  sender         User         @relation("MsgSender", fields: [senderId], references: [id], onDelete: Cascade)
 
-  @@index([organizationId, createdAt])
+  receiverId     String
+  receiver       User         @relation("MsgReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([senderId, receiverId, createdAt])
+  @@index([receiverId, senderId, createdAt])
 }
 
+// Tracks last-read timestamp per conversation pair
 model ChatLastRead {
-  lastReadAt     DateTime     @default(now())
+  lastReadAt   DateTime @default(now())
 
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation("ChatReader", fields: [userId], references: [id], onDelete: Cascade)
 
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  otherUserId  String
+  other        User     @relation("ChatOther", fields: [otherUserId], references: [id], onDelete: Cascade)
 
-  @@id([userId, organizationId])
+  @@id([userId, otherUserId])
 }
 

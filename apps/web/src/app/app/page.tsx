@@ -79,6 +79,22 @@ type ChatMessage = {
   body: string;
   createdAt: string;
   sender: { id: string; name: string | null; email: string };
+  receiverId?: string;
+};
+
+type ChatContact = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  position?: string | null;
+};
+
+type ChatConversation = {
+  user: ChatContact | null;
+  lastMessage: (ChatMessage & { body: string }) | null;
+  unread: number;
+  lastAt: string;
 };
 
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "tasks" | "assistant" | "chat";
@@ -382,12 +398,16 @@ export default function AppPage() {
   const [taskEditStart, setTaskEditStart] = useState("");
   const [taskEditAssigneeId, setTaskEditAssigneeId] = useState("");
 
-  // --- Chat ---
+  // --- Chat (DM) ---
+  const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
+  const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
+  const [chatActiveUser, setChatActiveUser] = useState<ChatContact | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
+  const [chatShowContacts, setChatShowContacts] = useState(false);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -460,10 +480,10 @@ export default function AppPage() {
       fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
     }
     if (tab === "chat") {
-      void loadChatMessages();
-      void markChatRead();
+      void loadChatContacts();
+      void loadChatConversations();
       if (chatPollRef.current) clearInterval(chatPollRef.current);
-      chatPollRef.current = setInterval(() => void pollChatMessages(), 5000);
+      chatPollRef.current = setInterval(() => { void pollChatMessages(); void loadChatUnread(); }, 5000);
     } else {
       if (chatPollRef.current) { clearInterval(chatPollRef.current); chatPollRef.current = null; }
     }
@@ -673,48 +693,76 @@ export default function AppPage() {
     setTaskEditMode(false);
   }
 
-  // --- Chat functions ---
-  async function loadChatMessages(append = false) {
+  // --- Chat (DM) functions ---
+  async function loadChatContacts() {
+    const res = await fetch("/api/chat/users", { credentials: "include" });
+    if (res.ok) setChatContacts(await res.json());
+  }
+
+  async function loadChatConversations() {
+    const res = await fetch("/api/chat/conversations", { credentials: "include" });
+    if (res.ok) setChatConversations(await res.json());
+  }
+
+  async function openChatWith(contact: ChatContact) {
+    setChatActiveUser(contact);
+    setChatMessages([]);
+    setChatShowContacts(false);
     setChatLoading(true);
     try {
-      const before = append && chatMessages.length > 0 ? `&before=${chatMessages[0].createdAt}` : "";
-      const res = await fetch(`/api/chat/messages?limit=50${before}`, { credentials: "include" });
-      if (res.ok) {
-        const msgs: ChatMessage[] = await res.json();
-        setChatMessages(prev => append ? [...msgs, ...prev] : msgs);
-      }
+      const res = await fetch(`/api/chat/messages?with=${contact.id}&limit=50`, { credentials: "include" });
+      if (res.ok) setChatMessages(await res.json());
+      // mark as read
+      await fetch("/api/chat/read", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otherUserId: contact.id }),
+      });
+      setChatConversations(prev => prev.map(c => c.user?.id === contact.id ? { ...c, unread: 0 } : c));
     } finally { setChatLoading(false); }
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "instant" }), 80);
   }
 
   async function pollChatMessages() {
+    if (!chatActiveUser) return;
     try {
-      const res = await fetch("/api/chat/messages?limit=20", { credentials: "include" });
+      const res = await fetch(`/api/chat/messages?with=${chatActiveUser.id}&limit=20`, { credentials: "include" });
       if (res.ok) {
         const msgs: ChatMessage[] = await res.json();
         setChatMessages(prev => {
           if (prev.length === 0) return msgs;
           const existIds = new Set(prev.map(m => m.id));
           const newOnes = msgs.filter(m => !existIds.has(m.id));
-          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+          if (!newOnes.length) return prev;
+          // auto-mark read for incoming messages
+          void fetch("/api/chat/read", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ otherUserId: chatActiveUser.id }),
+          });
+          return [...prev, ...newOnes];
         });
       }
     } catch { /* ignore */ }
+    // also refresh conversations sidebar
+    void loadChatConversations();
   }
 
   async function sendChatMessage() {
     const text = chatInput.trim();
-    if (!text || chatSending) return;
+    if (!text || chatSending || !chatActiveUser) return;
     setChatSending(true);
     setChatInput("");
     try {
       const res = await fetch("/api/chat/messages", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, receiverId: chatActiveUser.id }),
       });
       if (res.ok) {
         const msg: ChatMessage = await res.json();
         setChatMessages(prev => [...prev, msg]);
+        void loadChatConversations();
         setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
       }
     } finally { setChatSending(false); }
@@ -725,11 +773,6 @@ export default function AppPage() {
       const res = await fetch("/api/chat/unread", { credentials: "include" });
       if (res.ok) { const j = await res.json(); setChatUnread(j.count ?? 0); }
     } catch { /* ignore */ }
-  }
-
-  async function markChatRead() {
-    await fetch("/api/chat/read", { method: "POST", credentials: "include" });
-    setChatUnread(0);
   }
 
   async function addMembership(userId: string, organizationId: string) {
@@ -2851,97 +2894,202 @@ export default function AppPage() {
             </div>
           ) : null}
 
-          {/* ===== CHAT ===== */}
+          {/* ===== CHAT (DM) ===== */}
           {tab === "chat" ? (
-            <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", maxWidth: 860, margin: "0 auto" }}>
-              <div className="page-header" style={{ marginBottom: 12, flexShrink: 0 }}>
-                <div className="page-header-left">
-                  <div className="page-header-title">Командный чат</div>
-                  <div className="page-header-sub">Сообщения шифруются AES-256 перед сохранением в базе данных</div>
-                </div>
-              </div>
+            <div style={{ display: "flex", gap: 0, height: "calc(100vh - 100px)", maxWidth: 1000, margin: "0 auto", width: "100%" }}>
 
-              <div className="card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                {/* Messages */}
-                <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-                  {chatLoading && chatMessages.length === 0 ? (
-                    <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Загрузка…</div>
-                  ) : chatMessages.length === 0 ? (
-                    <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>
-                      <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
-                      <div style={{ fontWeight: 600, marginBottom: 4 }}>Чат пока пуст</div>
-                      <div style={{ fontSize: 13 }}>Напишите первое сообщение команде</div>
+              {/* Left: contacts / conversations */}
+              <div style={{
+                width: 260, flexShrink: 0, display: "flex", flexDirection: "column",
+                borderRight: "1px solid var(--border)", background: "var(--bg-card)",
+                borderRadius: "var(--radius-lg) 0 0 var(--radius-lg)", overflow: "hidden",
+              }}>
+                <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>Сообщения</div>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ height: 28, fontSize: 11, padding: "0 10px" }}
+                    onClick={() => setChatShowContacts(v => !v)}
+                    title="Новый чат"
+                  >+ Новый</button>
+                </div>
+
+                {/* New chat: pick a contact */}
+                {chatShowContacts && (
+                  <div style={{ borderBottom: "1px solid var(--border)", maxHeight: 220, overflowY: "auto" }}>
+                    <div style={{ padding: "8px 12px 4px", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сотрудники</div>
+                    {chatContacts.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => void openChatWith(c)}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", transition: "background 0.15s" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}
+                      >
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                          {(c.name || c.email)[0].toUpperCase()}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name || c.email}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{c.position || c.role}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Existing conversations */}
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  {chatConversations.length === 0 && !chatShowContacts && (
+                    <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+                      Нажмите «+ Новый» чтобы начать переписку
                     </div>
-                  ) : chatMessages.map((m, i) => {
-                    const isMe = m.sender.id === user?.id;
-                    const prev = chatMessages[i - 1];
-                    const showSender = !prev || prev.sender.id !== m.sender.id;
-                    const msgDate = new Date(m.createdAt);
-                    const prevDate = prev ? new Date(prev.createdAt) : null;
-                    const showDate = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+                  )}
+                  {chatConversations.map(conv => {
+                    if (!conv.user) return null;
+                    const isActive = chatActiveUser?.id === conv.user.id;
                     return (
-                      <div key={m.id}>
-                        {showDate && (
-                          <div style={{ textAlign: "center", fontSize: 11, color: "var(--text-tertiary)", margin: "8px 0 4px", display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
-                            {msgDate.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
-                            <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+                      <div
+                        key={conv.user.id}
+                        onClick={() => void openChatWith(conv.user!)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer",
+                          background: isActive ? "var(--accent-light)" : "transparent",
+                          borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
+                          transition: "background 0.15s",
+                        }}
+                      >
+                        <div style={{ position: "relative", flexShrink: 0 }}>
+                          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--bg-hover)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>
+                            {(conv.user.name || conv.user.email)[0].toUpperCase()}
                           </div>
-                        )}
-                        <div style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", gap: 8, alignItems: "flex-end" }}>
-                          {!isMe && (
-                            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, marginBottom: 2 }}>
-                              {(m.sender.name || m.sender.email)[0].toUpperCase()}
+                          {conv.unread > 0 && (
+                            <div style={{ position: "absolute", top: -2, right: -2, width: 16, height: 16, borderRadius: "50%", background: "#ef4444", color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {conv.unread > 9 ? "9+" : conv.unread}
                             </div>
                           )}
-                          <div style={{ maxWidth: "72%", minWidth: 60 }}>
-                            {showSender && !isMe && (
-                              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginBottom: 3, paddingLeft: 4 }}>
-                                {m.sender.name || m.sender.email}
-                              </div>
-                            )}
-                            <div style={{
-                              background: isMe ? "var(--accent)" : "var(--bg-hover)",
-                              color: isMe ? "#fff" : "var(--text-primary)",
-                              borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                              padding: "10px 14px",
-                              fontSize: 14, lineHeight: 1.5,
-                              wordBreak: "break-word",
-                              boxShadow: isMe ? "0 2px 8px rgba(99,102,241,0.25)" : "var(--shadow-sm)",
-                            }}>
-                              {m.body}
-                            </div>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 3, textAlign: isMe ? "right" : "left", paddingLeft: isMe ? 0 : 4, paddingRight: isMe ? 4 : 0 }}>
-                              {msgDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                            </div>
-                          </div>
                         </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: conv.unread > 0 ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {conv.user.name || conv.user.email}
+                          </div>
+                          {conv.lastMessage && (
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
+                              {conv.lastMessage.sender.id === user?.id ? "Вы: " : ""}{conv.lastMessage.body}
+                            </div>
+                          )}
+                        </div>
+                        {conv.lastMessage && (
+                          <div style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>
+                            {new Date(conv.lastMessage.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                  <div ref={chatBottomRef} />
                 </div>
+              </div>
 
-                {/* Input */}
-                <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0 }}>
-                  <textarea
-                    className="form-input"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); } }}
-                    placeholder="Написать сообщение… (Enter — отправить, Shift+Enter — перенос)"
-                    rows={1}
-                    style={{ flex: 1, resize: "none", minHeight: 40, maxHeight: 120, overflowY: "auto", lineHeight: 1.5 }}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    style={{ height: 40, minWidth: 40, padding: "0 14px" }}
-                    disabled={!chatInput.trim() || chatSending}
-                    onClick={() => void sendChatMessage()}
-                  >
-                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                  </button>
-                </div>
+              {/* Right: message area */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-card)", borderRadius: "0 var(--radius-lg) var(--radius-lg) 0", overflow: "hidden", border: "1px solid var(--border)", borderLeft: "none" }}>
+                {!chatActiveUser ? (
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-tertiary)", gap: 12 }}>
+                    <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.2" viewBox="0 0 24 24" style={{ opacity: 0.3 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <div style={{ fontWeight: 600, fontSize: 15, opacity: 0.6 }}>Выберите собеседника</div>
+                    <div style={{ fontSize: 13, opacity: 0.5 }}>Все сообщения шифруются AES-256</div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Chat header */}
+                    <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+                        {(chatActiveUser.name || chatActiveUser.email)[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{chatActiveUser.name || chatActiveUser.email}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{chatActiveUser.position || chatActiveUser.role}</div>
+                      </div>
+                      <div style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 5 }}>
+                        <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        AES-256
+                      </div>
+                    </div>
+
+                    {/* Messages */}
+                    <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
+                      {chatLoading && chatMessages.length === 0 ? (
+                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Загрузка…</div>
+                      ) : chatMessages.length === 0 ? (
+                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>👋</div>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>Начните общение</div>
+                          <div style={{ fontSize: 13 }}>Напишите {chatActiveUser.name || chatActiveUser.email}</div>
+                        </div>
+                      ) : chatMessages.map((m, i) => {
+                        const isMe = m.sender.id === user?.id;
+                        const prev = chatMessages[i - 1];
+                        const msgDate = new Date(m.createdAt);
+                        const prevDate = prev ? new Date(prev.createdAt) : null;
+                        const showDate = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+                        const grouped = prev && prev.sender.id === m.sender.id && !showDate;
+                        return (
+                          <div key={m.id}>
+                            {showDate && (
+                              <div style={{ textAlign: "center", fontSize: 11, color: "var(--text-tertiary)", margin: "10px 0 6px", display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+                                {msgDate.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
+                                <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+                              </div>
+                            )}
+                            <div style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", gap: 8, alignItems: "flex-end", marginTop: grouped ? 2 : 8 }}>
+                              <div style={{ maxWidth: "75%", minWidth: 40 }}>
+                                <div style={{
+                                  background: isMe ? "var(--accent)" : "var(--bg-hover)",
+                                  color: isMe ? "#fff" : "var(--text-primary)",
+                                  borderRadius: isMe
+                                    ? (grouped ? "16px 4px 4px 16px" : "16px 16px 4px 16px")
+                                    : (grouped ? "4px 16px 16px 4px" : "16px 16px 16px 4px"),
+                                  padding: "9px 14px",
+                                  fontSize: 14, lineHeight: 1.5,
+                                  wordBreak: "break-word",
+                                  boxShadow: isMe ? "0 2px 6px rgba(99,102,241,0.2)" : "var(--shadow-sm)",
+                                }}>
+                                  {m.body}
+                                </div>
+                                <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2, textAlign: isMe ? "right" : "left", paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
+                                  {msgDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Input */}
+                    <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0 }}>
+                      <textarea
+                        className="form-input"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); } }}
+                        placeholder={`Написать ${chatActiveUser.name || chatActiveUser.email}… (Enter — отправить)`}
+                        rows={1}
+                        style={{ flex: 1, resize: "none", minHeight: 40, maxHeight: 120, overflowY: "auto", lineHeight: 1.5 }}
+                      />
+                      <button
+                        className="btn btn-primary"
+                        style={{ height: 40, minWidth: 44, padding: "0 14px" }}
+                        disabled={!chatInput.trim() || chatSending}
+                        onClick={() => void sendChatMessage()}
+                      >
+                        <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
