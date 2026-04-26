@@ -51,7 +51,7 @@ type DealWorker = {
   organization?: { name: string };
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile";
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX";
@@ -128,6 +128,54 @@ const OP_LABELS: Record<OperationType, string> = {
 };
 
 const CURRENCIES = ["PLN", "CHF", "USDT", "UAH", "EUR", "USD"];
+
+function StaffTable({ members, onSelect }: { members: any[]; onSelect: (id: string) => void }) {
+  const ROLE_MAP: Record<string, string> = { SUPER_ADMIN: "Супер Админ", ADMIN: "Админ", MANAGER: "Менеджер", WORKER: "Работник" };
+  if (!members || members.length === 0) return <div style={{ padding: "30px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников</div>;
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+            {["Сотрудник", "Должность", "Роль", "Сделок", "Выплаты"].map(h => (
+              <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "var(--text-tertiary)", fontWeight: 500, fontSize: 11 }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {members.map((m: any) => (
+            <tr key={m.id} style={{ borderBottom: "1px solid var(--border-color)", cursor: "pointer" }}
+              onClick={() => onSelect(m.id)}
+              onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "")}>
+              <td style={{ padding: "10px 8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                    {(m.name || m.email)?.[0]?.toUpperCase() ?? "?"}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{m.name || m.email}</div>
+                    {m.name && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{m.email}</div>}
+                  </div>
+                </div>
+              </td>
+              <td style={{ padding: "10px 8px", color: "var(--text-secondary)" }}>{m.position || "—"}</td>
+              <td style={{ padding: "10px 8px" }}>
+                <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: "var(--accent)22", color: "var(--accent)" }}>
+                  {ROLE_MAP[m.role] ?? m.role}
+                </span>
+              </td>
+              <td style={{ padding: "10px 8px", color: "var(--text-tertiary)" }}>{m.dealsCount}</td>
+              <td style={{ padding: "10px 8px", fontWeight: 600, color: m.totalPayout > 0 ? "var(--accent)" : "var(--text-tertiary)" }}>
+                {m.totalPayout > 0 ? `$${m.totalPayout}` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function AppPage() {
   const router = useRouter();
@@ -252,6 +300,12 @@ export default function AppPage() {
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
   const [pwdSaving, setPwdSaving] = useState(false);
 
+  // --- Staff ---
+  const [staffData, setStaffData] = useState<any>(null);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffMember, setStaffMember] = useState<any>(null);
+  const [staffMemberLoading, setStaffMemberLoading] = useState(false);
+
   // Role helpers
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
@@ -273,6 +327,7 @@ export default function AppPage() {
     if (tab === "reports") return "Отчёты";
     if (tab === "settings") return "Настройки";
     if (tab === "profile") return "Мой профиль";
+    if (tab === "staff") return "Сотрудники";
     return "MyCRM";
   }, [tab]);
 
@@ -296,6 +351,7 @@ export default function AppPage() {
     if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") loadProfile();
+    if (tab === "staff") loadStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -344,6 +400,23 @@ export default function AppPage() {
       const j = await res.json();
       setDeals(Array.isArray(j) ? j : []);
     } finally { setDealsLoading(false); }
+  }
+
+  async function loadStaff() {
+    setStaffLoading(true);
+    setStaffMember(null);
+    try {
+      const res = await fetch("/api/staff", { credentials: "include" });
+      if (res.ok) setStaffData(await res.json());
+    } finally { setStaffLoading(false); }
+  }
+
+  async function loadStaffMember(id: string) {
+    setStaffMemberLoading(true);
+    try {
+      const res = await fetch(`/api/staff/${id}`, { credentials: "include" });
+      if (res.ok) setStaffMember(await res.json());
+    } finally { setStaffMemberLoading(false); }
   }
 
   async function loadTemplates() {
@@ -926,20 +999,21 @@ export default function AppPage() {
 
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          {(["dashboard", "deals", "clients", "expenses", "reports", "settings", "profile"] as Tab[])
+          {(["dashboard", "deals", "clients", "expenses", "reports", "staff", "settings", "profile"] as Tab[])
             .filter((t) => {
               if (isWorker) return t === "dashboard" || t === "profile";
-              if (!isAdmin) return t !== "reports" && t !== "settings";
+              if (!isAdmin) return t !== "reports" && t !== "settings" && t !== "staff";
               return true;
             })
             .map((t) => {
               const NAV_ICONS: Record<string, string> = {
-                dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡", settings: "⊕", profile: "◉"
+                dashboard: "◈", deals: "⊞", clients: "◎", expenses: "◇", reports: "≡",
+                staff: "◫", settings: "⊕", profile: "◉"
               };
               const NAV_LABELS: Record<string, string> = {
                 dashboard: isWorker ? "Мой кабинет" : "Dashboard",
                 deals: "Сделки", clients: "Клиенты",
-                expenses: "Расходы", reports: "Отчёты", settings: "Настройки", profile: "Мой профиль"
+                expenses: "Расходы", reports: "Отчёты", staff: "Сотрудники", settings: "Настройки", profile: "Мой профиль"
               };
               return (
                 <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
@@ -1863,6 +1937,158 @@ export default function AppPage() {
                   </div>
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {/* ===== STAFF ===== */}
+          {tab === "staff" ? (
+            <div>
+              {staffLoading ? (
+                <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+              ) : staffMember ? (
+                // ---- Member detail view ----
+                <div>
+                  <button className="btn btn-secondary" style={{ marginBottom: 20 }}
+                    onClick={() => setStaffMember(null)}>← Назад к списку</button>
+                  {staffMemberLoading ? (
+                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 16, maxWidth: 760 }}>
+                      {/* profile card */}
+                      <div className="card" style={{ padding: "24px 28px" }}>
+                        <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{
+                            width: 72, height: 72, borderRadius: "50%",
+                            background: "var(--accent)", display: "flex", alignItems: "center",
+                            justifyContent: "center", color: "#fff", fontSize: 28, fontWeight: 700, flexShrink: 0
+                          }}>
+                            {(staffMember.name || staffMember.email)?.[0]?.toUpperCase() ?? "?"}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+                              {staffMember.name || staffMember.email}
+                            </div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 2 }}>
+                              {staffMember.email}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                              {staffMember.position && (
+                                <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--bg-hover)", fontSize: 12, color: "var(--text-secondary)" }}>
+                                  {staffMember.position}
+                                </span>
+                              )}
+                              <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--accent)22", fontSize: 12, color: "var(--accent)" }}>
+                                {({ SUPER_ADMIN: "Супер Админ", ADMIN: "Админ", MANAGER: "Менеджер", WORKER: "Работник" } as Record<string,string>)[staffMember.role] ?? staffMember.role}
+                              </span>
+                              {staffMember.organization && (
+                                <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--bg-hover)", fontSize: 12, color: "var(--text-secondary)" }}>
+                                  {staffMember.organization.name}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {/* contacts */}
+                        {(staffMember.phone || staffMember.telegram || staffMember.contacts) && (
+                          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color)", display: "flex", gap: 20, flexWrap: "wrap" }}>
+                            {staffMember.phone && (
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Телефон</div>
+                                <div style={{ fontSize: 13 }}>{staffMember.phone}</div></div>
+                            )}
+                            {staffMember.telegram && (
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Telegram</div>
+                                <div style={{ fontSize: 13 }}>{staffMember.telegram}</div></div>
+                            )}
+                            {staffMember.contacts && (
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Контакты</div>
+                                <div style={{ fontSize: 13 }}>{staffMember.contacts}</div></div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* stats */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+                        {[
+                          { label: "Сделок", value: staffMember.dealsCount },
+                          { label: "Выплаты", value: `$${staffMember.totalPayout}` },
+                          { label: "Зарплата", value: "—", badge: "скоро" },
+                          { label: "Задачи", value: "—", badge: "скоро" },
+                        ].map((s) => (
+                          <div key={s.label} className="card" style={{ padding: "16px 18px" }}>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{s.label}</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{s.value}</div>
+                            {s.badge && <div style={{ fontSize: 10, color: "var(--accent)", marginTop: 4 }}>{s.badge}</div>}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* recent deals */}
+                      {staffMember.recentDeals?.length > 0 && (
+                        <div className="card" style={{ padding: "20px 24px" }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Последние сделки</div>
+                          <div style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                              <thead>
+                                <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                  {["Название", "Дата", "Статус", "Ставка %", "Выплата"].map(h => (
+                                    <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "var(--text-tertiary)", fontWeight: 500, fontSize: 11 }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {staffMember.recentDeals.map((d: any) => (
+                                  <tr key={d.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                    <td style={{ padding: "8px 8px" }}>{d.title || d.templateName || "—"}</td>
+                                    <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}</td>
+                                    <td style={{ padding: "8px 8px" }}>
+                                      <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: d.status === "DONE" ? "#22c55e22" : d.status === "CANCELLED" ? "#ef444422" : "#f59e0b22", color: d.status === "DONE" ? "#22c55e" : d.status === "CANCELLED" ? "#ef4444" : "#f59e0b" }}>
+                                        {d.status === "DONE" ? "Закрыта" : d.status === "CANCELLED" ? "Отменена" : "В работе"}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.pct}%</td>
+                                    <td style={{ padding: "8px 8px", fontWeight: 600, color: "var(--accent)" }}>${d.payout}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : isSuperAdmin ? (
+                // ---- SUPER_ADMIN grouped view ----
+                <div style={{ display: "grid", gap: 24 }}>
+                  {(!staffData || staffData.length === 0) ? (
+                    <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет данных</div>
+                  ) : staffData.map((group: any) => (
+                    <div key={group.org.id} className="card" style={{ padding: "20px 24px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 16 }}>
+                          {group.org.name?.[0]?.toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 700 }}>{group.org.name}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{group.members.length} сотр.</div>
+                        </div>
+                      </div>
+                      <StaffTable members={group.members} onSelect={(id: string) => loadStaffMember(id)} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                // ---- ADMIN single office view ----
+                <div className="card" style={{ padding: "20px 24px" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Сотрудники офиса</div>
+                  {(!staffData || staffData.length === 0) ? (
+                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников</div>
+                  ) : (
+                    <StaffTable members={staffData} onSelect={(id: string) => loadStaffMember(id)} />
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
 

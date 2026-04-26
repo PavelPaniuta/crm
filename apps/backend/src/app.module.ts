@@ -13,6 +13,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { DealTemplatesModule } from './deal-templates/deal-templates.module';
 import { ProfileModule } from './profile/profile.module';
+import { StaffModule } from './staff/staff.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ProfileModule } from './profile/profile.module';
     ReportsModule,
     DealTemplatesModule,
     ProfileModule,
+    StaffModule,
   ],
   controllers: [AppController],
   providers: [AppService],
