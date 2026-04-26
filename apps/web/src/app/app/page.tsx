@@ -53,7 +53,21 @@ type DealWorker = {
   organization?: { name: string };
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "assistant";
+type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "CANCELLED";
+
+type CrmTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  startsAt: string | null;
+  dueAt: string | null;
+  createdAt: string;
+  assignee: { id: string; email: string; name: string | null };
+  createdBy: { id: string; email: string; name: string | null };
+};
+
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "tasks" | "assistant";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX";
@@ -328,6 +342,19 @@ export default function AppPage() {
   const [staffMember, setStaffMember] = useState<any>(null);
   const [staffMemberLoading, setStaffMemberLoading] = useState(false);
 
+  // --- Tasks ---
+  const [tasks, setTasks] = useState<CrmTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [taskPendingCount, setTaskPendingCount] = useState(0);
+  const [taskFilter, setTaskFilter] = useState<"all" | "active" | "done">("active");
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskFormTitle, setTaskFormTitle] = useState("");
+  const [taskFormDesc, setTaskFormDesc] = useState("");
+  const [taskFormAssigneeId, setTaskFormAssigneeId] = useState("");
+  const [taskFormDue, setTaskFormDue] = useState("");
+  const [taskFormStart, setTaskFormStart] = useState("");
+  const [taskUsersForSelect, setTaskUsersForSelect] = useState<AppUser[]>([]);
+
   // Role helpers
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
@@ -350,6 +377,7 @@ export default function AppPage() {
     if (tab === "settings") return "Настройки";
     if (tab === "profile") return "Мой профиль";
     if (tab === "staff") return "Сотрудники";
+    if (tab === "tasks") return "Задачи";
     if (tab === "assistant") return "AI Ассистент";
     return "MyCRM";
   }, [tab]);
@@ -367,6 +395,11 @@ export default function AppPage() {
   }, [router]);
 
   useEffect(() => {
+    if (user) void loadTaskPendingCount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
     if (tab === "clients") loadClients();
     if (tab === "expenses") loadExpenses();
     if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); }
@@ -375,6 +408,7 @@ export default function AppPage() {
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") loadProfile();
     if (tab === "staff") loadStaff();
+    if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
       fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
     }
@@ -460,6 +494,80 @@ export default function AppPage() {
         setStaffMember({ ...member, extraMemberships: memberships });
       }
     } finally { setStaffMemberLoading(false); }
+  }
+
+  async function loadTaskPendingCount() {
+    try {
+      const res = await fetch("/api/tasks/pending-count", { credentials: "include" });
+      if (res.ok) {
+        const j = await res.json();
+        setTaskPendingCount(j.count ?? 0);
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function loadTasks() {
+    setTasksLoading(true);
+    try {
+      const res = await fetch("/api/tasks", { credentials: "include" });
+      if (res.status === 401) { router.replace("/login"); return; }
+      if (!res.ok) { setTasks([]); return; }
+      const j = await res.json();
+      setTasks(Array.isArray(j) ? j : []);
+    } finally {
+      setTasksLoading(false);
+    }
+    await loadTaskPendingCount();
+  }
+
+  async function loadTaskUserOptions() {
+    if (!isManager) return;
+    // MANAGER нет доступа к GET /api/users — используем public (тот же org, что в activeOrganization)
+    const res = await fetch("/api/users/public", { credentials: "include" });
+    if (res.ok) {
+      const j = await res.json();
+      setTaskUsersForSelect(Array.isArray(j) ? j : []);
+    }
+  }
+
+  async function createTaskFromModal() {
+    if (!taskFormTitle.trim() || !taskFormAssigneeId) return;
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: taskFormTitle.trim(),
+        description: taskFormDesc.trim() || null,
+        assigneeId: taskFormAssigneeId,
+        dueAt: taskFormDue || null,
+        startsAt: taskFormStart || null,
+      }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      return alert((e as { message?: string }).message ?? "Ошибка");
+    }
+    setTaskModalOpen(false);
+    setTaskFormTitle(""); setTaskFormDesc(""); setTaskFormAssigneeId("");
+    setTaskFormDue(""); setTaskFormStart("");
+    await loadTasks();
+  }
+
+  async function patchTask(id: string, body: Record<string, unknown>) {
+    const res = await fetch(`/api/tasks/${id}`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) await loadTasks();
+    else { const e = await res.json().catch(() => ({})); alert((e as { message?: string }).message ?? "Ошибка"); }
+  }
+
+  async function deleteTaskById(id: string) {
+    if (!confirm("Удалить задачу?")) return;
+    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) await loadTasks();
   }
 
   async function addMembership(userId: string, organizationId: string) {
@@ -1227,9 +1335,9 @@ export default function AppPage() {
 
         <nav className="sidebar-nav">
           <div className="nav-section">Основное</div>
-          {(["dashboard", "deals", "clients", "expenses", "reports", "staff", "assistant", "settings", "profile"] as Tab[])
+          {(["dashboard", "deals", "clients", "expenses", "reports", "staff", "tasks", "assistant", "settings", "profile"] as Tab[])
             .filter((t) => {
-              if (isWorker) return t === "dashboard" || t === "profile";
+              if (isWorker) return t === "dashboard" || t === "profile" || t === "tasks";
               if (!isAdmin) return t !== "reports" && t !== "settings" && t !== "staff";
               return true;
             })
@@ -1238,6 +1346,7 @@ export default function AppPage() {
                 dashboard: isWorker ? "Мой кабинет" : "Dashboard",
                 deals: "Сделки", clients: "Клиенты",
                 expenses: "Расходы", reports: "Отчёты", staff: "Сотрудники",
+                tasks: "Задачи",
                 assistant: "AI Ассистент", settings: "Настройки", profile: "Мой профиль"
               };
               const NAV_SVG: Record<string, ReactElement> = {
@@ -1247,6 +1356,7 @@ export default function AppPage() {
                 expenses: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
                 reports: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>,
                 staff: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>,
+                tasks: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
                 assistant: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"/></svg>,
                 settings: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
                 profile: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
@@ -1254,7 +1364,12 @@ export default function AppPage() {
               return (
                 <a key={t} className={`nav-item ${tab === t ? "active" : ""}`} onClick={() => { setTab(t); setOrgSwitchOpen(false); setSidebarOpen(false); }}>
                   <span style={{ width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: tab === t ? 1 : 0.55 }}>{NAV_SVG[t]}</span>
-                  <span>{NAV_LABELS[t]}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                    {NAV_LABELS[t]}
+                    {t === "tasks" && taskPendingCount > 0 && (
+                      <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: "18px", textAlign: "center" }}>{taskPendingCount > 9 ? "9+" : taskPendingCount}</span>
+                    )}
+                  </span>
                 </a>
               );
             })}
@@ -2385,6 +2500,148 @@ export default function AppPage() {
                 </div>
               </div>
 
+            </div>
+          ) : null}
+
+          {tab === "tasks" ? (
+            <div style={{ display: "grid", gap: 16 }}>
+              <div className="page-header">
+                <div className="page-header-left">
+                  <div className="page-header-title">Задачи</div>
+                  <div className="page-header-sub">Назначайте сроки, отслеживайте статусы. Исполнители получают письмо о новой задаче.</div>
+                </div>
+                {isManager && (
+                  <div className="page-header-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => { setTaskModalOpen(true); void loadTaskUserOptions(); }}
+                    >+ Новая задача</button>
+                  </div>
+                )}
+              </div>
+              <div className="filter-tabs" style={{ width: "fit-content" }}>
+                {([
+                  { id: "active" as const, label: "Активные" },
+                  { id: "all" as const, label: "Все" },
+                  { id: "done" as const, label: "Архив" },
+                ]).map((f) => (
+                  <button key={f.id} type="button" className={`filter-tab ${taskFilter === f.id ? "active" : ""}`} onClick={() => setTaskFilter(f.id)}>{f.label}</button>
+                ))}
+              </div>
+              {tasksLoading ? (
+                <div style={{ color: "var(--text-secondary)" }}>Загрузка…</div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+                  {tasks
+                    .filter((t) => {
+                      if (taskFilter === "active") return t.status === "PENDING" || t.status === "IN_PROGRESS";
+                      if (taskFilter === "done") return t.status === "DONE" || t.status === "CANCELLED";
+                      return true;
+                    })
+                    .map((t) => {
+                      const isMine = user?.id === t.assignee.id;
+                      const due = t.dueAt ? new Date(t.dueAt) : null;
+                      const overdue = !!(due && due < new Date() && t.status !== "DONE" && t.status !== "CANCELLED");
+                      const stLabel: Record<TaskStatus, string> = {
+                        PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена",
+                      };
+                      return (
+                        <div
+                          key={t.id}
+                          className={`task-card${isMine && t.status !== "DONE" && t.status !== "CANCELLED" ? " task-card--mine" : ""}${overdue ? " task-card--due" : ""}${t.status === "DONE" ? " task-card--done" : ""}`}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                            <h3 style={{ margin: 0, flex: 1 }}>{t.title}</h3>
+                            <span className={`badge ${t.status === "DONE" ? "badge-green" : t.status === "IN_PROGRESS" ? "badge-blue" : t.status === "CANCELLED" ? "badge-gray" : "badge-amber"}`}>
+                              {stLabel[t.status]}
+                            </span>
+                          </div>
+                          {t.description && <div className="task-card-desc">{t.description}</div>}
+                          <div className="task-card-meta">
+                            <span>👤 {t.assignee.name || t.assignee.email}</span>
+                            <span>·</span>
+                            <span>от {t.createdBy.name || t.createdBy.email}</span>
+                            {t.dueAt && (
+                              <>
+                                <span>·</span>
+                                <span className="mono" style={overdue ? { color: "var(--amber)" } : {}}>до {new Date(t.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="task-card-actions">
+                            {isMine && t.status !== "DONE" && t.status !== "CANCELLED" && (
+                              <>
+                                {t.status === "PENDING" && (
+                                  <button className="btn btn-secondary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "IN_PROGRESS" })}>Взять в работу</button>
+                                )}
+                                <button className="btn btn-primary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "DONE" })}>Выполнено</button>
+                              </>
+                            )}
+                            {isManager && (
+                              <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>Удалить</button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+              {!tasksLoading && tasks.filter((t) => taskFilter === "active" ? t.status === "PENDING" || t.status === "IN_PROGRESS" : taskFilter === "done" ? t.status === "DONE" || t.status === "CANCELLED" : true).length === 0 && (
+                <div className="empty-state" style={{ padding: 32 }}>
+                  <div className="empty-state-icon">
+                    <svg width="24" height="24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </div>
+                  <div className="empty-state-title">Нет задач</div>
+                  <div className="empty-state-desc">{isManager ? "Создайте задачу для сотрудника — он получит письмо" : "Вам пока ничего не назначили"}</div>
+                </div>
+              )}
+              {taskModalOpen && isManager && (
+                <div
+                  className="modal-backdrop"
+                  style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60, backdropFilter: "blur(2px)" }}
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) setTaskModalOpen(false); }}
+                >
+                  <div className="card" style={{ width: 480, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+                    <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span className="card-title">Новая задача</span>
+                      <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>×</button>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                      <div>
+                        <div className="form-label">Название *</div>
+                        <input className="form-input" value={taskFormTitle} onChange={(e) => setTaskFormTitle(e.target.value)} placeholder="Кратко, что сделать" />
+                      </div>
+                      <div>
+                        <div className="form-label">Описание</div>
+                        <textarea className="form-input" value={taskFormDesc} onChange={(e) => setTaskFormDesc(e.target.value)} rows={3} placeholder="Детали" />
+                      </div>
+                      <div>
+                        <div className="form-label">Исполнитель *</div>
+                        <select className="form-input" value={taskFormAssigneeId} onChange={(e) => setTaskFormAssigneeId(e.target.value)}>
+                          <option value="">Выберите</option>
+                          {taskUsersForSelect.map((u) => (
+                            <option key={u.id} value={u.id}>{u.name || u.email} ({u.email})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="g2">
+                        <div>
+                          <div className="form-label">Начало</div>
+                          <input className="form-input" type="datetime-local" value={taskFormStart} onChange={(e) => setTaskFormStart(e.target.value)} />
+                        </div>
+                        <div>
+                          <div className="form-label">Срок</div>
+                          <input className="form-input" type="datetime-local" value={taskFormDue} onChange={(e) => setTaskFormDue(e.target.value)} />
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>Отмена</button>
+                        <button className="btn btn-primary" onClick={() => void createTaskFromModal()} disabled={!taskFormTitle.trim() || !taskFormAssigneeId}>Создать</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
 

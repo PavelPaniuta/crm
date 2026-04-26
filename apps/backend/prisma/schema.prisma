@@ -42,6 +42,13 @@ enum FieldType {
   CHECKBOX
 }
 
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -54,6 +61,7 @@ model Organization {
   expenses      Expense[]
   dealTemplates DealTemplate[]
   memberships   UserMembership[]
+  tasks         Task[]
 }
 
 model User {
@@ -76,6 +84,8 @@ model User {
   sessions           Session[]
   memberships        UserMembership[]
   passwordResetTokens PasswordResetToken[]
+  tasksAssigned        Task[] @relation("TaskAssignee")
+  tasksCreated         Task[] @relation("TaskCreator")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -260,5 +270,30 @@ model Expense {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  title          String
+  description    String?
+  status         TaskStatus  @default(PENDING)
+  startsAt       DateTime?
+  dueAt          DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  assigneeId     String
+  assignee       User         @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+
+  createdById    String
+  createdBy      User         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([status])
 }
 

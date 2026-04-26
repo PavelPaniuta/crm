@@ -572,3 +572,27 @@ select.form-input { cursor: pointer; }
 }
 
 .fade-in { animation: fadeIn 0.2s ease forwards; }
+
+/* ===== TASK CARDS ===== */
+.task-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 16px 14px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 0.2s, transform 0.15s, border-color 0.2s;
+}
+.task-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.task-card--mine { border-left: 3px solid var(--accent); padding-left: 14px; }
+.task-card--due { border-color: #f59e0b; box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15); }
+.task-card--done { opacity: 0.85; }
+.task-card h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.35; }
+.task-card-meta { font-size: 12px; color: var(--text-tertiary); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.task-card-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.task-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }

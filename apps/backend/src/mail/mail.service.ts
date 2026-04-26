@@ -55,4 +55,66 @@ export class MailService {
       throw new Error(`Email send failed: ${error.message}`);
     }
   }
+
+  async sendTaskAssigned(
+    to: string,
+    p: { taskTitle: string; description: string | null; dueAt: Date | null; assignerName: string; appUrl: string },
+  ) {
+    if (!this.resend) {
+      this.logger.warn(`[MOCK] task assigned to ${to}: ${p.taskTitle}`);
+      return;
+    }
+    const desc = p.description ? `<p style="color:#6b7280;">${p.description.replace(/</g, '&lt;')}</p>` : '';
+    const due = p.dueAt
+      ? `<p><strong>Срок:</strong> ${p.dueAt.toLocaleString('ru-RU')}</p>`
+      : '';
+    const { error } = await this.resend.emails.send({
+      from: `MyCRM <${this.from}>`,
+      to,
+      subject: `Новая задача: ${p.taskTitle} — MyCRM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+          <h2 style="color: #6366f1; margin-bottom: 8px;">MyCRM</h2>
+          <h3 style="margin-top: 0;">Вам назначена задача</h3>
+          <p><strong>Название:</strong> ${p.taskTitle.replace(/</g, '&lt;')}</p>
+          ${desc}
+          ${due}
+          <p style="color: #6b7280; font-size: 13px;">Назначил: ${p.assignerName.replace(/</g, '&lt;')}</p>
+          <a href="${p.appUrl}/app" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:16px;">Открыть MyCRM</a>
+        </div>
+      `,
+    });
+    if (error) {
+      this.logger.error(`Task assigned email: ${JSON.stringify(error)}`);
+      throw new Error(`Email send failed: ${error.message}`);
+    }
+  }
+
+  async sendTaskCompleted(
+    to: string,
+    p: { taskTitle: string; assigneeName: string; appUrl: string },
+  ) {
+    if (!this.resend) {
+      this.logger.warn(`[MOCK] task done notify ${to}: ${p.taskTitle}`);
+      return;
+    }
+    const { error } = await this.resend.emails.send({
+      from: `MyCRM <${this.from}>`,
+      to,
+      subject: `Задача выполнена: ${p.taskTitle} — MyCRM`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+          <h2 style="color: #6366f1; margin-bottom: 8px;">MyCRM</h2>
+          <h3 style="margin-top: 0;">Задача отмечена как выполненная</h3>
+          <p><strong>${p.taskTitle.replace(/</g, '&lt;')}</strong></p>
+          <p>Исполнитель: ${p.assigneeName.replace(/</g, '&lt;')}</p>
+          <a href="${p.appUrl}/app" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:16px;">Открыть MyCRM</a>
+        </div>
+      `,
+    });
+    if (error) {
+      this.logger.error(`Task completed email: ${JSON.stringify(error)}`);
+      throw new Error(`Email send failed: ${error.message}`);
+    }
+  }
 }
