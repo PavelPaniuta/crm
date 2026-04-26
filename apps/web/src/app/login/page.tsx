@@ -111,28 +111,36 @@ export default function LoginPage() {
       </div>
 
       {forgotOpen && (
-        <div className="modal-overlay" onClick={() => setForgotOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-            <div className="modal-header">
-              <span className="modal-title">Восстановление пароля</span>
-              <button className="modal-close" onClick={() => setForgotOpen(false)}>✕</button>
+        <div
+          className="modal-backdrop"
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 100, backdropFilter: "blur(2px)" }}
+          onClick={() => setForgotOpen(false)}
+        >
+          <div
+            className="card"
+            style={{ width: "100%", maxWidth: 420, borderRadius: "var(--radius-xl)", overflow: "hidden" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span className="card-title">Восстановление пароля</span>
+              <button onClick={() => setForgotOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", fontSize: 18, lineHeight: 1, padding: "2px 6px" }}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="card-body">
               {forgotDone ? (
-                <div style={{ textAlign: "center", padding: "16px 0" }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>📧</div>
-                  <p style={{ fontWeight: 600, marginBottom: 8 }}>Письмо отправлено!</p>
-                  <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                <div style={{ textAlign: "center", padding: "24px 0" }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>📧</div>
+                  <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Письмо отправлено!</p>
+                  <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
                     Если аккаунт с адресом <strong>{forgotEmail}</strong> существует — вам придёт письмо со ссылкой для сброса пароля.<br />
                     Ссылка действительна 30 минут.
                   </p>
-                  <button className="btn btn-secondary" style={{ marginTop: 16 }} onClick={() => setForgotOpen(false)}>
+                  <button className="btn btn-primary" style={{ marginTop: 20, width: "100%" }} onClick={() => setForgotOpen(false)}>
                     Закрыть
                   </button>
                 </div>
               ) : (
-                <form onSubmit={onForgot} style={{ display: "grid", gap: 12 }}>
-                  <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: 0 }}>
+                <form onSubmit={onForgot} style={{ display: "grid", gap: 16 }}>
+                  <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: 0, lineHeight: 1.6 }}>
                     Введите email вашего аккаунта. Мы отправим ссылку для сброса пароля.
                   </p>
                   <div>
@@ -147,11 +155,11 @@ export default function LoginPage() {
                     />
                   </div>
                   {forgotError && (
-                    <div style={{ color: "var(--red-text)", background: "var(--red-bg)", padding: 10, borderRadius: 10, fontSize: 13 }}>
+                    <div style={{ color: "var(--red-text)", background: "var(--red-bg)", padding: "10px 14px", borderRadius: 10, fontSize: 13 }}>
                       {forgotError}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     <button type="button" className="btn btn-secondary" onClick={() => setForgotOpen(false)}>
                       Отмена
                     </button>

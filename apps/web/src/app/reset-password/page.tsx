@@ -49,69 +49,102 @@ function ResetPasswordForm() {
 
   return (
     <div className="auth-shell">
-      <div className="card auth-card">
-        <div className="card-header">
-          <span className="card-title">Новый пароль — MyCRM</span>
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16,
+            background: "var(--accent)", color: "#fff",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            fontSize: 26, fontWeight: 800, marginBottom: 12, boxShadow: "0 4px 16px rgba(99,102,241,0.35)"
+          }}>M</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>MyCRM</div>
         </div>
-        <div className="card-body">
-          {tokenValid === null && (
-            <p style={{ color: "var(--text-secondary)", textAlign: "center" }}>Проверяем ссылку…</p>
-          )}
-          {tokenValid === false && (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>⛔</div>
-              <p style={{ fontWeight: 600 }}>Ссылка недействительна</p>
-              <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                Ссылка устарела или уже была использована.<br />
-                Запросите сброс пароля заново.
-              </p>
-              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => router.replace("/login")}>
-                На страницу входа
-              </button>
-            </div>
-          )}
-          {tokenValid === true && !done && (
-            <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-              <div>
-                <div className="form-label">Новый пароль</div>
-                <input
-                  className="form-input"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoFocus
-                  required
-                />
+
+        <div className="card" style={{ borderRadius: "var(--radius-xl)", overflow: "hidden" }}>
+          <div className="card-header">
+            <span className="card-title">
+              {tokenValid === null ? "Проверка ссылки…" :
+               tokenValid === false ? "Ссылка недействительна" :
+               done ? "Готово!" : "Новый пароль"}
+            </span>
+          </div>
+          <div className="card-body">
+
+            {tokenValid === null && (
+              <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-secondary)" }}>
+                <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>⏳</div>
+                Проверяем ссылку…
               </div>
-              <div>
-                <div className="form-label">Повторите пароль</div>
-                <input
-                  className="form-input"
-                  type="password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  required
-                />
+            )}
+
+            {tokenValid === false && (
+              <div style={{ textAlign: "center", padding: "24px 0" }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>⛔</div>
+                <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Ссылка недействительна</p>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+                  Ссылка устарела или уже была использована.<br />
+                  Запросите сброс пароля заново.
+                </p>
+                <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => router.replace("/login")}>
+                  На страницу входа
+                </button>
               </div>
-              {error && (
-                <div style={{ color: "var(--red-text)", background: "var(--red-bg)", padding: 10, borderRadius: 10, fontSize: 13 }}>
-                  {error}
+            )}
+
+            {tokenValid === true && !done && (
+              <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: 0, lineHeight: 1.6 }}>
+                  Придумайте новый пароль для вашего аккаунта.
+                </p>
+                <div>
+                  <div className="form-label">Новый пароль</div>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Минимум 6 символов"
+                    autoFocus
+                    required
+                  />
                 </div>
-              )}
-              <button className="btn btn-primary" type="submit" disabled={loading}>
-                {loading ? "Сохраняем..." : "Сохранить пароль"}
-              </button>
-            </form>
-          )}
-          {done && (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-              <p style={{ fontWeight: 600 }}>Пароль успешно изменён!</p>
-              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => router.replace("/login")}>
-                Войти
-              </button>
-            </div>
-          )}
+                <div>
+                  <div className="form-label">Повторите пароль</div>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    placeholder="Повторите пароль"
+                    required
+                  />
+                </div>
+                {error && (
+                  <div style={{ color: "var(--red-text)", background: "var(--red-bg)", padding: "10px 14px", borderRadius: 10, fontSize: 13 }}>
+                    {error}
+                  </div>
+                )}
+                <button className="btn btn-primary" type="submit" disabled={loading} style={{ width: "100%", height: 44 }}>
+                  {loading ? "Сохраняем…" : "Сохранить пароль"}
+                </button>
+              </form>
+            )}
+
+            {done && (
+              <div style={{ textAlign: "center", padding: "24px 0" }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+                <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Пароль изменён!</p>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>
+                  Теперь вы можете войти с новым паролем.
+                </p>
+                <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => router.replace("/login")}>
+                  Войти в MyCRM
+                </button>
+              </div>
+            )}
+
+          </div>
         </div>
       </div>
     </div>
@@ -120,7 +153,11 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="auth-shell"><p style={{ color: "var(--text-secondary)" }}>Загрузка…</p></div>}>
+    <Suspense fallback={
+      <div className="auth-shell">
+        <div style={{ color: "var(--text-secondary)", textAlign: "center" }}>Загрузка…</div>
+      </div>
+    }>
       <ResetPasswordForm />
     </Suspense>
   );
