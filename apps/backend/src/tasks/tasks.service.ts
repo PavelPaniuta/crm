@@ -171,7 +171,11 @@ export class TasksService {
     if (!isManagerOrAbove(role)) throw new ForbiddenException();
 
     const patch: Record<string, unknown> = {};
-    if (data.title !== undefined) patch.title = data.title.trim();
+    if (data.title !== undefined) {
+      const trimmed = data.title.trim();
+      if (!trimmed) throw new BadRequestException('title required');
+      patch.title = trimmed;
+    }
     if (data.description !== undefined) patch.description = data.description?.trim() || null;
     if (data.status !== undefined) patch.status = data.status;
     if (data.dueAt !== undefined) patch.dueAt = data.dueAt ? new Date(data.dueAt) : null;

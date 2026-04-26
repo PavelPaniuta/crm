@@ -15,10 +15,12 @@ export class DashboardService {
 
   async getSummary(organizationId: string, from?: string, to?: string) {
     const now = new Date();
-    const fromDate = from
-      ? startOfDay(new Date(from))
+    const parsedFrom = from ? new Date(from) : null;
+    const parsedTo = to ? new Date(to) : null;
+    const fromDate = parsedFrom && !isNaN(parsedFrom.getTime())
+      ? startOfDay(parsedFrom)
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
-    const toDate = to ? endOfDay(new Date(to)) : endOfDay(now);
+    const toDate = parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
 
     const deals = await this.prisma.deal.findMany({
       where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
@@ -83,10 +85,12 @@ export class DashboardService {
 
   async getGlobalSummary(from?: string, to?: string) {
     const now = new Date();
-    const fromDate = from
-      ? startOfDay(new Date(from))
+    const parsedFrom = from ? new Date(from) : null;
+    const parsedTo = to ? new Date(to) : null;
+    const fromDate = parsedFrom && !isNaN(parsedFrom.getTime())
+      ? startOfDay(parsedFrom)
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
-    const toDate = to ? endOfDay(new Date(to)) : endOfDay(now);
+    const toDate = parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
 
     const orgs = await this.prisma.organization.findMany({ orderBy: { name: 'asc' } });
 

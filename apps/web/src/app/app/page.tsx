@@ -410,6 +410,10 @@ export default function AppPage() {
   const [chatShowContacts, setChatShowContacts] = useState(false);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  // Ref keeps the latest chatActiveUser for the polling interval (avoids stale closure)
+  const chatActiveUserRef = useRef<ChatContact | null>(null);
+  // AbortController for task comment loading — cancels previous request on rapid clicks
+  const taskCommentAbortRef = useRef<AbortController | null>(null);
 
   // Role helpers
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
@@ -629,14 +633,24 @@ export default function AppPage() {
     await loadTasks();
   }
 
-  async function patchTask(id: string, body: Record<string, unknown>) {
+  async function patchTask(id: string, body: Record<string, unknown>): Promise<boolean> {
     const res = await fetch(`/api/tasks/${id}`, {
       method: "PATCH", credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.ok) await loadTasks();
-    else { const e = await res.json().catch(() => ({})); alert((e as { message?: string }).message ?? "Ошибка"); }
+    if (res.ok) {
+      const updated = await res.json() as CrmTask;
+      // Sync task list
+      setTasks(prev => prev.map(t => t.id === id ? updated : t));
+      // Sync open drawer if it's the same task
+      setTaskDetail(prev => prev?.id === id ? updated : prev);
+      void loadTaskPendingCount();
+      return true;
+    }
+    const e = await res.json().catch(() => ({}));
+    alert((e as { message?: string }).message ?? "Ошибка");
+    return false;
   }
 
   async function deleteTaskById(id: string) {
@@ -646,14 +660,24 @@ export default function AppPage() {
   }
 
   async function openTaskDetail(t: CrmTask) {
+    // Cancel any in-flight comment request from a previous task
+    taskCommentAbortRef.current?.abort();
+    const controller = new AbortController();
+    taskCommentAbortRef.current = controller;
+
     setTaskDetail(t);
     setTaskEditMode(false);
     setTaskComments([]);
     setTaskCommentInput("");
     setTaskCommentsLoading(true);
     try {
-      const res = await fetch(`/api/tasks/${t.id}/comments`, { credentials: "include" });
+      const res = await fetch(`/api/tasks/${t.id}/comments`, {
+        credentials: "include",
+        signal: controller.signal,
+      });
       if (res.ok) setTaskComments(await res.json());
+    } catch (e) {
+      if ((e as { name?: string }).name !== "AbortError") throw e;
     } finally { setTaskCommentsLoading(false); }
   }
 
@@ -676,21 +700,15 @@ export default function AppPage() {
 
   async function saveTaskEdit() {
     if (!taskDetail || !taskEditTitle.trim()) return;
-    await patchTask(taskDetail.id, {
+    const ok = await patchTask(taskDetail.id, {
       title: taskEditTitle.trim(),
       description: taskEditDesc.trim() || null,
       dueAt: taskEditDue || null,
       startsAt: taskEditStart || null,
       assigneeId: taskEditAssigneeId || undefined,
     });
-    // reload updated task
-    const res = await fetch("/api/tasks", { credentials: "include" });
-    if (res.ok) {
-      const all: CrmTask[] = await res.json();
-      const updated = all.find(t => t.id === taskDetail.id);
-      if (updated) setTaskDetail(updated);
-    }
-    setTaskEditMode(false);
+    // patchTask already syncs taskDetail on success; only close edit mode if successful
+    if (ok) setTaskEditMode(false);
   }
 
   // --- Chat (DM) functions ---
@@ -705,6 +723,8 @@ export default function AppPage() {
   }
 
   async function openChatWith(contact: ChatContact) {
+    // Update ref immediately so the polling interval sees the new partner right away
+    chatActiveUserRef.current = contact;
     setChatActiveUser(contact);
     setChatMessages([]);
     setChatShowContacts(false);
@@ -724,9 +744,11 @@ export default function AppPage() {
   }
 
   async function pollChatMessages() {
-    if (!chatActiveUser) return;
+    // Read from ref — always current even inside a stale setInterval closure
+    const active = chatActiveUserRef.current;
+    if (!active) return;
     try {
-      const res = await fetch(`/api/chat/messages?with=${chatActiveUser.id}&limit=20`, { credentials: "include" });
+      const res = await fetch(`/api/chat/messages?with=${active.id}&limit=20`, { credentials: "include" });
       if (res.ok) {
         const msgs: ChatMessage[] = await res.json();
         setChatMessages(prev => {
@@ -734,17 +756,15 @@ export default function AppPage() {
           const existIds = new Set(prev.map(m => m.id));
           const newOnes = msgs.filter(m => !existIds.has(m.id));
           if (!newOnes.length) return prev;
-          // auto-mark read for incoming messages
           void fetch("/api/chat/read", {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ otherUserId: chatActiveUser.id }),
+            body: JSON.stringify({ otherUserId: active.id }),
           });
           return [...prev, ...newOnes];
         });
       }
     } catch { /* ignore */ }
-    // also refresh conversations sidebar
     void loadChatConversations();
   }
 
@@ -2999,7 +3019,7 @@ export default function AppPage() {
                   <>
                     {/* Chat header */}
                     <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                      <button className="chat-back-btn" onClick={() => setChatActiveUser(null)}>
+                      <button className="chat-back-btn" onClick={() => { chatActiveUserRef.current = null; setChatActiveUser(null); }}>
                         <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                       </button>
                       <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>

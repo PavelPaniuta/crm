@@ -106,7 +106,7 @@ export class ChatService {
       }),
     );
 
-    return conversations.sort((a, b) => (a.lastAt > b.lastAt ? -1 : 1));
+    return conversations.sort((a, b) => (a.lastAt > b.lastAt ? -1 : a.lastAt < b.lastAt ? 1 : 0));
   }
 
   /** Messages between two users */
