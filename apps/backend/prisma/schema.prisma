@@ -31,16 +31,26 @@ enum OperationType {
   TRANSFER
 }
 
+enum FieldType {
+  TEXT
+  NUMBER
+  SELECT
+  DATE
+  PERCENT
+  CHECKBOX
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users   User[]
-  clients Client[]
-  deals   Deal[]
-  expenses Expense[]
+  users         User[]
+  clients       Client[]
+  deals         Deal[]
+  expenses      Expense[]
+  dealTemplates DealTemplate[]
 }
 
 model User {
@@ -110,9 +120,59 @@ model Deal {
 
   amounts       DealAmount[]
   participants  DealParticipant[]
+  dataRows      DealDataRow[]
+
+  templateId    String?
+  template      DealTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([clientId])
+  @@index([templateId])
+}
+
+model DealTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  hasWorkers     Boolean  @default(true)
+  incomeFieldKey String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fields DealTemplateField[]
+  deals  Deal[]
+
+  @@index([organizationId])
+}
+
+model DealTemplateField {
+  id         String    @id @default(cuid())
+  templateId String
+  template   DealTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  type       FieldType @default(TEXT)
+  required   Boolean   @default(false)
+  order      Int       @default(0)
+  options    String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([templateId, key])
+  @@index([templateId])
+}
+
+model DealDataRow {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  data      Json     @default("{}")
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
 }
 
 model DealAmount {

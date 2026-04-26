@@ -52,6 +52,31 @@ type DealWorker = {
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
+type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX";
+
+type TemplateField = {
+  id: string;
+  key: string;
+  label: string;
+  type: FieldType;
+  required: boolean;
+  order: number;
+  options?: string | null;
+};
+
+type DealTemplate = {
+  id: string;
+  name: string;
+  hasWorkers: boolean;
+  incomeFieldKey?: string | null;
+  fields: TemplateField[];
+};
+
+type DealDataRow = {
+  id: string;
+  data: Record<string, unknown>;
+  order: number;
+};
 
 type Deal = {
   id: string;
@@ -60,6 +85,8 @@ type Deal = {
   dealDate: string;
   comment?: string | null;
   clientId?: string | null;
+  templateId?: string | null;
+  template?: DealTemplate | null;
   client?: { id: string; name: string; phone: string } | null;
   amounts: Array<{
     id: string;
@@ -71,6 +98,7 @@ type Deal = {
     operationType: OperationType;
     shopName?: string | null;
   }>;
+  dataRows?: DealDataRow[];
   participants: Array<{
     id: string;
     pct: number;
@@ -178,6 +206,20 @@ export default function AppPage() {
   const [dealParticipants, setDealParticipants] = useState<DealParticipantRow[]>([]);
   const [dealComment, setDealComment] = useState("");
 
+  // --- Deal Templates (for deal modal) ---
+  const [dealTemplateId, setDealTemplateId] = useState<string | null>(null);
+  const [dealTemplateStep, setDealTemplateStep] = useState<"pick" | "form">("pick");
+  const [dealDataRows, setDealDataRows] = useState<Array<{ _id: string; data: Record<string, string> }>>([]);
+
+  // --- Template Management ---
+  const [templates, setTemplates] = useState<DealTemplate[]>([]);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateEditing, setTemplateEditing] = useState<DealTemplate | null>(null);
+  const [tplName, setTplName] = useState("");
+  const [tplHasWorkers, setTplHasWorkers] = useState(true);
+  const [tplIncomeFieldKey, setTplIncomeFieldKey] = useState("");
+  const [tplFields, setTplFields] = useState<Array<{ _id: string; label: string; type: FieldType; required: boolean; options: string }>>([]);
+
   // --- Dashboard ---
   const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [dashTo, setDashTo] = useState(() => new Date().toISOString().slice(0, 10));
@@ -215,8 +257,8 @@ export default function AppPage() {
   useEffect(() => {
     if (tab === "clients") loadClients();
     if (tab === "expenses") loadExpenses();
-    if (tab === "settings") { loadUsers(); loadOrgs(); }
-    if (tab === "deals") loadDeals();
+    if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); }
+    if (tab === "deals") { loadDeals(); loadTemplates(); }
     if (tab === "dashboard") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -267,6 +309,71 @@ export default function AppPage() {
       const j = await res.json();
       setDeals(Array.isArray(j) ? j : []);
     } finally { setDealsLoading(false); }
+  }
+
+  async function loadTemplates() {
+    const res = await fetch("/api/deal-templates", { credentials: "include" });
+    if (res.ok) setTemplates(await res.json());
+  }
+
+  function openTemplateModal(tpl?: DealTemplate) {
+    setTemplateEditing(tpl ?? null);
+    setTplName(tpl?.name ?? "");
+    setTplHasWorkers(tpl?.hasWorkers ?? true);
+    setTplIncomeFieldKey(tpl?.incomeFieldKey ?? "");
+    setTplFields(
+      tpl?.fields.map((f) => ({
+        _id: f.id,
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        options: f.options ?? "",
+      })) ?? []
+    );
+    setTemplateModalOpen(true);
+  }
+
+  function addTplField() {
+    setTplFields((prev) => [...prev, { _id: crypto.randomUUID(), label: "", type: "TEXT", required: false, options: "" }]);
+  }
+
+  async function saveTemplate() {
+    if (!tplName.trim()) return alert("Введите название шаблона");
+    if (tplFields.length === 0) return alert("Добавьте хотя бы одно поле");
+    for (const f of tplFields) {
+      if (!f.label.trim()) return alert("У всех полей должно быть название");
+    }
+    const fields = tplFields.map((f, i) => ({
+      key: f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`,
+      label: f.label,
+      type: f.type,
+      required: f.required,
+      order: i,
+      options: f.options.trim() || null,
+    }));
+    const payload = { name: tplName, hasWorkers: tplHasWorkers, incomeFieldKey: tplIncomeFieldKey || null, fields };
+
+    if (templateEditing) {
+      const res = await fetch(`/api/deal-templates/${templateEditing.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      if (!res.ok) return alert("Не удалось сохранить шаблон");
+    } else {
+      const res = await fetch("/api/deal-templates", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      if (!res.ok) return alert("Не удалось создать шаблон");
+    }
+    setTemplateModalOpen(false);
+    loadTemplates();
+  }
+
+  async function deleteTemplate(id: string, name: string) {
+    if (!confirm(`Удалить шаблон "${name}"? Существующие сделки не будут затронуты.`)) return;
+    await fetch(`/api/deal-templates/${id}`, { method: "DELETE", credentials: "include" });
+    loadTemplates();
   }
 
   async function loadDashboard() {
@@ -492,6 +599,9 @@ export default function AppPage() {
     setDealClientSkip(false); setDealComment("");
     setDealAmounts([newAmtRow()]);
     setDealParticipants([{ id: crypto.randomUUID(), userId: "", pct: "100" }]);
+    setDealTemplateId(null);
+    setDealTemplateStep(templates.length > 0 ? "pick" : "form");
+    setDealDataRows([{ _id: crypto.randomUUID(), data: {} }]);
     fetchDealDropdowns();
   }
 
@@ -502,6 +612,13 @@ export default function AppPage() {
     setDealClientId(deal.clientId ?? null);
     setDealClientSkip(!deal.clientId);
     setDealComment(deal.comment ?? "");
+    setDealTemplateId(deal.templateId ?? null);
+    setDealTemplateStep("form");
+    setDealDataRows(
+      (deal.dataRows ?? []).length > 0
+        ? deal.dataRows!.map((r) => ({ _id: r.id, data: Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, String(v ?? "")])) }))
+        : [{ _id: crypto.randomUUID(), data: {} }]
+    );
     setDealAmounts(
       (deal.amounts ?? []).map((a) => ({
         id: a.id,
@@ -551,67 +668,105 @@ export default function AppPage() {
   }, [dealParticipants]);
 
   async function saveDeal() {
+    const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
+    const needWorkers = activeTpl ? activeTpl.hasWorkers : true;
+
     const parts = dealParticipants.filter((p) => p.userId).map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
-    const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-    if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
+    if (needWorkers && parts.length > 0) {
+      const totalPct = parts.reduce((s, p) => s + p.pct, 0);
+      if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
+    }
 
     const selectedClient = dealClientId ? dealClients.find((c) => c.id === dealClientId) : null;
-    const titleText = selectedClient ? `Сделка — ${selectedClient.name}` : "Сделка";
-    const amountsPayload = dealAmounts.map((r) => ({
-      amountIn: Number(r.amountIn) || 0,
-      currencyIn: r.currencyIn,
-      amountOut: Number(r.amountOut) || 0,
-      currencyOut: r.currencyOut,
-      bank: r.bank,
-      operationType: r.operationType,
-      shopName: r.operationType === "PURCHASE" ? (r.shopName || null) : null,
-    }));
+    const tplName2 = activeTpl ? ` [${activeTpl.name}]` : "";
+    const titleText = selectedClient ? `Сделка — ${selectedClient.name}${tplName2}` : `Сделка${tplName2}`;
 
-    if (!dealEditingId) {
-      const dRes = await fetch("/api/deals", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: titleText, status: dealStatus, clientId: dealClientSkip ? null : (dealClientId ?? null), dealDate, comment: dealComment || null }),
-      });
-      if (!dRes.ok) return alert("Не удалось создать сделку");
-      const deal = await dRes.json();
+    const basePayload = {
+      title: titleText,
+      status: dealStatus,
+      clientId: dealClientSkip ? null : (dealClientId ?? null),
+      dealDate,
+      comment: dealComment || null,
+    };
 
-      for (const a of amountsPayload) {
-        const aRes = await fetch(`/api/deals/${deal.id}/amounts`, {
+    if (activeTpl) {
+      // Template-based deal
+      const rowsPayload = dealDataRows.map((r, i) => ({ data: r.data, order: i }));
+      const payload = { ...basePayload, templateId: activeTpl.id, dataRows: rowsPayload };
+
+      if (!dealEditingId) {
+        const dRes = await fetch("/api/deals", {
           method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(a),
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
         });
-        if (!aRes.ok) return alert("Не удалось сохранить суммы");
+        if (!dRes.ok) return alert("Не удалось создать сделку");
+        const deal = await dRes.json();
+        if (needWorkers && parts.length > 0) {
+          await fetch(`/api/deals/${deal.id}/participants`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
+          });
+        }
+      } else {
+        const upd = await fetch(`/api/deals/${dealEditingId}`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        });
+        if (!upd.ok) return alert("Не удалось обновить сделку");
+        if (needWorkers) {
+          await fetch(`/api/deals/${dealEditingId}/participants`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
+          });
+        }
       }
-
-      const pRes = await fetch(`/api/deals/${deal.id}/participants`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participants: parts }),
-      });
-      if (!pRes.ok) return alert("Не удалось сохранить участников");
     } else {
-      const upd = await fetch(`/api/deals/${dealEditingId}`, {
-        method: "PATCH", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: titleText, status: dealStatus, clientId: dealClientSkip ? null : (dealClientId ?? null), dealDate, comment: dealComment || null }),
-      });
-      if (!upd.ok) return alert("Не удалось обновить сделку");
+      // Classic deal
+      if (parts.length > 0) {
+        const totalPct = parts.reduce((s, p) => s + p.pct, 0);
+        if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
+      }
+      const amountsPayload = dealAmounts.map((r) => ({
+        amountIn: Number(r.amountIn) || 0, currencyIn: r.currencyIn,
+        amountOut: Number(r.amountOut) || 0, currencyOut: r.currencyOut,
+        bank: r.bank, operationType: r.operationType,
+        shopName: r.operationType === "PURCHASE" ? (r.shopName || null) : null,
+      }));
 
-      const rep = await fetch(`/api/deals/${dealEditingId}/amounts`, {
-        method: "PUT", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amounts: amountsPayload }),
-      });
-      if (!rep.ok) return alert("Не удалось обновить суммы");
-
-      const pRes = await fetch(`/api/deals/${dealEditingId}/participants`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participants: parts }),
-      });
-      if (!pRes.ok) return alert("Не удалось обновить участников");
+      if (!dealEditingId) {
+        const dRes = await fetch("/api/deals", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
+        });
+        if (!dRes.ok) return alert("Не удалось создать сделку");
+        const deal = await dRes.json();
+        for (const a of amountsPayload) {
+          await fetch(`/api/deals/${deal.id}/amounts`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify(a),
+          });
+        }
+        if (parts.length > 0) {
+          await fetch(`/api/deals/${deal.id}/participants`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
+          });
+        }
+      } else {
+        const upd = await fetch(`/api/deals/${dealEditingId}`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
+        });
+        if (!upd.ok) return alert("Не удалось обновить сделку");
+        await fetch(`/api/deals/${dealEditingId}/amounts`, {
+          method: "PUT", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amounts: amountsPayload }),
+        });
+        await fetch(`/api/deals/${dealEditingId}/participants`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
+        });
+      }
     }
 
     closeDealModal();
@@ -1039,9 +1194,61 @@ export default function AppPage() {
                 >
                   <div className="card" style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
                     <div className="card-header">
-                      <span className="card-title">{dealEditingId ? "Редактировать сделку" : "Новая сделка"}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span className="card-title">{dealEditingId ? "Редактировать сделку" : "Новая сделка"}</span>
+                        {dealTemplateStep === "form" && dealTemplateId && (
+                          <span style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>
+                            {templates.find(t => t.id === dealTemplateId)?.name}
+                          </span>
+                        )}
+                      </div>
                       <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
                     </div>
+
+                    {/* Template picker step */}
+                    {!dealEditingId && dealTemplateStep === "pick" ? (
+                      <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Выберите шаблон сделки:</div>
+                        <div style={{ display: "grid", gap: 8 }}>
+                          {templates.map((t) => (
+                            <label key={t.id} style={{
+                              display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                              border: `2px solid ${dealTemplateId === t.id ? "var(--accent)" : "var(--border)"}`,
+                              borderRadius: "var(--radius)", cursor: "pointer",
+                              background: dealTemplateId === t.id ? "var(--accent-light)" : "var(--bg-card)",
+                            }}>
+                              <input type="radio" name="tpl" value={t.id} checked={dealTemplateId === t.id}
+                                onChange={() => setDealTemplateId(t.id)} style={{ accentColor: "var(--accent)" }} />
+                              <div>
+                                <div style={{ fontWeight: 600 }}>{t.name}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                                  {t.fields.length} полей · {t.hasWorkers ? "с воркерами" : "без воркеров"}
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                          <label style={{
+                            display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                            border: `2px solid ${dealTemplateId === null ? "var(--accent)" : "var(--border)"}`,
+                            borderRadius: "var(--radius)", cursor: "pointer",
+                            background: dealTemplateId === null ? "var(--accent-light)" : "var(--bg-card)",
+                          }}>
+                            <input type="radio" name="tpl" value="" checked={dealTemplateId === null}
+                              onChange={() => setDealTemplateId(null)} style={{ accentColor: "var(--accent)" }} />
+                            <div>
+                              <div style={{ fontWeight: 600 }}>Классическая форма</div>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Банк, суммы, тип операции</div>
+                            </div>
+                          </label>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <button className="btn btn-primary" onClick={() => setDealTemplateStep("form")}>
+                            Продолжить →
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+
                     <div className="card-body" style={{ display: "grid", gap: 18 }}>
 
                       {/* Date + Client */}
@@ -1091,7 +1298,60 @@ export default function AppPage() {
                         </select>
                       </div>
 
-                      {/* Amounts */}
+                      {/* Template-based fields OR classic amounts */}
+                      {dealTemplateId && templates.find(t => t.id === dealTemplateId) ? (() => {
+                        const tpl = templates.find(t => t.id === dealTemplateId)!;
+                        const FIELD_TYPE_LABELS: Record<FieldType, string> = { TEXT: "Текст", NUMBER: "Число", SELECT: "Список", DATE: "Дата", PERCENT: "Процент", CHECKBOX: "Флаг" };
+                        return (
+                          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                              <div className="form-label" style={{ margin: 0 }}>Данные [{tpl.name}]</div>
+                              <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Добавить строку</button>
+                            </div>
+                            {dealDataRows.map((row, ri) => (
+                              <div key={row._id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Строка {ri + 1}</span>
+                                  {dealDataRows.length > 1 && (
+                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16 }} onClick={() => setDealDataRows(p => p.filter(x => x._id !== row._id))}>×</span>
+                                  )}
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+                                  {tpl.fields.map((f) => (
+                                    <div key={f.key}>
+                                      <div className="form-label" style={{ marginBottom: 3 }}>{f.label}{f.required ? " *" : ""}</div>
+                                      {f.type === "SELECT" ? (
+                                        <select className="form-input" value={row.data[f.key] ?? ""}
+                                          onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}>
+                                          <option value="">— выберите —</option>
+                                          {(f.options ?? "").split(",").map(o => o.trim()).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                      ) : f.type === "CHECKBOX" ? (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38 }}>
+                                          <input type="checkbox" checked={row.data[f.key] === "true"}
+                                            onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.checked ? "true" : "false" } } : x))}
+                                            style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
+                                          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{f.label}</span>
+                                        </div>
+                                      ) : (
+                                        <input
+                                          className="form-input"
+                                          type={f.type === "NUMBER" || f.type === "PERCENT" ? "number" : f.type === "DATE" ? "date" : "text"}
+                                          min={f.type === "PERCENT" ? 0 : undefined}
+                                          max={f.type === "PERCENT" ? 100 : undefined}
+                                          value={row.data[f.key] ?? ""}
+                                          onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
+                                          style={{ fontFamily: f.type === "NUMBER" || f.type === "PERCENT" ? "'JetBrains Mono', monospace" : undefined }}
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })() : (
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                           <div className="form-label" style={{ margin: 0 }}>Операции *</div>
@@ -1203,6 +1463,7 @@ export default function AppPage() {
                           </div>
                         </div>
                       </div>
+                      )}
 
                       {/* Participants */}
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
@@ -1259,12 +1520,16 @@ export default function AppPage() {
                       </div>
 
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                        {!dealEditingId && templates.length > 0 && (
+                          <button className="btn btn-secondary" onClick={() => setDealTemplateStep("pick")}>← Шаблон</button>
+                        )}
                         <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
-                        <button className="btn btn-primary" onClick={saveDeal} disabled={!pctStatus.ok}>
+                        <button className="btn btn-primary" onClick={saveDeal}>
                           {dealEditingId ? "Сохранить" : "Создать сделку"}
                         </button>
                       </div>
                     </div>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -1541,6 +1806,44 @@ export default function AppPage() {
                 </div>
               ) : null}
 
+              {/* Deal Templates */}
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">Шаблоны сделок</span>
+                  <button className="btn btn-primary" onClick={() => openTemplateModal()}>+ Новый шаблон</button>
+                </div>
+                <div className="card-body" style={{ display: "grid", gap: 10 }}>
+                  {templates.length === 0 ? (
+                    <div style={{ color: "var(--text-secondary)", fontSize: 13, padding: "8px 0" }}>
+                      Нет шаблонов. Создайте свой первый шаблон чтобы использовать кастомные поля в сделках.
+                    </div>
+                  ) : (
+                    <div className="card" style={{ border: "1px solid var(--border-light)" }}>
+                      <div className="table-scroll" style={{ padding: 0 }}>
+                        <table className="data-table">
+                          <thead><tr><th>Название</th><th>Полей</th><th>Воркеры</th><th style={{ width: 160 }}></th></tr></thead>
+                          <tbody>
+                            {templates.map((t) => (
+                              <tr key={t.id}>
+                                <td style={{ fontWeight: 600 }}>{t.name}</td>
+                                <td style={{ color: "var(--text-secondary)" }}>{t.fields.length}</td>
+                                <td>{t.hasWorkers ? <span className="badge badge-green">Да</span> : <span className="badge badge-amber">Нет</span>}</td>
+                                <td>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openTemplateModal(t)}>Редактировать</button>
+                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteTemplate(t.id, t.name)}>Удалить</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Пользователи</span>
@@ -1686,6 +1989,109 @@ export default function AppPage() {
           ) : null}
         </div>
       </div>
+
+      {/* ===== TEMPLATE MODAL ===== */}
+      {templateModalOpen ? (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 60 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setTemplateModalOpen(false); }}>
+          <div className="card" style={{ width: 680, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
+            <div className="card-header">
+              <span className="card-title">{templateEditing ? "Редактировать шаблон" : "Новый шаблон сделки"}</span>
+              <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>Отмена</button>
+            </div>
+            <div className="card-body" style={{ display: "grid", gap: 18 }}>
+
+              <div>
+                <div className="form-label">Название шаблона *</div>
+                <input className="form-input" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Обменник, Крипто-схема, Партнёрка..." />
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={tplHasWorkers} onChange={(e) => setTplHasWorkers(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>Добавлять воркеров к сделкам по этому шаблону</span>
+              </label>
+
+              <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div className="form-label" style={{ margin: 0 }}>Поля шаблона *</div>
+                  <button className="btn btn-secondary" onClick={addTplField}>+ Добавить поле</button>
+                </div>
+
+                {tplFields.length === 0 ? (
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13, padding: "8px 0", textAlign: "center" }}>
+                    Нажмите «+ Добавить поле» чтобы начать
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {tplFields.map((f, i) => (
+                      <div key={f._id} style={{ background: "var(--bg-metric)", borderRadius: 8, padding: "10px 12px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 110px 28px", gap: 8, alignItems: "end" }}>
+                          <div>
+                            <div className="form-label" style={{ marginBottom: 3 }}>Название поля</div>
+                            <input className="form-input" value={f.label} placeholder="Банк, Сумма, Тип..."
+                              onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
+                          </div>
+                          <div>
+                            <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
+                            <select className="form-input" value={f.type}
+                              onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, type: e.target.value as FieldType } : x))}>
+                              <option value="TEXT">Текст</option>
+                              <option value="NUMBER">Число</option>
+                              <option value="SELECT">Список</option>
+                              <option value="DATE">Дата</option>
+                              <option value="PERCENT">Процент</option>
+                              <option value="CHECKBOX">Флаг</option>
+                            </select>
+                          </div>
+                          <div>
+                            <div className="form-label" style={{ marginBottom: 3 }}>&nbsp;</div>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, height: 38, cursor: "pointer" }}>
+                              <input type="checkbox" checked={f.required}
+                                onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, required: e.target.checked } : x))}
+                                style={{ accentColor: "var(--accent)" }} />
+                              <span style={{ fontSize: 12, fontWeight: 500 }}>Обязательное</span>
+                            </label>
+                          </div>
+                          <div style={{ height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
+                            onClick={() => setTplFields(p => p.filter((_, xi) => xi !== i))}>×</div>
+                        </div>
+                        {f.type === "SELECT" && (
+                          <div style={{ marginTop: 8 }}>
+                            <div className="form-label" style={{ marginBottom: 3 }}>Варианты (через запятую)</div>
+                            <input className="form-input" value={f.options} placeholder="Вариант 1, Вариант 2, Вариант 3"
+                              onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, options: e.target.value } : x))} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {tplFields.some(f => f.type === "NUMBER" || f.type === "PERCENT") && (
+                <div>
+                  <div className="form-label">Поле для отчёта (доход)</div>
+                  <select className="form-input" value={tplIncomeFieldKey} onChange={(e) => setTplIncomeFieldKey(e.target.value)}>
+                    <option value="">— не используется —</option>
+                    {tplFields.filter(f => f.type === "NUMBER" || f.type === "PERCENT").map(f => (
+                      <option key={f._id} value={f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f._id}>{f.label}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Это поле будет использоваться в Dashboard и Отчётах как «Доход»</div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>Отмена</button>
+                <button className="btn btn-primary" onClick={saveTemplate}>
+                  {templateEditing ? "Сохранить" : "Создать шаблон"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

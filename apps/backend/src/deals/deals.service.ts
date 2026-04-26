@@ -16,10 +16,22 @@ type AmountInput = {
 export class DealsService {
   constructor(private prisma: PrismaService) {}
 
+  private readonly dealInclude = {
+    client: true,
+    amounts: true,
+    dataRows: { orderBy: { order: 'asc' as const } },
+    template: { include: { fields: { orderBy: { order: 'asc' as const } } } },
+    participants: {
+      include: {
+        user: { select: { id: true, email: true, role: true, position: true, organizationId: true, organization: { select: { name: true } } } },
+      },
+    },
+  };
+
   list(organizationId: string) {
     return this.prisma.deal.findMany({
       where: { organizationId },
-      include: { client: true, amounts: true, participants: { include: { user: true } } },
+      include: this.dealInclude,
       orderBy: { dealDate: 'desc' },
     });
   }
@@ -27,7 +39,7 @@ export class DealsService {
   async get(organizationId: string, id: string) {
     const deal = await this.prisma.deal.findFirst({
       where: { id, organizationId },
-      include: { client: true, amounts: true, participants: { include: { user: true } } },
+      include: this.dealInclude,
     });
     if (!deal) throw new NotFoundException();
     return deal;
@@ -35,7 +47,14 @@ export class DealsService {
 
   create(
     organizationId: string,
-    data: { title: string; clientId?: string | null; dealDate?: string; comment?: string | null },
+    data: {
+      title: string;
+      clientId?: string | null;
+      dealDate?: string;
+      comment?: string | null;
+      templateId?: string | null;
+      dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
+    },
   ) {
     return this.prisma.deal.create({
       data: {
@@ -44,7 +63,12 @@ export class DealsService {
         clientId: data.clientId ?? null,
         dealDate: data.dealDate ? new Date(data.dealDate) : new Date(),
         comment: data.comment ?? null,
+        templateId: data.templateId ?? null,
+        dataRows: data.dataRows
+          ? { create: data.dataRows.map((r, i) => ({ data: r.data, order: r.order ?? i })) }
+          : undefined,
       },
+      include: this.dealInclude,
     });
   }
 
@@ -57,10 +81,22 @@ export class DealsService {
       clientId?: string | null;
       dealDate?: string;
       comment?: string | null;
+      templateId?: string | null;
+      dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
     },
   ) {
     const existing = await this.prisma.deal.findFirst({ where: { id, organizationId } });
     if (!existing) throw new NotFoundException();
+
+    if (data.dataRows !== undefined) {
+      await this.prisma.dealDataRow.deleteMany({ where: { dealId: id } });
+      if (data.dataRows.length > 0) {
+        await this.prisma.dealDataRow.createMany({
+          data: data.dataRows.map((r, i) => ({ dealId: id, data: r.data, order: r.order ?? i })),
+        });
+      }
+    }
+
     return this.prisma.deal.update({
       where: { id },
       data: {
@@ -69,7 +105,9 @@ export class DealsService {
         clientId: data.clientId === undefined ? undefined : data.clientId,
         dealDate: data.dealDate ? new Date(data.dealDate) : undefined,
         comment: data.comment === undefined ? undefined : data.comment,
+        templateId: data.templateId === undefined ? undefined : data.templateId,
       },
+      include: this.dealInclude,
     });
   }
 
