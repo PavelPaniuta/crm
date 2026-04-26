@@ -27,6 +27,17 @@ export class AuthController {
     private audit: AuditService,
   ) {}
 
+  private sendLoginAlert(user: { email: string; name?: string | null }, ip: string, ua: string) {
+    const appUrl = process.env.APP_URL || 'https://my-crm.live';
+    this.mail.sendLoginAlert(user.email, {
+      name: user.name ?? null,
+      ip,
+      userAgent: ua,
+      time: new Date(),
+      appUrl,
+    }).catch(() => undefined);
+  }
+
   @Post('login')
   async login(
     @Body() body: { email: string; password: string },
@@ -76,6 +87,8 @@ export class AuthController {
       ip,
       userAgent: ua,
     });
+
+    this.sendLoginAlert(user, ip, ua);
 
     return { ok: true, user: { id: user.id, email: user.email, role: user.role } };
   }
