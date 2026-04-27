@@ -1382,13 +1382,21 @@ export default function AppPage() {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
-      if (!res.ok) return alert("Не удалось сохранить шаблон");
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
+        return alert(`Ошибка сохранения шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
+      }
     } else {
       const res = await fetch("/api/deal-templates", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
-      if (!res.ok) return alert("Не удалось создать шаблон");
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
+        return alert(`Ошибка создания шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
+      }
     }
     setTemplateModalOpen(false);
     loadTemplates();
@@ -2743,7 +2751,16 @@ export default function AppPage() {
                                         {calcBadge && <span title={calcBadge.tip} style={{ fontSize: 13 }}>{calcBadge.icon}</span>}
                                         <span className="form-label" style={{ margin: 0 }}>{f.label}{f.required ? " *" : ""}</span>
                                       </div>
-                                      {f.type === "SELECT" ? (
+                                      {f.type === "CURRENCY" ? (
+                                        <select className="form-input" value={row.data[f.key] ?? ""}
+                                          onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
+                                          style={{ borderColor: calcBadge ? `${calcBadge.color}66` : undefined }}>
+                                          <option value="">— валюта —</option>
+                                          {CURRENCIES.map(c => (
+                                            <option key={c} value={c}>{CURRENCY_META[c]?.symbol} {c} — {CURRENCY_META[c]?.name}</option>
+                                          ))}
+                                        </select>
+                                      ) : f.type === "SELECT" ? (
                                         <select className="form-input" value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}>
                                           <option value="">— выберите —</option>
@@ -5047,6 +5064,7 @@ export default function AppPage() {
                                       <option value="TEXT">Текст (любой)</option>
                                       <option value="NUMBER">Число / сумма</option>
                                       <option value="PERCENT">Процент (0–100)</option>
+                                      <option value="CURRENCY">Валюта (USD/EUR/UAH…)</option>
                                       <option value="SELECT">Список вариантов</option>
                                       <option value="DATE">Дата</option>
                                       <option value="CHECKBOX">Да / Нет</option>
