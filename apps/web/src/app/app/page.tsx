@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import React, { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -123,6 +123,46 @@ function slugifyFieldKey(label: string, i: number): string {
   return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`;
 }
 
+// ─── Universal Calc Chain ────────────────────────────────────────────────────
+type CalcStep = {
+  id: string;
+  label: string;
+  sourceType: "field" | "step";
+  sourceId: string;
+  deductType: "percent" | "fixed";
+  deductFieldKey: string;
+  resultLabel: string;
+  isPayrollPool: boolean;
+};
+
+type CalcStepResult = {
+  step: CalcStep;
+  source: number;
+  deductAmt: number;
+  result: number;
+};
+
+function computeChain(data: Record<string, string>, steps: CalcStep[]): CalcStepResult[] {
+  const results: Record<string, number> = {};
+  return steps.map((step) => {
+    const source = step.sourceType === "field"
+      ? Number(data[step.sourceId]) || 0
+      : (results[step.sourceId] ?? 0);
+    const deductVal = Number(data[step.deductFieldKey]) || 0;
+    const deductAmt = step.deductType === "percent" ? source * (deductVal / 100) : deductVal;
+    results[step.id] = source - deductAmt;
+    return { step, source, deductAmt, result: results[step.id] };
+  });
+}
+
+function getPayrollBaseFromChain(chain: CalcStepResult[]): number {
+  const payrollStep = chain.find((c) => c.step.isPayrollPool);
+  if (payrollStep) return Math.max(0, payrollStep.deductAmt);
+  const last = chain[chain.length - 1];
+  return last ? Math.max(0, last.result) : 0;
+}
+
+// ─── Template type ────────────────────────────────────────────────────────────
 type DealTemplate = {
   id: string;
   name: string;
@@ -134,6 +174,7 @@ type DealTemplate = {
   calcGrossFieldKey?: string | null;
   calcMediatorPctKey?: string | null;
   calcAiPctKey?: string | null;
+  calcSteps?: CalcStep[] | null;
 };
 
 function parsePayrollPoolPct(tpl: DealTemplate): number {
@@ -386,6 +427,7 @@ export default function AppPage() {
   const [tplCalcMediatorKey, setTplCalcMediatorKey] = useState("");
   const [tplCalcAiKey, setTplCalcAiKey] = useState("");
   const [tplWizardStep, setTplWizardStep] = useState<"type" | "fields">("type");
+  const [tplCalcSteps, setTplCalcSteps] = useState<CalcStep[]>([]);
 
   // --- Dashboard ---
   const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
@@ -1219,25 +1261,60 @@ export default function AppPage() {
         options: f.options ?? "",
       })) ?? []
     );
+    setTplCalcSteps(Array.isArray(tpl?.calcSteps) ? (tpl!.calcSteps as CalcStep[]) : []);
     setTplWizardStep(tpl ? "fields" : "type");
     setTemplateModalOpen(true);
   }
 
-  /** Инициализирует зафиксированные поля для схемы посредник/ИИ/фонд */
+  /** Инициализирует поля и цепочку для схемы посредник → AI → ЗП фонд */
   function applyMediatorAiPresetFields() {
     const fixed: Array<{ _id: string; key: string; label: string; type: FieldType; required: boolean; options: string }> = [
-      { _id: "fixed_gross",    key: "сумма_завода",    label: "Сумма завода",    type: "NUMBER",  required: true,  options: "" },
-      { _id: "fixed_mediator", key: "процент_посредника", label: "% посредника",  type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_ai",       key: "процент_аи",      label: "% AI",            type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_gross",    key: "сумма_завода",       label: "Сумма завода",          type: "NUMBER",  required: true,  options: "" },
+      { _id: "fixed_mediator", key: "процент_посредника", label: "% посредника",          type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_ai",       key: "процент_аи",         label: "% AI",                  type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_payroll",  key: "процент_зп_фонда",   label: "% зарплатного фонда",   type: "PERCENT", required: true,  options: "" },
     ];
+    const presetSteps: CalcStep[] = [
+      {
+        id: "step_mediator",
+        label: "Выплата посредника",
+        sourceType: "field",
+        sourceId: "сумма_завода",
+        deductType: "percent",
+        deductFieldKey: "процент_посредника",
+        resultLabel: "После посредника (R1)",
+        isPayrollPool: false,
+      },
+      {
+        id: "step_ai",
+        label: "Доля AI",
+        sourceType: "step",
+        sourceId: "step_mediator",
+        deductType: "percent",
+        deductFieldKey: "процент_аи",
+        resultLabel: "После AI (R2)",
+        isPayrollPool: false,
+      },
+      {
+        id: "step_payroll",
+        label: "Зарплатный фонд",
+        sourceType: "step",
+        sourceId: "step_ai",
+        deductType: "percent",
+        deductFieldKey: "процент_зп_фонда",
+        resultLabel: "Прибыль офиса",
+        isPayrollPool: true,
+      },
+    ];
+    setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
+    setTplCalcSteps(presetSteps);
+    setTplHasWorkers(true);
     setTplCalcGrossKey("сумма_завода");
     setTplCalcMediatorKey("процент_посредника");
     setTplCalcAiKey("процент_аи");
-    setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
-    setTplHasWorkers(true);
     setTplIncomeFieldKey("сумма_завода");
     setTplFields((prev) => {
-      const existing = prev.filter((f) => !["fixed_gross","fixed_mediator","fixed_ai"].includes(f._id));
+      const existing = prev.filter((f) => !["fixed_gross","fixed_mediator","fixed_ai","fixed_payroll"].includes(f._id));
       return [...fixed, ...existing];
     });
   }
@@ -1252,15 +1329,27 @@ export default function AppPage() {
     for (const f of tplFields) {
       if (!f.label.trim()) return alert("У всех полей должно быть название");
     }
-    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
+
+    // Validate calc chain if configured
+    if (tplCalcSteps.length > 0) {
+      const fields2 = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
+      const fieldKeys = new Set(fields2.map(x => x.key));
+      for (const step of tplCalcSteps) {
+        if (!step.label.trim()) return alert("У каждого шага цепочки должно быть название");
+        if (!step.deductFieldKey) return alert(`Шаг «${step.label}»: укажите поле для вычитания`);
+        if (!fieldKeys.has(step.deductFieldKey)) return alert(`Шаг «${step.label}»: поле «${step.deductFieldKey}» не найдено в полях шаблона`);
+        if (step.sourceType === "field" && step.sourceId && !fieldKeys.has(step.sourceId))
+          return alert(`Шаг «${step.label}»: поле-источник «${step.sourceId}» не найдено`);
+      }
+    }
+
+    // Legacy validation for old preset (when no calcSteps)
+    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0) {
       if (!tplCalcGrossKey || !tplCalcMediatorKey || !tplCalcAiKey) {
         return alert("Для цепочки «Посредник → ИИ → фонд» укажите поля: сумма завода, % посредника, % ИИ");
       }
-      const pool = Number(tplPayrollPoolPct);
-      if (!Number.isFinite(pool) || pool < 0 || pool > 100) {
-        return alert("Процент зарплатного фонда: число от 0 до 100");
-      }
     }
+
     const fields = tplFields.map((f, i) => ({
       key: f.key || slugifyFieldKey(f.label, i),
       label: f.label,
@@ -1269,29 +1358,23 @@ export default function AppPage() {
       order: i,
       options: f.options.trim() || null,
     }));
-    const keys = new Set(fields.map((x) => x.key));
-    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
-      for (const k of [tplCalcGrossKey, tplCalcMediatorKey, tplCalcAiKey]) {
-        if (!keys.has(k)) return alert(`Ключ «${k}» не совпадает с полями шаблона. Сохраните поля с нужными названиями.`);
-      }
-    }
+
+    const hasChain = tplCalcSteps.length > 0;
     const payload: Record<string, unknown> = {
       name: tplName,
-      hasWorkers: tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL ? true : tplHasWorkers,
-      incomeFieldKey:
-        tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL
-          ? (tplIncomeFieldKey || tplCalcGrossKey || null)
-          : (tplIncomeFieldKey || null),
+      hasWorkers: (hasChain || tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) ? true : tplHasWorkers,
+      incomeFieldKey: tplIncomeFieldKey || null,
       fields,
+      calcSteps: hasChain ? tplCalcSteps : null,
     };
-    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
+
+    if (!hasChain && tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
       payload.calcPreset = CALC_MEDIATOR_AI_PAYROLL;
-      payload.payrollPoolPct = Number(tplPayrollPoolPct) || 20;
       payload.calcGrossFieldKey = tplCalcGrossKey;
       payload.calcMediatorPctKey = tplCalcMediatorKey;
       payload.calcAiPctKey = tplCalcAiKey;
     } else {
-      payload.calcPreset = null;
+      payload.calcPreset = hasChain ? null : null;
     }
 
     if (templateEditing) {
@@ -1681,6 +1764,19 @@ export default function AppPage() {
     if (!activeTpl) {
       return { base: dealTotals.tAmountOut, label: "сумма «получили»" };
     }
+    // New: universal calc chain
+    if (activeTpl.calcSteps && activeTpl.calcSteps.length > 0 && dealDataRows[0]) {
+      const chain = computeChain(dealDataRows[0].data, activeTpl.calcSteps);
+      const payrollStep = chain.find((c) => c.step.isPayrollPool);
+      const base = payrollStep
+        ? Math.max(0, payrollStep.deductAmt)
+        : chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
+      const label = payrollStep
+        ? `Зарплатный фонд (${payrollStep.step.label})`
+        : chain.length > 0 ? chain[chain.length - 1].step.resultLabel : "Результат расчёта";
+      return { base, label };
+    }
+    // Legacy: MEDIATOR_AI_PAYROLL
     if (activeTpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0]) {
       const c = computeMediatorAiPayrollFront(dealDataRows[0].data, activeTpl);
       if (c) return { base: c.F, label: "зарплатный фонд (F), после AI/автоматики" };
@@ -2677,33 +2773,82 @@ export default function AppPage() {
                                 </div>
                               </div>
                             ))}
-                            {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (() => {
+                            {/* === Universal Calc Chain block === */}
+                            {(tpl.calcSteps && tpl.calcSteps.length > 0) && (() => {
+                              const data = dealDataRows[0]?.data ?? {};
+                              const chain = computeChain(data, tpl.calcSteps!);
+                              const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+                              const hasValues = chain.some(c => c.source > 0);
+                              return (
+                                <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
+                                  <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                                    📊 Расчёт распределения
+                                    {!hasValues && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)" }}>— заполните числовые поля выше</span>}
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "3px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+                                    {chain.map((cr, ci) => {
+                                      const isPayroll = cr.step.isPayrollPool;
+                                      const isLast = ci === chain.length - 1;
+                                      const deductField = tpl.fields.find(f => f.key === cr.step.deductFieldKey);
+                                      const deductLabel = deductField?.label ?? cr.step.deductFieldKey;
+                                      return (
+                                        <React.Fragment key={cr.step.id}>
+                                          {ci === 0 && (
+                                            <>
+                                              <span style={{ color: "var(--text-secondary)" }}>
+                                                {cr.step.sourceType === "field"
+                                                  ? (tpl.fields.find(f => f.key === cr.step.sourceId)?.label ?? cr.step.sourceId)
+                                                  : cr.step.sourceId}
+                                              </span>
+                                              <span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(cr.source)}</span>
+                                            </>
+                                          )}
+                                          <span style={{ color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", paddingLeft: 8 }}>
+                                            {isPayroll ? "👥" : "−"} {cr.step.label} ({deductLabel})
+                                          </span>
+                                          <span style={{ textAlign: "right", color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", fontWeight: isPayroll ? 700 : 400 }}>
+                                            − {fmt(cr.deductAmt)}
+                                          </span>
+                                          <span style={{
+                                            color: isLast ? "var(--green)" : "var(--text-secondary)",
+                                            fontWeight: isLast ? 700 : 400,
+                                            borderTop: "1px dashed var(--border)", paddingTop: 3,
+                                          }}>
+                                            {isLast ? "🏢 " : ""}{cr.step.resultLabel}
+                                          </span>
+                                          <span style={{
+                                            textAlign: "right", fontWeight: isLast ? 700 : 400,
+                                            color: isLast ? "var(--green)" : undefined,
+                                            borderTop: "1px dashed var(--border)", paddingTop: 3,
+                                          }}>
+                                            {fmt(cr.result)}
+                                          </span>
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                            {/* === Legacy MEDIATOR_AI_PAYROLL block (for old templates) === */}
+                            {(!tpl.calcSteps || tpl.calcSteps.length === 0) && tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (() => {
                               const c = dealDataRows[0] ? computeMediatorAiPayrollFront(dealDataRows[0].data, tpl) : null;
                               const fmt = (n: number) => n > 0 ? n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : "0";
                               const grossField = tpl.fields.find(f => f.key === tpl.calcGrossFieldKey);
-                              const currency = dealDataRows[0]?.data?.["валюта"] || dealDataRows[0]?.data?.["currency"] || "";
-                              const cur = currency ? ` ${currency}` : "";
                               return (
                                 <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
                                   <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                                     📊 Расчёт распределения
-                                    {!c || c.G === 0 && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>— заполните {grossField?.label ?? "Сумма завода"} 💰 выше</span>}
+                                    {(!c || c.G === 0) && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>— заполните {grossField?.label ?? "Сумма завода"} 💰 выше</span>}
                                   </div>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-                                    <span style={{ color: "var(--text-secondary)" }}>💰 Сумма завода (G)</span>
-                                    <span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}{cur}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>🏦 Выплата посредника</span>
-                                    <span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.M ?? 0)}{cur}</span>
-                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>Остаток после посредника (R1)</span>
-                                    <span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>{fmt(c?.R1 ?? 0)}{cur}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>🤖 Доля AI (от R1)</span>
-                                    <span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.A ?? 0)}{cur}</span>
-                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>Остаток после AI (R2)</span>
-                                    <span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>{fmt(c?.R2 ?? 0)}{cur}</span>
-                                    <span style={{ color: "var(--amber)" }}>👥 Зарплатный фонд ({parsePayrollPoolPct(tpl)}% от R2)</span>
-                                    <span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>− {fmt(c?.F ?? 0)}{cur}</span>
-                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 6, marginTop: 2 }}>🏢 Прибыль офиса (P)</span>
-                                    <span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 6, marginTop: 2 }}>{fmt(c?.P ?? 0)}{cur}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>💰 Сумма завода</span><span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>🏦 Посредник</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.M ?? 0)}</span>
+                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R1</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R1 ?? 0)}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>🤖 AI</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.A ?? 0)}</span>
+                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R2</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R2 ?? 0)}</span>
+                                    <span style={{ color: "var(--amber)" }}>👥 ЗП фонд ({parsePayrollPoolPct(tpl)}%)</span><span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>− {fmt(c?.F ?? 0)}</span>
+                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>🏢 Прибыль офиса</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>{fmt(c?.P ?? 0)}</span>
                                   </div>
                                 </div>
                               );
@@ -4739,6 +4884,7 @@ export default function AppPage() {
                   onClick={() => {
                     setTplCalcPreset("");
                     setTplCalcGrossKey(""); setTplCalcMediatorKey(""); setTplCalcAiKey("");
+                    setTplCalcSteps([]);
                     setTplFields([]);
                     setTplWizardStep("fields");
                   }}
@@ -4939,8 +5085,150 @@ export default function AppPage() {
                   )}
                 </div>
 
+                {/* ── Расчётная цепочка ── */}
+                {(() => {
+                  const numericFields = tplFields.filter(f => f.type === "NUMBER" || f.type === "PERCENT");
+                  const allFieldKeys = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
+
+                  return (
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                      <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: tplCalcSteps.length > 0 ? "1px solid var(--border)" : undefined, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>📊 Расчётная цепочка</span>
+                          <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
+                            {tplCalcSteps.length > 0 ? `${tplCalcSteps.length} шаг(ов)` : "необязательно — для автоматического распределения денег"}
+                          </span>
+                        </div>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setTplCalcSteps(prev => [...prev, {
+                            id: `step_${Date.now()}`,
+                            label: "",
+                            sourceType: "field" as const,
+                            sourceId: numericFields[0] ? (numericFields[0].key || slugifyFieldKey(numericFields[0].label, 0)) : "",
+                            deductType: "percent" as const,
+                            deductFieldKey: "",
+                            resultLabel: "",
+                            isPayrollPool: false,
+                          }])}
+                        >+ Добавить шаг</button>
+                      </div>
+
+                      {tplCalcSteps.length === 0 ? (
+                        <div style={{ padding: "16px", fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
+                          Цепочка позволяет описать как деньги делятся по шагам: каждый шаг берёт сумму из предыдущего остатка или из поля, и вычитает % или фиксированную сумму. Один шаг можно пометить как «зарплатный фонд» — он будет распределяться между сотрудниками.
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 0 }}>
+                          {tplCalcSteps.map((step, si) => {
+                            const prevSteps = tplCalcSteps.slice(0, si);
+                            return (
+                              <div key={step.id} style={{ padding: "14px 16px", borderTop: si > 0 ? "1px solid var(--border-light)" : undefined, background: step.isPayrollPool ? "var(--amber)08" : undefined }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: step.isPayrollPool ? "var(--amber)" : "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{si + 1}</span>
+                                  <input
+                                    className="form-input"
+                                    value={step.label}
+                                    onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, label: e.target.value } : s))}
+                                    placeholder="Название шага (кому идут деньги)"
+                                    style={{ flex: 1, fontWeight: 600 }}
+                                  />
+                                  <button
+                                    style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", fontSize: 16, color: "var(--text-tertiary)" }}
+                                    onClick={() => setTplCalcSteps(p => p.filter(s => s.id !== step.id))}
+                                  >×</button>
+                                </div>
+
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                  {/* Source */}
+                                  <div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Взять сумму из</div>
+                                    <select
+                                      className="form-input"
+                                      value={`${step.sourceType}:${step.sourceId}`}
+                                      onChange={e => {
+                                        const [type, ...rest] = e.target.value.split(":");
+                                        setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, sourceType: type as "field"|"step", sourceId: rest.join(":") } : s));
+                                      }}
+                                    >
+                                      {allFieldKeys.filter(f => {
+                                        const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
+                                        return fDef?.type === "NUMBER" || fDef?.type === "PERCENT";
+                                      }).map(f => (
+                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>📋 {f.label}</option>
+                                      ))}
+                                      {prevSteps.map(ps => (
+                                        <option key={`step:${ps.id}`} value={`step:${ps.id}`}>↩ Остаток: {ps.resultLabel || ps.label || `Шаг ${tplCalcSteps.indexOf(ps) + 1}`}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  {/* Deduct field */}
+                                  <div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Вычесть поле</div>
+                                    <select
+                                      className="form-input"
+                                      value={step.deductFieldKey}
+                                      onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductFieldKey: e.target.value } : s))}
+                                    >
+                                      <option value="">— выберите поле —</option>
+                                      {allFieldKeys.filter(f => {
+                                        const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
+                                        return fDef?.type === "PERCENT" || fDef?.type === "NUMBER";
+                                      }).map(f => (
+                                        <option key={f.key} value={f.key}>{f.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  {/* Deduct type */}
+                                  <div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип вычитания</div>
+                                    <select
+                                      className="form-input"
+                                      value={step.deductType}
+                                      onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductType: e.target.value as "percent"|"fixed" } : s))}
+                                    >
+                                      <option value="percent">% от источника</option>
+                                      <option value="fixed">Фиксированная сумма</option>
+                                    </select>
+                                  </div>
+                                  {/* Result label */}
+                                  <div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Название остатка</div>
+                                    <input
+                                      className="form-input"
+                                      value={step.resultLabel}
+                                      onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, resultLabel: e.target.value } : s))}
+                                      placeholder="Например: После посредника (R1)"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* isPayrollPool */}
+                                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 10 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={step.isPayrollPool}
+                                    onChange={e => setTplCalcSteps(p => p.map(s =>
+                                      s.id === step.id ? { ...s, isPayrollPool: e.target.checked } :
+                                      e.target.checked ? { ...s, isPayrollPool: false } : s
+                                    ))}
+                                    style={{ width: 15, height: 15, accentColor: "var(--amber)" }}
+                                  />
+                                  <span style={{ fontSize: 12, color: "var(--amber)", fontWeight: step.isPayrollPool ? 700 : 400 }}>
+                                    👥 Это зарплатный фонд — вычитаемая сумма распределяется между сотрудниками
+                                  </span>
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Для простой схемы — есть ли воркеры */}
-                {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
+                {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0 && (
                   <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                     <input type="checkbox" checked={tplHasWorkers} onChange={(e) => setTplHasWorkers(e.target.checked)}
                       style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />

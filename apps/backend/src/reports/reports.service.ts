@@ -34,6 +34,7 @@ export class ReportsService {
             calcGrossFieldKey: true,
             calcMediatorPctKey: true,
             calcAiPctKey: true,
+            calcSteps: true,
           },
         },
         participants: { include: { user: true } },

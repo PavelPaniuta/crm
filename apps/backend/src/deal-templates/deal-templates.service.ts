@@ -22,6 +22,7 @@ type TemplateInput = {
   calcGrossFieldKey?: string | null;
   calcMediatorPctKey?: string | null;
   calcAiPctKey?: string | null;
+  calcSteps?: unknown | null;
   fields?: FieldInput[];
 };
 
@@ -68,6 +69,9 @@ export class DealTemplatesService {
         hasWorkers: data.hasWorkers ?? true,
         incomeFieldKey: data.incomeFieldKey ?? null,
         ...calcFields,
+        calcSteps: data.calcSteps !== undefined
+          ? (data.calcSteps ?? Prisma.JsonNull)
+          : Prisma.JsonNull,
         fields: data.fields
           ? {
               create: data.fields.map((f, i) => ({
@@ -119,6 +123,9 @@ export class DealTemplatesService {
         hasWorkers: data.hasWorkers ?? undefined,
         incomeFieldKey: data.incomeFieldKey === undefined ? undefined : data.incomeFieldKey,
         ...calcUpdate,
+        ...(data.calcSteps !== undefined && {
+          calcSteps: data.calcSteps ?? Prisma.JsonNull,
+        }),
       },
     });
 
