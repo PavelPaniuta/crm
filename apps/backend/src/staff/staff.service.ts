@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { getPayrollBaseForTemplateDeal } from '../deals/deal-payout.util';
 
 @Injectable()
 export class StaffService {
@@ -20,7 +21,16 @@ export class StaffService {
                 id: true, status: true, dealDate: true,
                 amounts: { select: { amountOut: true } },
                 dataRows: { select: { data: true } },
-                template: { select: { incomeFieldKey: true } },
+                template: {
+                  select: {
+                    incomeFieldKey: true,
+                    calcPreset: true,
+                    payrollPoolPct: true,
+                    calcGrossFieldKey: true,
+                    calcMediatorPctKey: true,
+                    calcAiPctKey: true,
+                  },
+                },
               },
             },
           },
@@ -37,21 +47,8 @@ export class StaffService {
         dealsCount++;
         const deal = dp.deal;
 
-        // Classic deal: sum amountOut from DealAmount
-        if (deal.amounts.length > 0) {
-          const totalOut = deal.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-          totalPayout += (totalOut * dp.pct) / 100;
-        }
-
-        // Template deal: use incomeFieldKey
-        if (deal.dataRows.length > 0 && deal.template?.incomeFieldKey) {
-          const key = deal.template.incomeFieldKey;
-          const rowSum = deal.dataRows.reduce((s, r) => {
-            const val = (r.data as Record<string, unknown>)[key];
-            return s + (Number(val) || 0);
-          }, 0);
-          totalPayout += (rowSum * dp.pct) / 100;
-        }
+        const { base } = getPayrollBaseForTemplateDeal(deal as Parameters<typeof getPayrollBaseForTemplateDeal>[0]);
+        if (base > 0) totalPayout += (base * dp.pct) / 100;
       }
 
       const { dealParticipants, ...rest } = u;
@@ -111,7 +108,17 @@ export class StaffService {
                 id: true, status: true, dealDate: true, title: true,
                 amounts: { select: { amountOut: true } },
                 dataRows: { select: { data: true } },
-                template: { select: { incomeFieldKey: true, name: true } },
+                template: {
+                  select: {
+                    name: true,
+                    incomeFieldKey: true,
+                    calcPreset: true,
+                    payrollPoolPct: true,
+                    calcGrossFieldKey: true,
+                    calcMediatorPctKey: true,
+                    calcAiPctKey: true,
+                  },
+                },
               },
             },
           },
@@ -124,19 +131,8 @@ export class StaffService {
 
     const deals = user.dealParticipants.map((dp) => {
       const deal = dp.deal;
-      let payout = 0;
-      if (deal.amounts.length > 0) {
-        const totalOut = deal.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-        payout = (totalOut * dp.pct) / 100;
-      }
-      if (deal.dataRows.length > 0 && deal.template?.incomeFieldKey) {
-        const key = deal.template.incomeFieldKey;
-        const rowSum = deal.dataRows.reduce((s, r) => {
-          const val = (r.data as Record<string, unknown>)[key];
-          return s + (Number(val) || 0);
-        }, 0);
-        payout = (rowSum * dp.pct) / 100;
-      }
+      const { base } = getPayrollBaseForTemplateDeal(deal as Parameters<typeof getPayrollBaseForTemplateDeal>[0]);
+      const payout = base > 0 ? (base * dp.pct) / 100 : 0;
       return {
         id: deal.id, title: deal.title, status: deal.status,
         dealDate: deal.dealDate, pct: dp.pct,

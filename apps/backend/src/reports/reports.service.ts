@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { getPayrollBaseForTemplateDeal } from '../deals/deal-payout.util';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -22,7 +23,21 @@ export class ReportsService {
 
     const deals = await this.prisma.deal.findMany({
       where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
-      include: { amounts: true, participants: { include: { user: true } } },
+      include: {
+        amounts: true,
+        dataRows: { select: { data: true } },
+        template: {
+          select: {
+            incomeFieldKey: true,
+            calcPreset: true,
+            payrollPoolPct: true,
+            calcGrossFieldKey: true,
+            calcMediatorPctKey: true,
+            calcAiPctKey: true,
+          },
+        },
+        participants: { include: { user: true } },
+      },
     });
 
     const map = new Map<
@@ -31,8 +46,7 @@ export class ReportsService {
     >();
 
     deals.forEach((d) => {
-      // workerPayout = amountOut × workerPct / 100
-      const dealAmountOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
+      const { base: dealBase } = getPayrollBaseForTemplateDeal(d as any);
       d.participants.forEach((p) => {
         const key = p.userId;
         const prev = map.get(key) ?? {
@@ -45,7 +59,7 @@ export class ReportsService {
         map.set(key, {
           ...prev,
           dealsCount: prev.dealsCount + 1,
-          payoutUsdt: prev.payoutUsdt + (dealAmountOut * p.pct) / 100,
+          payoutUsdt: prev.payoutUsdt + (dealBase * p.pct) / 100,
         });
       });
     });

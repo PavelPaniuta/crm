@@ -44,5 +44,12 @@ export class ExpensesService {
     if (!existing) throw new NotFoundException();
     return this.prisma.expense.update({ where: { id }, data });
   }
+
+  async delete(organizationId: string, id: string) {
+    const existing = await this.prisma.expense.findFirst({ where: { id, organizationId } });
+    if (!existing) throw new NotFoundException();
+    await this.prisma.expense.delete({ where: { id } });
+    return { ok: true };
+  }
 }
 

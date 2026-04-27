@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { ExpensesService } from './expenses.service';
 import { ExpenseStatus } from '@prisma/client';
@@ -38,6 +38,11 @@ export class ExpensesController {
     }>,
   ) {
     return this.expenses.update(req.user.activeOrganizationId, id, body);
+  }
+
+  @Delete(':id')
+  delete(@Req() req: any, @Param('id') id: string) {
+    return this.expenses.delete(req.user.activeOrganizationId, id);
   }
 
   @Post(':id/submit')

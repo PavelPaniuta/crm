@@ -117,13 +117,53 @@ type TemplateField = {
   options?: string | null;
 };
 
+const CALC_MEDIATOR_AI_PAYROLL = "MEDIATOR_AI_PAYROLL" as const;
+
+function slugifyFieldKey(label: string, i: number): string {
+  return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`;
+}
+
 type DealTemplate = {
   id: string;
   name: string;
   hasWorkers: boolean;
   incomeFieldKey?: string | null;
   fields: TemplateField[];
+  calcPreset?: string | null;
+  payrollPoolPct?: string | number | null;
+  calcGrossFieldKey?: string | null;
+  calcMediatorPctKey?: string | null;
+  calcAiPctKey?: string | null;
 };
+
+function parsePayrollPoolPct(tpl: DealTemplate): number {
+  if (tpl.payrollPoolPct == null) return 20;
+  const n = Number(tpl.payrollPoolPct);
+  return Number.isFinite(n) ? n : 20;
+}
+
+/** % ИИ от остатка после посредника (R1). Фонд: % от R2. */
+function computeMediatorAiPayrollFront(
+  data: Record<string, string>,
+  tpl: DealTemplate,
+): { G: number; M: number; R1: number; A: number; R2: number; F: number; P: number } | null {
+  if (tpl.calcPreset !== CALC_MEDIATOR_AI_PAYROLL) return null;
+  const gk = tpl.calcGrossFieldKey;
+  const mk = tpl.calcMediatorPctKey;
+  const ak = tpl.calcAiPctKey;
+  if (!gk || !mk || !ak) return null;
+  const G = Number(data[gk]) || 0;
+  const pM = Number(data[mk]) || 0;
+  const pAi = Number(data[ak]) || 0;
+  const poolPct = parsePayrollPoolPct(tpl);
+  const M = G * (pM / 100);
+  const R1 = G - M;
+  const A = R1 * (pAi / 100);
+  const R2 = R1 - A;
+  const F = R2 * (poolPct / 100);
+  const P = R2 - F;
+  return { G, M, R1, A, R2, F, P };
+}
 
 type DealDataRow = {
   id: string;
@@ -252,6 +292,11 @@ export default function AppPage() {
   const [newExpensePayMethod, setNewExpensePayMethod] = useState("bank");
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseEditing, setExpenseEditing] = useState<Expense | null>(null);
+  const [expenseEditMode, setExpenseEditMode] = useState(false);
+  const [expenseEditTitle, setExpenseEditTitle] = useState("");
+  const [expenseEditAmount, setExpenseEditAmount] = useState("");
+  const [expenseEditCurrency, setExpenseEditCurrency] = useState("PLN");
+  const [expenseEditPayMethod, setExpenseEditPayMethod] = useState("bank");
 
   // --- Users ---
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -320,7 +365,12 @@ export default function AppPage() {
   const [tplName, setTplName] = useState("");
   const [tplHasWorkers, setTplHasWorkers] = useState(true);
   const [tplIncomeFieldKey, setTplIncomeFieldKey] = useState("");
-  const [tplFields, setTplFields] = useState<Array<{ _id: string; label: string; type: FieldType; required: boolean; options: string }>>([]);
+  const [tplFields, setTplFields] = useState<Array<{ _id: string; key?: string; label: string; type: FieldType; required: boolean; options: string }>>([]);
+  const [tplCalcPreset, setTplCalcPreset] = useState<"" | typeof CALC_MEDIATOR_AI_PAYROLL>("");
+  const [tplPayrollPoolPct, setTplPayrollPoolPct] = useState("20");
+  const [tplCalcGrossKey, setTplCalcGrossKey] = useState("");
+  const [tplCalcMediatorKey, setTplCalcMediatorKey] = useState("");
+  const [tplCalcAiKey, setTplCalcAiKey] = useState("");
 
   // --- Dashboard ---
   const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
@@ -1117,9 +1167,19 @@ export default function AppPage() {
     setTplName(tpl?.name ?? "");
     setTplHasWorkers(tpl?.hasWorkers ?? true);
     setTplIncomeFieldKey(tpl?.incomeFieldKey ?? "");
+    setTplCalcPreset(tpl?.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? CALC_MEDIATOR_AI_PAYROLL : "");
+    setTplPayrollPoolPct(
+      tpl?.calcPreset === CALC_MEDIATOR_AI_PAYROLL && tpl.payrollPoolPct != null
+        ? String(Number(tpl.payrollPoolPct as number))
+        : "20",
+    );
+    setTplCalcGrossKey(tpl?.calcGrossFieldKey ?? "");
+    setTplCalcMediatorKey(tpl?.calcMediatorPctKey ?? "");
+    setTplCalcAiKey(tpl?.calcAiPctKey ?? "");
     setTplFields(
       tpl?.fields.map((f) => ({
         _id: f.id,
+        key: f.key,
         label: f.label,
         type: f.type,
         required: f.required,
@@ -1139,15 +1199,47 @@ export default function AppPage() {
     for (const f of tplFields) {
       if (!f.label.trim()) return alert("У всех полей должно быть название");
     }
+    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
+      if (!tplCalcGrossKey || !tplCalcMediatorKey || !tplCalcAiKey) {
+        return alert("Для цепочки «Посредник → ИИ → фонд» укажите поля: сумма завода, % посредника, % ИИ");
+      }
+      const pool = Number(tplPayrollPoolPct);
+      if (!Number.isFinite(pool) || pool < 0 || pool > 100) {
+        return alert("Процент зарплатного фонда: число от 0 до 100");
+      }
+    }
     const fields = tplFields.map((f, i) => ({
-      key: f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`,
+      key: f.key || slugifyFieldKey(f.label, i),
       label: f.label,
       type: f.type,
       required: f.required,
       order: i,
       options: f.options.trim() || null,
     }));
-    const payload = { name: tplName, hasWorkers: tplHasWorkers, incomeFieldKey: tplIncomeFieldKey || null, fields };
+    const keys = new Set(fields.map((x) => x.key));
+    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
+      for (const k of [tplCalcGrossKey, tplCalcMediatorKey, tplCalcAiKey]) {
+        if (!keys.has(k)) return alert(`Ключ «${k}» не совпадает с полями шаблона. Сохраните поля с нужными названиями.`);
+      }
+    }
+    const payload: Record<string, unknown> = {
+      name: tplName,
+      hasWorkers: tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL ? true : tplHasWorkers,
+      incomeFieldKey:
+        tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL
+          ? (tplIncomeFieldKey || tplCalcGrossKey || null)
+          : (tplIncomeFieldKey || null),
+      fields,
+    };
+    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
+      payload.calcPreset = CALC_MEDIATOR_AI_PAYROLL;
+      payload.payrollPoolPct = Number(tplPayrollPoolPct) || 20;
+      payload.calcGrossFieldKey = tplCalcGrossKey;
+      payload.calcMediatorPctKey = tplCalcMediatorKey;
+      payload.calcAiPctKey = tplCalcAiKey;
+    } else {
+      payload.calcPreset = null;
+    }
 
     if (templateEditing) {
       const res = await fetch(`/api/deal-templates/${templateEditing.id}`, {
@@ -1304,6 +1396,31 @@ export default function AppPage() {
     setExpenseEditing(list.find((e: Expense) => e.id === expenseEditing.id) ?? null);
   }
 
+  async function saveExpenseEdit() {
+    if (!expenseEditing) return;
+    const amount = Number(expenseEditAmount);
+    if (!Number.isFinite(amount) || !expenseEditTitle.trim()) return alert("Проверьте поля");
+    const res = await fetch(`/api/expenses/${expenseEditing.id}`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: expenseEditTitle, amount, currency: expenseEditCurrency, payMethod: expenseEditPayMethod }),
+    });
+    if (!res.ok) return alert("Не удалось сохранить расход");
+    const updated: Expense = await res.json();
+    setExpenses((prev) => prev.map((e) => e.id === updated.id ? updated : e));
+    setExpenseEditing(updated);
+    setExpenseEditMode(false);
+  }
+
+  async function deleteExpense(id: string) {
+    if (!confirm("Удалить расход?")) return;
+    const res = await fetch(`/api/expenses/${id}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) return alert("Не удалось удалить расход");
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    setExpenseModalOpen(false);
+    setExpenseEditing(null);
+  }
+
   // ---- users ----
   async function createUser() {
     const res = await fetch("/api/users", {
@@ -1389,15 +1506,35 @@ export default function AppPage() {
     };
   }
 
-  function openDealModal() {
-    setDealModalOpen(true); setDealEditingId(null);
+  async function openDealModal() {
+    const tRes = await fetch("/api/deal-templates", { credentials: "include" });
+    if (!tRes.ok) {
+      alert("Не удалось загрузить шаблоны");
+      return;
+    }
+    const list: DealTemplate[] = await tRes.json();
+    setTemplates(list);
+    if (list.length === 0) {
+      alert("Создайте хотя бы один шаблон сделки: Настройки → блок «Шаблоны сделок».");
+      return;
+    }
+    setDealModalOpen(true);
+    setDealEditingId(null);
     setDealDate(new Date().toISOString().slice(0, 10));
-    setDealStatus("NEW"); setDealClientSearch(""); setDealClientId(null);
-    setDealClientSkip(false); setDealComment("");
+    setDealStatus("NEW");
+    setDealClientSearch("");
+    setDealClientId(null);
+    setDealClientSkip(false);
+    setDealComment("");
     setDealAmounts([newAmtRow()]);
     setDealParticipants([{ id: crypto.randomUUID(), userId: "", pct: "100" }]);
-    setDealTemplateId(null);
-    setDealTemplateStep(templates.length > 0 ? "pick" : "form");
+    if (list.length === 1) {
+      setDealTemplateId(list[0].id);
+      setDealTemplateStep("form");
+    } else {
+      setDealTemplateId(list[0].id);
+      setDealTemplateStep("pick");
+    }
     setDealDataRows([{ _id: crypto.randomUUID(), data: {} }]);
     fetchDealDropdowns();
   }
@@ -1464,8 +1601,29 @@ export default function AppPage() {
     return { ok: false, text: `⚠ Итого: ${total}% — не хватает ${100 - total}%`, color: "var(--amber)" };
   }, [dealParticipants]);
 
+  const participantIncomeInfo = useMemo(() => {
+    const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
+    if (!activeTpl) {
+      return { base: dealTotals.tAmountOut, label: "сумма «получили»" };
+    }
+    if (activeTpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0]) {
+      const c = computeMediatorAiPayrollFront(dealDataRows[0].data, activeTpl);
+      if (c) return { base: c.F, label: "зарплатный фонд (F), после AI/автоматики" };
+    }
+    if (activeTpl.incomeFieldKey) {
+      const sum = dealDataRows.reduce((s, row) => s + (Number(row.data[activeTpl.incomeFieldKey!]) || 0), 0);
+      const incField = activeTpl.fields.find((f) => f.key === activeTpl.incomeFieldKey);
+      return { base: sum, label: incField?.label || activeTpl.incomeFieldKey || "" };
+    }
+    return { base: 0, label: "" };
+  }, [dealTemplateId, templates, dealDataRows, dealTotals.tAmountOut]);
+
   async function saveDeal() {
     const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
+    if (!dealEditingId && !activeTpl) {
+      alert("Выберите шаблон сделки");
+      return;
+    }
     const needWorkers = activeTpl ? activeTpl.hasWorkers : true;
 
     const parts = dealParticipants.filter((p) => p.userId).map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
@@ -2305,26 +2463,23 @@ export default function AppPage() {
                                 <div style={{ fontWeight: 600 }}>{t.name}</div>
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
                                   {t.fields.length} полей · {t.hasWorkers ? "с воркерами" : "без воркеров"}
+                                  {t.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? " · расчёт посредник/ИИ/фонд" : ""}
                                 </div>
                               </div>
                             </label>
                           ))}
-                          <label style={{
-                            display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                            border: `2px solid ${dealTemplateId === null ? "var(--accent)" : "var(--border)"}`,
-                            borderRadius: "var(--radius)", cursor: "pointer",
-                            background: dealTemplateId === null ? "var(--accent-light)" : "var(--bg-card)",
-                          }}>
-                            <input type="radio" name="tpl" value="" checked={dealTemplateId === null}
-                              onChange={() => setDealTemplateId(null)} style={{ accentColor: "var(--accent)" }} />
-                            <div>
-                              <div style={{ fontWeight: 600 }}>Классическая форма</div>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Банк, суммы, тип операции</div>
-                            </div>
-                          </label>
                         </div>
                         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                          <button className="btn btn-primary" onClick={() => setDealTemplateStep("form")}>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => {
+                              if (!dealTemplateId) {
+                                alert("Выберите шаблон");
+                                return;
+                              }
+                              setDealTemplateStep("form");
+                            }}
+                          >
                             Продолжить →
                           </button>
                         </div>
@@ -2383,13 +2538,17 @@ export default function AppPage() {
                       {/* Template-based fields OR classic amounts */}
                       {dealTemplateId && templates.find(t => t.id === dealTemplateId) ? (() => {
                         const tpl = templates.find(t => t.id === dealTemplateId)!;
-                        const FIELD_TYPE_LABELS: Record<FieldType, string> = { TEXT: "Текст", NUMBER: "Число", SELECT: "Список", DATE: "Дата", PERCENT: "Процент", CHECKBOX: "Флаг" };
                         return (
                           <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                               <div className="form-label" style={{ margin: 0 }}>Данные [{tpl.name}]</div>
-                              <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Добавить строку</button>
+                              {tpl.calcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
+                                <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Добавить строку</button>
+                              )}
                             </div>
+                            {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (
+                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>Одна строка на сделку. Расчёт по полям: сумма завода, % посредника, % ИИ (от остатка после посредника), затем {parsePayrollPoolPct(tpl)}% в зарплатный фонд.</div>
+                            )}
                             {dealDataRows.map((row, ri) => (
                               <div key={row._id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
@@ -2431,12 +2590,30 @@ export default function AppPage() {
                                 </div>
                               </div>
                             ))}
+                            {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0] && (() => {
+                              const c = computeMediatorAiPayrollFront(dealDataRows[0].data, tpl);
+                              if (!c) return null;
+                              return (
+                                <div style={{ marginTop: 4, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "1px solid var(--accent)33" }}>
+                                  <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 13 }}>Распределение (AI/автоматика — не в списке сотрудников)</div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>
+                                    <span>Сумма завода (G)</span><span style={{ textAlign: "right" }}>{c.G.toLocaleString()}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>Выплата посредника (M)</span><span style={{ textAlign: "right", color: "var(--text-secondary)" }}>−{c.M.toLocaleString()}</span>
+                                    <span>Остаток после посредника (R1)</span><span style={{ textAlign: "right" }}>{c.R1.toLocaleString()}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>Доля AI, от R1 (A)</span><span style={{ textAlign: "right", color: "var(--text-secondary)" }}>−{c.A.toLocaleString()}</span>
+                                    <span>Остаток после AI (R2)</span><span style={{ textAlign: "right" }}>{c.R2.toLocaleString()}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>Зарплатный фонд (F, {parsePayrollPoolPct(tpl)}% от R2)</span><span style={{ textAlign: "right", color: "var(--amber)" }}>−{c.F.toLocaleString()}</span>
+                                    <span style={{ fontWeight: 700 }}>Прибыль офиса (P)</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)" }}>{c.P.toLocaleString()}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })() : (
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div className="form-label" style={{ margin: 0 }}>Операции *</div>
+                          <div className="form-label" style={{ margin: 0 }}>Операции (классика, без шаблона) *</div>
                           <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Добавить строку</button>
                         </div>
 
@@ -2549,29 +2726,17 @@ export default function AppPage() {
 
                       {/* Participants */}
                       {(() => {
-                        // Determine income base for payout preview
-                        const activeTplForParts = dealTemplateId ? templates.find(t => t.id === dealTemplateId) : null;
-                        let incomeBase = dealTotals.tAmountOut; // classic deal
-                        let incomeLabel = "";
-                        if (activeTplForParts?.incomeFieldKey) {
-                          incomeBase = dealDataRows.reduce((s, row) => {
-                            const val = row.data[activeTplForParts.incomeFieldKey!];
-                            return s + (Number(val) || 0);
-                          }, 0);
-                          const incField = activeTplForParts.fields.find(f =>
-                            (f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f.id) === activeTplForParts.incomeFieldKey
-                          );
-                          incomeLabel = incField ? incField.label : activeTplForParts.incomeFieldKey;
-                        }
+                        const incomeBase = participantIncomeInfo.base;
+                        const incomeLabel = participantIncomeInfo.label;
                         return (
                           <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                               <div>
-                                <div className="form-label" style={{ margin: 0 }}>Участники (воркеры)</div>
+                                <div className="form-label" style={{ margin: 0 }}>Участники (сотрудники)</div>
                                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
                                   {incomeBase > 0
-                                    ? <span>База выплат: <strong style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong>{incomeLabel ? ` (${incomeLabel})` : ""}</span>
-                                    : "Выплата = % × сумма сделки"}
+                                    ? <span>База для %: <strong style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong>{incomeLabel ? ` (${incomeLabel})` : ""} · сумма % по людям = 100% этой базы</span>
+                                    : "Выплата = % × выбранная база (укажите поля в шаблоне)"}
                                 </div>
                               </div>
                               <button className="btn btn-secondary" onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: "0" }])}>
@@ -2806,7 +2971,7 @@ export default function AppPage() {
                 <div className="card-body table-scroll" style={{ padding: 0 }}>
                   <table className="data-table">
                     <thead>
-                      <tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th></tr>
+                      <tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th>{isAdmin && <th style={{ width: 40 }}></th>}</tr>
                     </thead>
                     <tbody>
                       {expensesLoading ? (
@@ -2823,7 +2988,7 @@ export default function AppPage() {
                         </td></tr>
                       ) : (
                         expenses.map((e) => (
-                          <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseModalOpen(true); }}>
+                          <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseEditMode(false); setExpenseModalOpen(true); }}>
                             <td style={{ fontWeight: 500 }}>{e.title}</td>
                             <td>
                               <span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
@@ -2831,6 +2996,18 @@ export default function AppPage() {
                               </span>
                             </td>
                             <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{Number(e.amount).toLocaleString()} {e.currency}</td>
+                            {isAdmin && (
+                              <td style={{ width: 40, padding: "0 8px 0 0" }}>
+                                <button
+                                  onClick={(ev) => { ev.stopPropagation(); deleteExpense(e.id); }}
+                                  className="btn btn-ghost"
+                                  style={{ width: 28, height: 28, padding: 0, color: "var(--text-tertiary)" }}
+                                  title="Удалить"
+                                >
+                                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))
                       )}
@@ -2841,41 +3018,90 @@ export default function AppPage() {
 
               {expenseModalOpen && expenseEditing ? (
                 <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) setExpenseModalOpen(false); }}>
-                  <div className="card" style={{ width: 500, maxWidth: "100%" }}>
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) { setExpenseModalOpen(false); setExpenseEditMode(false); } }}>
+                  <div className="card" style={{ width: 520, maxWidth: "100%" }}>
                     <div className="card-header">
-                      <span className="card-title">Расход</span>
-                      <button className="btn btn-secondary" onClick={() => setExpenseModalOpen(false)}>Закрыть</button>
+                      <span className="card-title">{expenseEditMode ? "Редактировать расход" : "Расход"}</span>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {!expenseEditMode && isAdmin && (
+                          <button className="btn btn-secondary" style={{ color: "var(--red)" }} onClick={() => deleteExpense(expenseEditing.id)}>Удалить</button>
+                        )}
+                        {!expenseEditMode && expenseEditing.status === "DRAFT" && (
+                          <button className="btn btn-secondary" onClick={() => {
+                            setExpenseEditTitle(expenseEditing.title);
+                            setExpenseEditAmount(String(expenseEditing.amount));
+                            setExpenseEditCurrency(expenseEditing.currency);
+                            setExpenseEditPayMethod(expenseEditing.payMethod);
+                            setExpenseEditMode(true);
+                          }}>Редактировать</button>
+                        )}
+                        <button className="btn btn-secondary" onClick={() => { setExpenseModalOpen(false); setExpenseEditMode(false); }}>Закрыть</button>
+                      </div>
                     </div>
-                    <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                      <div><div className="form-label">Название</div><div style={{ fontWeight: 600 }}>{expenseEditing.title}</div></div>
-                      <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr 1fr" }}>
-                        <div>
-                          <div className="form-label">Сумма</div>
-                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{expenseEditing.amount} {expenseEditing.currency}</div>
-                        </div>
-                        <div>
-                          <div className="form-label">Оплата</div>
-                          <div style={{ color: "var(--text-secondary)" }}>{expenseEditing.payMethod}</div>
-                        </div>
-                        <div>
-                          <div className="form-label">Статус</div>
-                          <span className={`badge ${expenseEditing.status === "APPROVED" ? "badge-green" : expenseEditing.status === "SUBMITTED" ? "badge-blue" : "badge-amber"}`}>
-                            {expenseEditing.status}
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
-                        {expenseEditing.status === "DRAFT" ? (
-                          <button className="btn btn-primary" onClick={() => expenseAction("submit")}>Отправить на одобрение</button>
-                        ) : null}
-                        {isAdmin && expenseEditing.status === "SUBMITTED" ? (
-                          <>
-                            <button className="btn btn-secondary" onClick={() => expenseAction("reject")}>Отклонить</button>
-                            <button className="btn btn-primary" onClick={() => expenseAction("approve")}>Одобрить</button>
-                          </>
-                        ) : null}
-                      </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                      {expenseEditMode ? (
+                        <>
+                          <div>
+                            <div className="form-label">Название</div>
+                            <input className="form-input" value={expenseEditTitle} onChange={(e) => setExpenseEditTitle(e.target.value)} />
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 140px", gap: 12 }}>
+                            <div>
+                              <div className="form-label">Сумма</div>
+                              <input className="form-input" value={expenseEditAmount} onChange={(e) => setExpenseEditAmount(e.target.value)} style={{ fontFamily: "'JetBrains Mono', monospace" }} />
+                            </div>
+                            <div>
+                              <div className="form-label">Валюта</div>
+                              <select className="form-input" value={expenseEditCurrency} onChange={(e) => setExpenseEditCurrency(e.target.value)}>
+                                {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div className="form-label">Оплата</div>
+                              <select className="form-input" value={expenseEditPayMethod} onChange={(e) => setExpenseEditPayMethod(e.target.value)}>
+                                <option value="bank">Банк</option>
+                                <option value="usdt">USDT</option>
+                                <option value="cash">Кэш</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                            <button className="btn btn-secondary" onClick={() => setExpenseEditMode(false)}>Отмена</button>
+                            <button className="btn btn-primary" onClick={saveExpenseEdit}>Сохранить</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div><div className="form-label">Название</div><div style={{ fontWeight: 600 }}>{expenseEditing.title}</div></div>
+                          <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr 1fr" }}>
+                            <div>
+                              <div className="form-label">Сумма</div>
+                              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{Number(expenseEditing.amount).toLocaleString()} {expenseEditing.currency}</div>
+                            </div>
+                            <div>
+                              <div className="form-label">Оплата</div>
+                              <div style={{ color: "var(--text-secondary)" }}>{expenseEditing.payMethod}</div>
+                            </div>
+                            <div>
+                              <div className="form-label">Статус</div>
+                              <span className={`badge ${expenseEditing.status === "APPROVED" ? "badge-green" : expenseEditing.status === "SUBMITTED" ? "badge-blue" : expenseEditing.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
+                                {expenseEditing.status === "APPROVED" ? "Одобрен" : expenseEditing.status === "SUBMITTED" ? "На проверке" : expenseEditing.status === "REJECTED" ? "Отклонён" : "Черновик"}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+                            {expenseEditing.status === "DRAFT" ? (
+                              <button className="btn btn-primary" onClick={() => expenseAction("submit")}>Отправить на одобрение</button>
+                            ) : null}
+                            {isAdmin && expenseEditing.status === "SUBMITTED" ? (
+                              <>
+                                <button className="btn btn-secondary" onClick={() => expenseAction("reject")}>Отклонить</button>
+                                <button className="btn btn-primary" onClick={() => expenseAction("approve")}>Одобрить</button>
+                              </>
+                            ) : null}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -4246,13 +4472,79 @@ export default function AppPage() {
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Добавлять воркеров к сделкам по этому шаблону</span>
               </label>
 
+              <div>
+                <div className="form-label">Схема распределения</div>
+                <select
+                  className="form-input"
+                  value={tplCalcPreset}
+                  onChange={(e) => {
+                    const v = e.target.value as "" | typeof CALC_MEDIATOR_AI_PAYROLL;
+                    setTplCalcPreset(v);
+                    if (v === CALC_MEDIATOR_AI_PAYROLL) setTplHasWorkers(true);
+                  }}
+                >
+                  <option value="">Простая: % сотрудников от поля 💰 (число)</option>
+                  <option value={CALC_MEDIATOR_AI_PAYROLL}>Посредник → AI (доля от R1) → зарплатный фонд → прибыль офиса</option>
+                </select>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
+                  Во втором варианте сотрудники делят <strong>зарплатный фонд F</strong>, а не полную сумму. Доля AI учитывается отдельно.
+                </div>
+              </div>
+
+              {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
+                <div style={{ display: "grid", gap: 10, border: "1px solid var(--accent)33", borderRadius: 12, padding: 12, background: "var(--accent)06" }}>
+                  <div>
+                    <div className="form-label">% в зарплатный фонд (от R2, после AI)</div>
+                    <input className="form-input" value={tplPayrollPoolPct} onChange={(e) => setTplPayrollPoolPct(e.target.value)} type="number" min={0} max={100} step="0.1" style={{ maxWidth: 160 }} />
+                  </div>
+                  <div>
+                    <div className="form-label">Поле «сумма завода» (тип: число)</div>
+                    <select className="form-input" value={tplCalcGrossKey} onChange={(e) => setTplCalcGrossKey(e.target.value)}>
+                      <option value="">— выберите поле —</option>
+                      {tplFields.map((f, i) => {
+                        if (f.type !== "NUMBER") return null;
+                        const k = f.key || slugifyFieldKey(f.label, i);
+                        return <option key={f._id} value={k}>{f.label || k}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="form-label">Поле «% посредника» (тип: процент)</div>
+                    <select className="form-input" value={tplCalcMediatorKey} onChange={(e) => setTplCalcMediatorKey(e.target.value)}>
+                      <option value="">— выберите —</option>
+                      {tplFields.map((f, i) => {
+                        if (f.type !== "PERCENT") return null;
+                        const k = f.key || slugifyFieldKey(f.label, i);
+                        return <option key={f._id} value={k}>{f.label || k}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="form-label">Поле «% AI» (от остатка после посредника, тип: процент)</div>
+                    <select className="form-input" value={tplCalcAiKey} onChange={(e) => setTplCalcAiKey(e.target.value)}>
+                      <option value="">— выберите —</option>
+                      {tplFields.map((f, i) => {
+                        if (f.type !== "PERCENT") return null;
+                        const k = f.key || slugifyFieldKey(f.label, i);
+                        return <option key={`a-${f._id}`} value={k}>{f.label || k}</option>;
+                      })}
+                    </select>
+                  </div>
+                </div>
+              )}
+
               <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <div>
                     <div className="form-label" style={{ margin: 0 }}>Поля шаблона *</div>
-                    {tplHasWorkers && (
+                    {tplHasWorkers && tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
                       <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
                         Отметьте 💰 у числового поля, от которого считаются % воркеров
+                      </div>
+                    )}
+                    {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                        Сначала добавьте поля, затем укажите сопоставления в блоке выше (сумма / %).
                       </div>
                     )}
                   </div>
@@ -4266,7 +4558,7 @@ export default function AppPage() {
                 ) : (
                   <div style={{ display: "grid", gap: 10 }}>
                     {tplFields.map((f, i) => {
-                      const fieldKey = f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f._id;
+                      const fieldKey = f.key || slugifyFieldKey(f.label, i);
                       const isIncomeField = tplIncomeFieldKey === fieldKey;
                       const canBeIncome = f.type === "NUMBER" || f.type === "PERCENT";
                       return (
@@ -4298,7 +4590,7 @@ export default function AppPage() {
                                 <span style={{ fontSize: 12, fontWeight: 500 }}>Обязательное</span>
                               </label>
                             </div>
-                            {tplHasWorkers && canBeIncome ? (
+                            {tplHasWorkers && canBeIncome && tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL ? (
                               <div>
                                 <div className="form-label" style={{ marginBottom: 3 }}>&nbsp;</div>
                                 <button
@@ -4335,9 +4627,11 @@ export default function AppPage() {
                   <div className="form-label">Поле для отчёта (доход)</div>
                   <select className="form-input" value={tplIncomeFieldKey} onChange={(e) => setTplIncomeFieldKey(e.target.value)}>
                     <option value="">— не используется —</option>
-                    {tplFields.filter(f => f.type === "NUMBER" || f.type === "PERCENT").map(f => (
-                      <option key={f._id} value={f.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || f._id}>{f.label}</option>
-                    ))}
+                    {tplFields.map((f, i) => {
+                      if (f.type !== "NUMBER" && f.type !== "PERCENT") return null;
+                      const k = f.key || slugifyFieldKey(f.label, i);
+                      return <option key={f._id} value={k}>{f.label}</option>;
+                    })}
                   </select>
                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Поле-доход для Dashboard и Отчётов</div>
                 </div>

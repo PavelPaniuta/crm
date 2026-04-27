@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FieldType } from '@prisma/client';
+import { MEDIATOR_AI_PAYROLL } from '../deals/deal-payout.util';
 
 type FieldInput = {
   key: string;
@@ -15,6 +17,11 @@ type TemplateInput = {
   name: string;
   hasWorkers?: boolean;
   incomeFieldKey?: string | null;
+  calcPreset?: string | null;
+  payrollPoolPct?: number | null;
+  calcGrossFieldKey?: string | null;
+  calcMediatorPctKey?: string | null;
+  calcAiPctKey?: string | null;
   fields?: FieldInput[];
 };
 
@@ -40,12 +47,22 @@ export class DealTemplatesService {
   }
 
   async create(organizationId: string, data: TemplateInput) {
+    const calcPreset = data.calcPreset === MEDIATOR_AI_PAYROLL ? MEDIATOR_AI_PAYROLL : null;
     return this.prisma.dealTemplate.create({
       data: {
         organizationId,
         name: data.name,
         hasWorkers: data.hasWorkers ?? true,
         incomeFieldKey: data.incomeFieldKey ?? null,
+        calcPreset,
+        payrollPoolPct: calcPreset
+          ? (data.payrollPoolPct != null
+              ? new Prisma.Decimal(String(data.payrollPoolPct))
+              : new Prisma.Decimal('20'))
+          : null,
+        calcGrossFieldKey: calcPreset ? (data.calcGrossFieldKey ?? null) : null,
+        calcMediatorPctKey: calcPreset ? (data.calcMediatorPctKey ?? null) : null,
+        calcAiPctKey: calcPreset ? (data.calcAiPctKey ?? null) : null,
         fields: data.fields
           ? {
               create: data.fields.map((f, i) => ({
@@ -67,12 +84,39 @@ export class DealTemplatesService {
     const existing = await this.prisma.dealTemplate.findFirst({ where: { id, organizationId } });
     if (!existing) throw new NotFoundException();
 
+    const nextPreset =
+      data.calcPreset === undefined
+        ? undefined
+        : data.calcPreset === MEDIATOR_AI_PAYROLL
+          ? MEDIATOR_AI_PAYROLL
+          : null;
+
     await this.prisma.dealTemplate.update({
       where: { id },
       data: {
         name: data.name,
         hasWorkers: data.hasWorkers ?? undefined,
         incomeFieldKey: data.incomeFieldKey === undefined ? undefined : data.incomeFieldKey,
+        ...(data.calcPreset !== undefined && {
+          calcPreset: nextPreset,
+        }),
+        ...(data.calcPreset !== undefined &&
+          (nextPreset === null
+            ? {
+                payrollPoolPct: null,
+                calcGrossFieldKey: null,
+                calcMediatorPctKey: null,
+                calcAiPctKey: null,
+              }
+            : {
+                payrollPoolPct:
+                  data.payrollPoolPct != null
+                    ? new Prisma.Decimal(String(data.payrollPoolPct))
+                    : new Prisma.Decimal('20'),
+                calcGrossFieldKey: data.calcGrossFieldKey ?? null,
+                calcMediatorPctKey: data.calcMediatorPctKey ?? null,
+                calcAiPctKey: data.calcAiPctKey ?? null,
+              })),
       },
     });
 

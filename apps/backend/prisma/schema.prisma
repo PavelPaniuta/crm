@@ -185,6 +185,12 @@ model DealTemplate {
   name           String
   hasWorkers     Boolean  @default(true)
   incomeFieldKey String?
+  /// null | "MEDIATOR_AI_PAYROLL" — цепочка: посредник % → % ИИ от R1 → зарплатный фонд % от R2 → остаток офис
+  calcPreset         String?
+  payrollPoolPct     Decimal? @db.Decimal(5, 2)
+  calcGrossFieldKey  String?
+  calcMediatorPctKey String?
+  calcAiPctKey       String?
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
