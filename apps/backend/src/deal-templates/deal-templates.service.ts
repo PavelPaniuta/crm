@@ -48,21 +48,26 @@ export class DealTemplatesService {
 
   async create(organizationId: string, data: TemplateInput) {
     const calcPreset = data.calcPreset === MEDIATOR_AI_PAYROLL ? MEDIATOR_AI_PAYROLL : null;
+    const calcFields = calcPreset
+      ? {
+          calcPreset,
+          payrollPoolPct:
+            data.payrollPoolPct != null
+              ? new Prisma.Decimal(String(data.payrollPoolPct))
+              : new Prisma.Decimal('20'),
+          calcGrossFieldKey: data.calcGrossFieldKey ?? null,
+          calcMediatorPctKey: data.calcMediatorPctKey ?? null,
+          calcAiPctKey: data.calcAiPctKey ?? null,
+        }
+      : {};
+
     return this.prisma.dealTemplate.create({
       data: {
         organizationId,
         name: data.name,
         hasWorkers: data.hasWorkers ?? true,
         incomeFieldKey: data.incomeFieldKey ?? null,
-        calcPreset,
-        payrollPoolPct: calcPreset
-          ? (data.payrollPoolPct != null
-              ? new Prisma.Decimal(String(data.payrollPoolPct))
-              : new Prisma.Decimal('20'))
-          : null,
-        calcGrossFieldKey: calcPreset ? (data.calcGrossFieldKey ?? null) : null,
-        calcMediatorPctKey: calcPreset ? (data.calcMediatorPctKey ?? null) : null,
-        calcAiPctKey: calcPreset ? (data.calcAiPctKey ?? null) : null,
+        ...calcFields,
         fields: data.fields
           ? {
               create: data.fields.map((f, i) => ({
@@ -91,32 +96,29 @@ export class DealTemplatesService {
           ? MEDIATOR_AI_PAYROLL
           : null;
 
+    const calcUpdate =
+      data.calcPreset === undefined
+        ? {}
+        : nextPreset === null
+          ? { calcPreset: null, payrollPoolPct: null, calcGrossFieldKey: null, calcMediatorPctKey: null, calcAiPctKey: null }
+          : {
+              calcPreset: nextPreset,
+              payrollPoolPct:
+                data.payrollPoolPct != null
+                  ? new Prisma.Decimal(String(data.payrollPoolPct))
+                  : new Prisma.Decimal('20'),
+              calcGrossFieldKey: data.calcGrossFieldKey ?? null,
+              calcMediatorPctKey: data.calcMediatorPctKey ?? null,
+              calcAiPctKey: data.calcAiPctKey ?? null,
+            };
+
     await this.prisma.dealTemplate.update({
       where: { id },
       data: {
         name: data.name,
         hasWorkers: data.hasWorkers ?? undefined,
         incomeFieldKey: data.incomeFieldKey === undefined ? undefined : data.incomeFieldKey,
-        ...(data.calcPreset !== undefined && {
-          calcPreset: nextPreset,
-        }),
-        ...(data.calcPreset !== undefined &&
-          (nextPreset === null
-            ? {
-                payrollPoolPct: null,
-                calcGrossFieldKey: null,
-                calcMediatorPctKey: null,
-                calcAiPctKey: null,
-              }
-            : {
-                payrollPoolPct:
-                  data.payrollPoolPct != null
-                    ? new Prisma.Decimal(String(data.payrollPoolPct))
-                    : new Prisma.Decimal('20'),
-                calcGrossFieldKey: data.calcGrossFieldKey ?? null,
-                calcMediatorPctKey: data.calcMediatorPctKey ?? null,
-                calcAiPctKey: data.calcAiPctKey ?? null,
-              })),
+        ...calcUpdate,
       },
     });
 
