@@ -77,19 +77,127 @@ function parseMediatorPct(v: unknown): string {
   return String(n);
 }
 
+type OrgUserLite = { id: string; name: string | null; email: string };
+
 export type LegacyImportResult = {
   created: number;
   skipped: number;
   templateId: string;
   errors: string[];
-  deals: Array<{ row: number; id: string; title: string }>;
+  deals: Array<{
+    row: number;
+    id: string;
+    title: string;
+    participantsAssigned?: boolean;
+    participantNote?: string;
+  }>;
 };
+
+/** Match by display name = code (e.g. «М», «Со», «Ди2») or unambiguous prefix / email local part */
+function matchUserByCode(orgUsers: OrgUserLite[], code: string): OrgUserLite | null {
+  const c = code.trim();
+  if (!c) return null;
+  const withName = orgUsers.filter((u) => u.name != null && String(u.name).trim().length > 0);
+
+  for (const u of withName) {
+    if (u.name!.trim() === c) return u;
+  }
+  for (const u of withName) {
+    if (u.name!.trim().toLowerCase() === c.toLowerCase()) return u;
+  }
+
+  const starts = withName.filter((u) => u.name!.startsWith(c));
+  if (starts.length === 1) return starts[0];
+  if (starts.length > 1) {
+    const ex = starts.find((u) => u.name === c);
+    if (ex) return ex;
+    // Prefer the shortest name (e.g. «М» over «Михаил») when the code is a prefix
+    return [...starts].sort((a, b) => a.name!.length - b.name!.length)[0];
+  }
+
+  for (const u of orgUsers) {
+    const local = u.email?.split('@')[0]?.toLowerCase();
+    if (local && local === c.toLowerCase()) return u;
+  }
+
+  return null;
+}
+
+type ResolveOut =
+  | { ok: true; parts: { userId: string; pct: number }[] }
+  | { ok: false; message: string };
+
+function resolveWorkerParticipants(orgUsers: OrgUserLite[], codes: string, split: string): ResolveOut {
+  const codeList = codes
+    .split('+')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const pctsRaw = split
+    .split('/')
+    .map((s) => s.trim())
+    .filter((s) => s.length)
+    .map((s) => {
+      const n = parseFloat(s.replace(',', '.'));
+      return Number.isFinite(n) ? n : NaN;
+    })
+    .filter((n) => !Number.isNaN(n));
+
+  if (codeList.length === 0) return { ok: false, message: 'Пусто в колонке воркеров' };
+  if (pctsRaw.length === 0) return { ok: false, message: 'Пусто в колонке долей %' };
+  if (codeList.length !== pctsRaw.length) {
+    return { ok: false, message: `Кодов: ${codeList.length}, долей: ${pctsRaw.length} (должно совпадать)` };
+  }
+
+  const parts: { userId: string; pct: number }[] = [];
+  for (let i = 0; i < codeList.length; i++) {
+    const u = matchUserByCode(orgUsers, codeList[i]);
+    if (!u) {
+      return { ok: false, message: `Не найден сотрудник с кодом/именем «${codeList[i]}» в этом офисе` };
+    }
+    parts.push({ userId: u.id, pct: Math.round(pctsRaw[i]) });
+  }
+
+  let sum = parts.reduce((a, p) => a + p.pct, 0);
+  if (sum !== 100) {
+    if (sum <= 0) return { ok: false, message: 'Сумма долей 0' };
+    const scaled = parts.map((p) => ({ userId: p.userId, pct: Math.max(0, Math.round((p.pct / sum) * 100)) }));
+    sum = scaled.reduce((a, p) => a + p.pct, 0);
+    if (sum !== 100) {
+      scaled[scaled.length - 1].pct += 100 - sum;
+    }
+    return { ok: true, parts: scaled };
+  }
+  return { ok: true, parts };
+}
 
 @Injectable()
 export class LegacyImportService {
   private readonly log = new Logger(LegacyImportService.name);
 
   constructor(private prisma: PrismaService) {}
+
+  /** Пользователи основного офиса + внешние по membership (как в staff) */
+  private async loadOrgUsersForMatching(organizationId: string): Promise<OrgUserLite[]> {
+    const primary = await this.prisma.user.findMany({
+      where: { organizationId },
+      select: { id: true, name: true, email: true },
+    });
+    const memIds = await this.prisma.userMembership.findMany({
+      where: { organizationId },
+      select: { userId: true },
+    });
+    if (memIds.length === 0) return primary;
+    const extra = await this.prisma.user.findMany({
+      where: { id: { in: memIds.map((m) => m.userId) } },
+      select: { id: true, name: true, email: true },
+    });
+    const byId = new Map<string, OrgUserLite>();
+    for (const u of primary) byId.set(u.id, u);
+    for (const u of extra) {
+      if (!byId.has(u.id)) byId.set(u.id, u);
+    }
+    return Array.from(byId.values());
+  }
 
   private async ensureTemplate(organizationId: string) {
     const existing = await this.prisma.dealTemplate.findFirst({
@@ -138,7 +246,7 @@ export class LegacyImportService {
   ): Promise<LegacyImportResult> {
     const tpl = await this.ensureTemplate(organizationId);
     const errors: string[] = [];
-    const deals: Array<{ row: number; id: string; title: string }> = [];
+    const deals: LegacyImportResult['deals'] = [];
     let created = 0;
     let skipped = 0;
 
@@ -170,6 +278,8 @@ export class LegacyImportService {
     const rateSnapshot: Record<string, number> = {};
     const rateRows = await this.prisma.exchangeRate.findMany();
     for (const r of rateRows) rateSnapshot[r.code] = Number(r.rateToUsd);
+
+    const orgUsers = await this.loadOrgUsersForMatching(organizationId);
 
     for (let ri = 1; ri < rows.length; ri++) {
       const row = rows[ri];
@@ -229,9 +339,23 @@ export class LegacyImportService {
       };
       if (sumApp != null) data.sum_app = String(sumApp);
 
+      let partComment = '';
+      let participantsOk: { parts: { userId: string; pct: number }[] } | null = null;
+      if (codes && split) {
+        const res = resolveWorkerParticipants(orgUsers, codes, split);
+        if (res.ok) {
+          partComment = `Воркеры: ${codes} → ${res.parts.map((p) => `${p.pct}%`).join('/')}.`;
+          participantsOk = { parts: res.parts };
+        } else {
+          partComment = `Воркеры: ${codes} | %: ${split} — ${res.message}`;
+          errors.push(`Строка ${ri + 1} (сделка всё равно создана): ${res.message}`);
+        }
+      } else {
+        partComment = 'Коды/доли воркеров не заданы — участников можно добавить вручную.';
+      }
+
       const comment =
-        `Импорт из Excel. Воркеры: ${codes || '—'} | Доли: ${split || '—'}. ` +
-        `Участников в сделке не проставлено — настройте вручную по % из таблицы.`;
+        `Импорт из Excel. ${partComment}`;
 
       try {
         const deal = await this.prisma.deal.create({
@@ -248,8 +372,19 @@ export class LegacyImportService {
             },
           },
         });
+        if (participantsOk) {
+          await this.prisma.dealParticipant.createMany({
+            data: participantsOk.parts.map((p) => ({ dealId: deal.id, userId: p.userId, pct: p.pct })),
+          });
+        }
         created++;
-        deals.push({ row: ri + 1, id: deal.id, title });
+        deals.push({
+          row: ri + 1,
+          id: deal.id,
+          title,
+          participantsAssigned: Boolean(participantsOk),
+          participantNote: partComment,
+        });
       } catch (e: any) {
         this.log.warn(e);
         errors.push(`Строка ${ri + 1}: ${e?.message ?? e}`);

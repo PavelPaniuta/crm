@@ -767,7 +767,8 @@ export default function AppPage() {
         alert(j.message || "Ошибка импорта");
         return;
       }
-      const msg = [`Создано сделок: ${j.created ?? 0}`];
+      const withParts = Array.isArray(j.deals) ? j.deals.filter((d: { participantsAssigned?: boolean }) => d.participantsAssigned).length : 0;
+      const msg = [`Создано сделок: ${j.created ?? 0}`, withParts ? `С воркерами (%): ${withParts}` : ""].filter(Boolean);
       if (j.errors?.length) msg.push(`Строки с замечаниями:\n${j.errors.slice(0, 8).join("\n")}`);
       if (j.templateId) msg.push(`Шаблон: «Легаси (импорт)»`);
       alert(msg.join("\n\n"));
