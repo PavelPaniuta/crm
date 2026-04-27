@@ -4296,7 +4296,7 @@ export default function AppPage() {
                                 {isAdmin && (
                                   <button className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}
                                     onClick={() => {
-                                      setSalaryConfigModal({ userId: staffMember.id, name: staffMember.name || staffMember.email });
+                                      setSalaryConfigModal({ userId: staffMember.id, name: staffMember.name || staffMember.email, config: empSalary?.salaryConfig ?? null });
                                       setSalaryConfigForm({
                                         baseAmount: String(empSalary?.salaryConfig?.baseAmount ?? ""),
                                         currency: empSalary?.salaryConfig?.currency ?? "USD",
