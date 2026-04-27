@@ -218,7 +218,14 @@ const OP_LABELS: Record<OperationType, string> = {
   TRANSFER: "Перевод",
 };
 
-const CURRENCIES = ["PLN", "CHF", "USDT", "UAH", "EUR", "USD"];
+const CURRENCIES = ["USD", "EUR", "UAH", "PLN", "CHF"];
+const CURRENCY_META: Record<string, { symbol: string; name: string }> = {
+  USD: { symbol: "$",  name: "US Dollar" },
+  EUR: { symbol: "€",  name: "Euro" },
+  UAH: { symbol: "₴",  name: "Ukrainian Hryvnia" },
+  PLN: { symbol: "zł", name: "Polish Zloty" },
+  CHF: { symbol: "Fr", name: "Swiss Franc" },
+};
 
 function StaffTable({ members, onSelect }: { members: any[]; onSelect: (id: string) => void }) {
   const ROLE_MAP: Record<string, string> = { SUPER_ADMIN: "Супер Админ", ADMIN: "Админ", MANAGER: "Менеджер", WORKER: "Работник" };
@@ -311,6 +318,13 @@ export default function AppPage() {
   const [userPwdValue, setUserPwdValue] = useState("");
   const [userPositionId, setUserPositionId] = useState<string | null>(null);
   const [userPositionValue, setUserPositionValue] = useState("");
+
+  // --- Exchange Rates ---
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({
+    USD: 1, EUR: 0.92, UAH: 41.5, PLN: 4.0, CHF: 0.88,
+  });
+  const [ratesModalOpen, setRatesModalOpen] = useState(false);
+  const [ratesEditing, setRatesEditing] = useState<Record<string, string>>({});
 
   // --- Theme ---
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -536,6 +550,7 @@ export default function AppPage() {
       // Load orgs for all users (ADMIN sees all, MANAGER sees own)
       const orgRes = await fetch("/api/orgs", { credentials: "include" });
       if (orgRes.ok) setOrgs(await orgRes.json());
+      void loadExchangeRates();
     })();
   }, [router]);
 
@@ -561,7 +576,7 @@ export default function AppPage() {
     if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") { loadProfile(); void loadSessions(); }
-    if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") void loadAuditLog(0); }
+    if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") { void loadAuditLog(0); void loadExchangeRates(); } }
     if (tab === "staff") loadStaff();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
@@ -599,6 +614,22 @@ export default function AppPage() {
       const j = await res.json();
       setExpenses(Array.isArray(j) ? j : []);
     } finally { setExpensesLoading(false); }
+  }
+
+  async function loadExchangeRates() {
+    try {
+      const res = await fetch("/api/exchange-rates", { credentials: "include" });
+      if (!res.ok) return;
+      const j: Array<{ code: string; rateToUsd: string | number }> = await res.json();
+      const map: Record<string, number> = {};
+      for (const r of j) map[r.code] = Number(r.rateToUsd);
+      if (Object.keys(map).length > 0) setExchangeRates(map);
+    } catch { /* ignore */ }
+  }
+
+  function toUsd(amount: number, currency: string): number {
+    const rate = exchangeRates[currency] ?? 1;
+    return rate > 0 ? amount / rate : amount;
   }
 
   async function loadUsers() {
@@ -1284,6 +1315,28 @@ export default function AppPage() {
     if (!confirm(`Удалить шаблон "${name}"? Существующие сделки не будут затронуты.`)) return;
     await fetch(`/api/deal-templates/${id}`, { method: "DELETE", credentials: "include" });
     loadTemplates();
+  }
+
+  async function saveExchangeRates() {
+    for (const code of CURRENCIES) {
+      const raw = ratesEditing[code];
+      if (raw === undefined) continue;
+      const val = Number(raw);
+      if (!Number.isFinite(val) || val <= 0) { alert(`Некорректный курс для ${code}`); return; }
+    }
+    for (const code of CURRENCIES) {
+      const raw = ratesEditing[code];
+      if (raw === undefined) continue;
+      const val = Number(raw);
+      await fetch(`/api/exchange-rates/${code}`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rateToUsd: val, symbol: CURRENCY_META[code]?.symbol, name: CURRENCY_META[code]?.name }),
+      });
+    }
+    await loadExchangeRates();
+    setRatesModalOpen(false);
+    setRatesEditing({});
   }
 
   async function loadDashboard() {
@@ -2580,9 +2633,20 @@ export default function AppPage() {
                                   )}
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
-                                  {tpl.fields.map((f) => (
-                                    <div key={f.key}>
-                                      <div className="form-label" style={{ marginBottom: 3 }}>{f.label}{f.required ? " *" : ""}</div>
+                                  {tpl.fields.map((f) => {
+                                    const isGross = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcGrossFieldKey;
+                                    const isMediator = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcMediatorPctKey;
+                                    const isAi = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcAiPctKey;
+                                    const calcBadge = isGross ? { icon: "💰", color: "var(--accent)", tip: "База расчёта" }
+                                      : isMediator ? { icon: "🏦", color: "var(--amber)", tip: "% посредника" }
+                                      : isAi ? { icon: "🤖", color: "var(--text-secondary)", tip: "% AI" }
+                                      : null;
+                                    return (
+                                    <div key={f.key} style={calcBadge ? { background: `${calcBadge.color}0d`, borderRadius: 8, padding: "6px 8px", border: `1.5px solid ${calcBadge.color}44` } : {}}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
+                                        {calcBadge && <span title={calcBadge.tip} style={{ fontSize: 13 }}>{calcBadge.icon}</span>}
+                                        <span className="form-label" style={{ margin: 0 }}>{f.label}{f.required ? " *" : ""}</span>
+                                      </div>
                                       {f.type === "SELECT" ? (
                                         <select className="form-input" value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}>
@@ -2604,28 +2668,42 @@ export default function AppPage() {
                                           max={f.type === "PERCENT" ? 100 : undefined}
                                           value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
-                                          style={{ fontFamily: f.type === "NUMBER" || f.type === "PERCENT" ? "'JetBrains Mono', monospace" : undefined }}
+                                          style={{ fontFamily: f.type === "NUMBER" || f.type === "PERCENT" ? "'JetBrains Mono', monospace" : undefined, borderColor: calcBadge ? `${calcBadge.color}66` : undefined }}
                                         />
                                       )}
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             ))}
-                            {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0] && (() => {
-                              const c = computeMediatorAiPayrollFront(dealDataRows[0].data, tpl);
-                              if (!c) return null;
+                            {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (() => {
+                              const c = dealDataRows[0] ? computeMediatorAiPayrollFront(dealDataRows[0].data, tpl) : null;
+                              const fmt = (n: number) => n > 0 ? n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : "0";
+                              const grossField = tpl.fields.find(f => f.key === tpl.calcGrossFieldKey);
+                              const currency = dealDataRows[0]?.data?.["валюта"] || dealDataRows[0]?.data?.["currency"] || "";
+                              const cur = currency ? ` ${currency}` : "";
                               return (
-                                <div style={{ marginTop: 4, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "1px solid var(--accent)33" }}>
-                                  <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 13 }}>Распределение (AI/автоматика — не в списке сотрудников)</div>
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>
-                                    <span>Сумма завода (G)</span><span style={{ textAlign: "right" }}>{c.G.toLocaleString()}</span>
-                                    <span style={{ color: "var(--text-secondary)" }}>Выплата посредника (M)</span><span style={{ textAlign: "right", color: "var(--text-secondary)" }}>−{c.M.toLocaleString()}</span>
-                                    <span>Остаток после посредника (R1)</span><span style={{ textAlign: "right" }}>{c.R1.toLocaleString()}</span>
-                                    <span style={{ color: "var(--text-secondary)" }}>Доля AI, от R1 (A)</span><span style={{ textAlign: "right", color: "var(--text-secondary)" }}>−{c.A.toLocaleString()}</span>
-                                    <span>Остаток после AI (R2)</span><span style={{ textAlign: "right" }}>{c.R2.toLocaleString()}</span>
-                                    <span style={{ color: "var(--text-secondary)" }}>Зарплатный фонд (F, {parsePayrollPoolPct(tpl)}% от R2)</span><span style={{ textAlign: "right", color: "var(--amber)" }}>−{c.F.toLocaleString()}</span>
-                                    <span style={{ fontWeight: 700 }}>Прибыль офиса (P)</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)" }}>{c.P.toLocaleString()}</span>
+                                <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
+                                  <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                                    📊 Расчёт распределения
+                                    {!c || c.G === 0 && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>— заполните {grossField?.label ?? "Сумма завода"} 💰 выше</span>}
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+                                    <span style={{ color: "var(--text-secondary)" }}>💰 Сумма завода (G)</span>
+                                    <span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}{cur}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>🏦 Выплата посредника</span>
+                                    <span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.M ?? 0)}{cur}</span>
+                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>Остаток после посредника (R1)</span>
+                                    <span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>{fmt(c?.R1 ?? 0)}{cur}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>🤖 Доля AI (от R1)</span>
+                                    <span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.A ?? 0)}{cur}</span>
+                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>Остаток после AI (R2)</span>
+                                    <span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 4 }}>{fmt(c?.R2 ?? 0)}{cur}</span>
+                                    <span style={{ color: "var(--amber)" }}>👥 Зарплатный фонд ({parsePayrollPoolPct(tpl)}% от R2)</span>
+                                    <span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>− {fmt(c?.F ?? 0)}{cur}</span>
+                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 6, marginTop: 2 }}>🏢 Прибыль офиса (P)</span>
+                                    <span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 6, marginTop: 2 }}>{fmt(c?.P ?? 0)}{cur}</span>
                                   </div>
                                 </div>
                               );
@@ -3049,6 +3127,36 @@ export default function AppPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Multi-currency summary for admin+ */}
+              {isAdmin && expenses.length > 0 && (() => {
+                const byCurrency: Record<string, number> = {};
+                for (const e of expenses) {
+                  byCurrency[e.currency] = (byCurrency[e.currency] ?? 0) + Number(e.amount);
+                }
+                const totalUsd = Object.entries(byCurrency).reduce((s, [cur, amt]) => s + toUsd(amt, cur), 0);
+                return (
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">Итого по валютам</span>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>≈ {totalUsd.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} USD</span>
+                    </div>
+                    <div className="card-body" style={{ padding: "10px 16px" }}>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {Object.entries(byCurrency).map(([cur, amt]) => (
+                          <div key={cur} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 14px", minWidth: 110 }}>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>{CURRENCY_META[cur]?.name ?? cur}</div>
+                            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 16 }}>
+                              {CURRENCY_META[cur]?.symbol ?? ""}{amt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>≈ {toUsd(amt, cur).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} USD</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="card">
                 <div className="card-header">
@@ -4055,6 +4163,33 @@ export default function AppPage() {
                 </div>
               ) : null}
 
+              {/* Exchange Rates */}
+              {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">Курсы валют</span>
+                    <button className="btn btn-secondary" onClick={() => {
+                      const init: Record<string, string> = {};
+                      for (const c of CURRENCIES) init[c] = String(exchangeRates[c] ?? "");
+                      setRatesEditing(init);
+                      setRatesModalOpen(true);
+                    }}>Изменить курсы</button>
+                  </div>
+                  <div className="card-body" style={{ padding: "10px 16px" }}>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {CURRENCIES.map(c => (
+                        <div key={c} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 14px", minWidth: 90, textAlign: "center" }}>
+                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 700 }}>{CURRENCY_META[c]?.symbol}</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>{c}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>1 {c} = {(1 / (exchangeRates[c] ?? 1)).toFixed(4)} USD</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>Курсы используются для конвертации расходов. 1 USD — базовая валюта.</div>
+                  </div>
+                </div>
+              )}
+
               {/* Deal Templates */}
               <div className="card">
                 <div className="card-header">
@@ -4503,6 +4638,44 @@ export default function AppPage() {
 
         </div>
       </div>
+
+      {/* ===== EXCHANGE RATES MODAL ===== */}
+      {ratesModalOpen && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 70 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setRatesModalOpen(false); }}>
+          <div className="card" style={{ width: 420, maxWidth: "100%" }}>
+            <div className="card-header">
+              <span className="card-title">Курсы валют (к USD)</span>
+              <button className="btn btn-ghost" onClick={() => setRatesModalOpen(false)}>✕</button>
+            </div>
+            <div className="card-body" style={{ display: "grid", gap: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 4 }}>
+                Укажите сколько единиц каждой валюты равно 1 USD.<br/>
+                Пример: 1 USD = 41.5 UAH → значение для UAH = 41.5
+              </div>
+              {CURRENCIES.map(c => (
+                <div key={c} style={{ display: "grid", gridTemplateColumns: "60px 1fr", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontWeight: 700 }}>{CURRENCY_META[c]?.symbol} {c}</div>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={ratesEditing[c] ?? ""}
+                    onChange={(e) => setRatesEditing(p => ({ ...p, [c]: e.target.value }))}
+                    placeholder={String(exchangeRates[c] ?? "")}
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                </div>
+              ))}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <button className="btn btn-secondary" onClick={() => setRatesModalOpen(false)}>Отмена</button>
+                <button className="btn btn-primary" onClick={saveExchangeRates}>Сохранить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== TEMPLATE MODAL (WIZARD) ===== */}
       {templateModalOpen ? (

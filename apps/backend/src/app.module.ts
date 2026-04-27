@@ -20,6 +20,7 @@ import { MailModule } from './mail/mail.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ChatModule } from './chat/chat.module';
 import { AuditModule } from './audit/audit.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { AuditModule } from './audit/audit.module';
     TasksModule,
     ChatModule,
     AuditModule,
+    ExchangeRatesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
