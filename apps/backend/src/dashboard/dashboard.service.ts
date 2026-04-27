@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal, CalcStep } from '../deals/deal-payout.util';
+import { getPayrollBaseForTemplateDeal, CalcStep, computeChain, computeMediatorAiPayroll, MEDIATOR_AI_PAYROLL } from '../deals/deal-payout.util';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -55,27 +55,45 @@ export class DashboardService {
     );
 
     let totalAmountOut = 0;
+    let totalOfficeIncome = 0;
     let totalWorkersPayoutUsdt = 0;
 
     deals.forEach((d) => {
+      const tpl = d.template as any;
+      const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
+
       if (d.amounts.length > 0) {
-        // Classic deals: sum amounts
-        d.amounts.forEach((a) => { totalAmountOut += Number(a.amountOut); });
-      } else if (d.template && d.dataRows.length > 0) {
-        // Template deals: use incomeFieldKey or first chain step as gross
-        const tpl = d.template as any;
-        const first = d.dataRows[0].data as Record<string, unknown>;
+        // Classic deal: income = amountOut
+        const dealOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
+        totalAmountOut += dealOut;
+        // Office income = amountOut minus worker payouts for this deal
+        const workerCut = d.participants.reduce((s, p) => s + (dealOut * p.pct) / 100, 0);
+        totalOfficeIncome += dealOut - workerCut;
+      } else if (tpl && first) {
+        // Template deal: gross from incomeFieldKey or first chain step
         if (tpl.incomeFieldKey) {
           totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
         } else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
           const step0 = (tpl.calcSteps as CalcStep[])[0];
-          if (step0?.sourceType === 'field') {
-            totalAmountOut += Number(first[step0.sourceId]) || 0;
-          }
+          if (step0?.sourceType === 'field') totalAmountOut += Number(first[step0.sourceId]) || 0;
+        }
+
+        // Office income: last chain step result (P)
+        if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+          const chain = computeChain(first, tpl.calcSteps as CalcStep[]);
+          if (chain.length > 0) totalOfficeIncome += Math.max(0, chain[chain.length - 1].result);
+        } else if (tpl.calcPreset === MEDIATOR_AI_PAYROLL) {
+          const c = computeMediatorAiPayroll(first, tpl);
+          if (c) totalOfficeIncome += Math.max(0, c.P);
+        } else if (tpl.incomeFieldKey) {
+          // Simple template: income field minus worker cuts
+          const gross = Number(first[tpl.incomeFieldKey]) || 0;
+          const workerCut = d.participants.reduce((s, p) => s + (gross * p.pct) / 100, 0);
+          totalOfficeIncome += gross - workerCut;
         }
       }
 
-      // Payroll base via unified resolver (works for all deal types)
+      // Worker payroll base
       const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
       d.participants.forEach((p) => {
         if (payrollBase > 0) totalWorkersPayoutUsdt += (payrollBase * p.pct) / 100;
@@ -102,6 +120,7 @@ export class DashboardService {
         count: dealsCount,
         byStatus: dealsByStatus,
         totalAmountOut: Math.round(totalAmountOut * 100) / 100,
+        totalOfficeIncome: Math.round(totalOfficeIncome * 100) / 100,
         totalWorkersPayoutUsdt: Math.round(totalWorkersPayoutUsdt * 100) / 100,
       },
       expenses: {
@@ -138,23 +157,38 @@ export class DashboardService {
         });
 
         let totalAmountOut = 0;
+        let totalOfficeIncome = 0;
         let totalWorkersPayoutUsdt = 0;
 
         deals.forEach((d) => {
+          const tpl = d.template as any;
+          const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
+
           if (d.amounts.length > 0) {
-            d.amounts.forEach((a) => { totalAmountOut += Number(a.amountOut); });
-          } else if (d.template && d.dataRows.length > 0) {
-            const tpl = d.template as any;
-            const first = d.dataRows[0].data as Record<string, unknown>;
-            if (tpl.incomeFieldKey) {
-              totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
-            } else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+            const dealOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
+            totalAmountOut += dealOut;
+            const workerCut = d.participants.reduce((s, p) => s + (dealOut * p.pct) / 100, 0);
+            totalOfficeIncome += dealOut - workerCut;
+          } else if (tpl && first) {
+            if (tpl.incomeFieldKey) totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
+            else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
               const step0 = (tpl.calcSteps as CalcStep[])[0];
-              if (step0?.sourceType === 'field') {
-                totalAmountOut += Number(first[step0.sourceId]) || 0;
-              }
+              if (step0?.sourceType === 'field') totalAmountOut += Number(first[step0.sourceId]) || 0;
+            }
+
+            if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+              const chain = computeChain(first, tpl.calcSteps as CalcStep[]);
+              if (chain.length > 0) totalOfficeIncome += Math.max(0, chain[chain.length - 1].result);
+            } else if (tpl.calcPreset === MEDIATOR_AI_PAYROLL) {
+              const c = computeMediatorAiPayroll(first, tpl);
+              if (c) totalOfficeIncome += Math.max(0, c.P);
+            } else if (tpl.incomeFieldKey) {
+              const gross = Number(first[tpl.incomeFieldKey]) || 0;
+              const workerCut = d.participants.reduce((s, p) => s + (gross * p.pct) / 100, 0);
+              totalOfficeIncome += gross - workerCut;
             }
           }
+
           const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
           d.participants.forEach((p) => {
             if (payrollBase > 0) totalWorkersPayoutUsdt += (payrollBase * p.pct) / 100;
@@ -171,6 +205,7 @@ export class DashboardService {
           orgName: org.name,
           dealsCount: deals.length,
           totalAmountOut: Math.round(totalAmountOut * 100) / 100,
+          totalOfficeIncome: Math.round(totalOfficeIncome * 100) / 100,
           totalWorkersPayoutUsdt: Math.round(totalWorkersPayoutUsdt * 100) / 100,
           expensesCount: expenses.length,
           totalExpenses: Math.round(totalExpenses * 100) / 100,
@@ -182,11 +217,12 @@ export class DashboardService {
       (acc, r) => ({
         dealsCount: acc.dealsCount + r.dealsCount,
         totalAmountOut: acc.totalAmountOut + r.totalAmountOut,
+        totalOfficeIncome: acc.totalOfficeIncome + r.totalOfficeIncome,
         totalWorkersPayoutUsdt: acc.totalWorkersPayoutUsdt + r.totalWorkersPayoutUsdt,
         expensesCount: acc.expensesCount + r.expensesCount,
         totalExpenses: acc.totalExpenses + r.totalExpenses,
       }),
-      { dealsCount: 0, totalAmountOut: 0, totalWorkersPayoutUsdt: 0, expensesCount: 0, totalExpenses: 0 },
+      { dealsCount: 0, totalAmountOut: 0, totalOfficeIncome: 0, totalWorkersPayoutUsdt: 0, expensesCount: 0, totalExpenses: 0 },
     );
 
     return {
@@ -195,6 +231,7 @@ export class DashboardService {
       totals: {
         dealsCount: totals.dealsCount,
         totalAmountOut: Math.round(totals.totalAmountOut * 100) / 100,
+        totalOfficeIncome: Math.round(totals.totalOfficeIncome * 100) / 100,
         totalWorkersPayoutUsdt: Math.round(totals.totalWorkersPayoutUsdt * 100) / 100,
         expensesCount: totals.expensesCount,
         totalExpenses: Math.round(totals.totalExpenses * 100) / 100,
