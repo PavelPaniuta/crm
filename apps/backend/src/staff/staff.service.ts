@@ -118,6 +118,7 @@ export class StaffService {
                     calcGrossFieldKey: true,
                     calcMediatorPctKey: true,
                     calcAiPctKey: true,
+                    calcSteps: true,
                   },
                 },
               },

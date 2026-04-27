@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { getPayrollBaseForTemplateDeal, CalcStep } from '../deals/deal-payout.util';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -9,6 +10,16 @@ function endOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
 }
 
+const TEMPLATE_SELECT = {
+  incomeFieldKey: true,
+  calcPreset: true,
+  payrollPoolPct: true,
+  calcGrossFieldKey: true,
+  calcMediatorPctKey: true,
+  calcAiPctKey: true,
+  calcSteps: true,
+} as const;
+
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
@@ -17,14 +28,21 @@ export class DashboardService {
     const now = new Date();
     const parsedFrom = from ? new Date(from) : null;
     const parsedTo = to ? new Date(to) : null;
-    const fromDate = parsedFrom && !isNaN(parsedFrom.getTime())
-      ? startOfDay(parsedFrom)
-      : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
-    const toDate = parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
+    const fromDate =
+      parsedFrom && !isNaN(parsedFrom.getTime())
+        ? startOfDay(parsedFrom)
+        : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+    const toDate =
+      parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
 
     const deals = await this.prisma.deal.findMany({
       where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
-      include: { amounts: true, participants: true },
+      include: {
+        amounts: true,
+        dataRows: { select: { data: true } },
+        template: { select: TEMPLATE_SELECT },
+        participants: true,
+      },
     });
 
     const dealsCount = deals.length;
@@ -36,20 +54,31 @@ export class DashboardService {
       {} as Record<string, number>,
     );
 
-    // totalAmountOut = sum of all amountOut across all deal rows
     let totalAmountOut = 0;
-    deals.forEach((d) => {
-      d.amounts.forEach((a) => {
-        totalAmountOut += Number(a.amountOut);
-      });
-    });
-
-    // workerPayout = amountOut × workerPct / 100
     let totalWorkersPayoutUsdt = 0;
+
     deals.forEach((d) => {
-      const dealAmountOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
+      if (d.amounts.length > 0) {
+        // Classic deals: sum amounts
+        d.amounts.forEach((a) => { totalAmountOut += Number(a.amountOut); });
+      } else if (d.template && d.dataRows.length > 0) {
+        // Template deals: use incomeFieldKey or first chain step as gross
+        const tpl = d.template as any;
+        const first = d.dataRows[0].data as Record<string, unknown>;
+        if (tpl.incomeFieldKey) {
+          totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
+        } else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+          const step0 = (tpl.calcSteps as CalcStep[])[0];
+          if (step0?.sourceType === 'field') {
+            totalAmountOut += Number(first[step0.sourceId]) || 0;
+          }
+        }
+      }
+
+      // Payroll base via unified resolver (works for all deal types)
+      const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
       d.participants.forEach((p) => {
-        totalWorkersPayoutUsdt += (dealAmountOut * p.pct) / 100;
+        if (payrollBase > 0) totalWorkersPayoutUsdt += (payrollBase * p.pct) / 100;
       });
     });
 
@@ -87,10 +116,12 @@ export class DashboardService {
     const now = new Date();
     const parsedFrom = from ? new Date(from) : null;
     const parsedTo = to ? new Date(to) : null;
-    const fromDate = parsedFrom && !isNaN(parsedFrom.getTime())
-      ? startOfDay(parsedFrom)
-      : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
-    const toDate = parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
+    const fromDate =
+      parsedFrom && !isNaN(parsedFrom.getTime())
+        ? startOfDay(parsedFrom)
+        : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+    const toDate =
+      parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
 
     const orgs = await this.prisma.organization.findMany({ orderBy: { name: 'asc' } });
 
@@ -98,16 +129,35 @@ export class DashboardService {
       orgs.map(async (org) => {
         const deals = await this.prisma.deal.findMany({
           where: { organizationId: org.id, dealDate: { gte: fromDate, lte: toDate } },
-          include: { amounts: true, participants: true },
+          include: {
+            amounts: true,
+            dataRows: { select: { data: true } },
+            template: { select: TEMPLATE_SELECT },
+            participants: true,
+          },
         });
 
         let totalAmountOut = 0;
         let totalWorkersPayoutUsdt = 0;
+
         deals.forEach((d) => {
-          const dealOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
-          totalAmountOut += dealOut;
+          if (d.amounts.length > 0) {
+            d.amounts.forEach((a) => { totalAmountOut += Number(a.amountOut); });
+          } else if (d.template && d.dataRows.length > 0) {
+            const tpl = d.template as any;
+            const first = d.dataRows[0].data as Record<string, unknown>;
+            if (tpl.incomeFieldKey) {
+              totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
+            } else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+              const step0 = (tpl.calcSteps as CalcStep[])[0];
+              if (step0?.sourceType === 'field') {
+                totalAmountOut += Number(first[step0.sourceId]) || 0;
+              }
+            }
+          }
+          const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
           d.participants.forEach((p) => {
-            totalWorkersPayoutUsdt += (dealOut * p.pct) / 100;
+            if (payrollBase > 0) totalWorkersPayoutUsdt += (payrollBase * p.pct) / 100;
           });
         });
 
