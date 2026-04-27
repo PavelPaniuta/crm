@@ -37,7 +37,7 @@ export class StaffService {
               pct: true,
               deal: {
                 select: {
-                  id: true, status: true, dealDate: true,
+                  id: true, status: true, dealDate: true, rateSnapshot: true,
                   amounts: { select: { amountOut: true, currencyOut: true } },
                   dataRows: { select: { data: true } },
                   template: {
@@ -138,7 +138,7 @@ export class StaffService {
               pct: true,
               deal: {
                 select: {
-                  id: true, status: true, dealDate: true, title: true,
+                  id: true, status: true, dealDate: true, title: true, rateSnapshot: true,
                   amounts: { select: { amountOut: true, currencyOut: true } },
                   dataRows: { select: { data: true } },
                   template: {

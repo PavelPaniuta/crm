@@ -62,7 +62,7 @@ export class SalaryService {
               pct: true,
               deal: {
                 select: {
-                  id: true, status: true, dealDate: true,
+                  id: true, status: true, dealDate: true, rateSnapshot: true,
                   amounts: { select: { amountOut: true, currencyOut: true } },
                   dataRows: { select: { data: true } },
                   template: { select: DEAL_TEMPLATE_SELECT },
