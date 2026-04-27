@@ -488,6 +488,7 @@ export default function AppPage() {
   const [salaryData, setSalaryData] = useState<any[]>([]);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryPeriod, setSalaryPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedSalaryEmp, setSelectedSalaryEmp] = useState<any | null>(null);
   const [salaryConfigModal, setSalaryConfigModal] = useState<{ userId: string; name: string; config: any } | null>(null);
   const [salaryPaymentModal, setSalaryPaymentModal] = useState<{ userId: string; name: string; orgId: string } | null>(null);
   const [salaryConfigForm, setSalaryConfigForm] = useState({ baseAmount: "", currency: "USD", payDay: "1", note: "" });
@@ -734,7 +735,12 @@ export default function AppPage() {
       const p = period ?? salaryPeriod;
       const orgId = user?.activeOrganizationId ?? "";
       const res = await fetch(`/api/salary/overview?organizationId=${orgId}&period=${p}`, { credentials: "include" });
-      if (res.ok) setSalaryData(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setSalaryData(data);
+        // refresh cabinet if open
+        setSelectedSalaryEmp((prev: any) => prev ? data.find((e: any) => e.userId === prev.userId) ?? prev : null);
+      }
     } finally { setSalaryLoading(false); }
   }
 
@@ -2257,7 +2263,10 @@ export default function AppPage() {
                     </div>
                   ) : (() => {
                     const amountOut = dash.deals?.totalAmountOut ?? 0;
-                    const officeIncome = dash.deals?.totalOfficeIncome ?? amountOut;
+                    const workersTotal = dash.deals?.totalWorkersPayoutUsdt ?? 0;
+                    // officeIncome: prefer backend-computed value, fallback to gross-workers if 0
+                    const officeIncomeRaw = dash.deals?.totalOfficeIncome ?? 0;
+                    const officeIncome = officeIncomeRaw > 0 ? officeIncomeRaw : Math.max(0, amountOut - workersTotal);
                     const expTotal = dash.expenses?.totalAmount ?? 0;
                     const profit = officeIncome - expTotal;
                     const metrics = [
@@ -2272,7 +2281,7 @@ export default function AppPage() {
                       {
                         label: "Завод (брутто)",
                         value: amountOut.toLocaleString(),
-                        sub: `Офису: ${officeIncome.toLocaleString()} · Воркерам: ${(dash.deals?.totalWorkersPayoutUsdt ?? 0).toLocaleString()}`,
+                        sub: `Офису: ${officeIncome.toLocaleString()} · Воркерам: ${workersTotal.toLocaleString()}`,
                         iconColor: "#059669", iconBg: "rgba(5,150,105,0.1)",
                         trend: amountOut > 0 ? "up" : "neutral",
                         icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>,
@@ -4330,10 +4339,283 @@ export default function AppPage() {
           {tab === "salary" ? (() => {
             const CURRENCIES = ["USD", "EUR", "UAH", "PLN", "CHF"];
             const PAYMENT_TYPES: Record<string, string> = { BASE: "Ставка", DEAL_BONUS: "Бонус по сделкам", ADVANCE: "Аванс", MANUAL: "Ручная" };
+            const ROLE_LABELS_S: Record<string, string> = { ADMIN: "Администратор", MANAGER: "Менеджер", WORKER: "Воркер", SUPER_ADMIN: "Супер-админ" };
+            const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+            const fmtDec = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+
             const totalFund = salaryData.reduce((s, e) => s + (e.totalAccrued ?? 0), 0);
             const totalDebt = salaryData.reduce((s, e) => s + Math.max(0, e.balance ?? 0), 0);
             const totalPaid = salaryData.reduce((s, e) => s + (e.paidUsd ?? 0), 0);
 
+            // Shared modals (usable from both list and cabinet)
+            const configModal = salaryConfigModal && (
+              <div className="modal-overlay" onClick={() => setSalaryConfigModal(null)}>
+                <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <div className="modal-title">Настройка ставки — {salaryConfigModal.name}</div>
+                    <button className="modal-close" onClick={() => setSalaryConfigModal(null)}>✕</button>
+                  </div>
+                  <div className="modal-body" style={{ display: "grid", gap: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                      <div>
+                        <label className="form-label">Базовая ставка (в месяц)</label>
+                        <input className="form-control" type="number" min="0" placeholder="0" value={salaryConfigForm.baseAmount} onChange={e => setSalaryConfigForm(f => ({ ...f, baseAmount: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="form-label">Валюта</label>
+                        <select className="form-control" value={salaryConfigForm.currency} onChange={e => setSalaryConfigForm(f => ({ ...f, currency: e.target.value }))}>
+                          {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="form-label">День выплаты зарплаты (число месяца, 1–31)</label>
+                      <input className="form-control" type="number" min="1" max="31" value={salaryConfigForm.payDay} onChange={e => setSalaryConfigForm(f => ({ ...f, payDay: e.target.value }))} />
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Например, 15 — значит 15-го числа каждого месяца</div>
+                    </div>
+                    <div>
+                      <label className="form-label">Примечание</label>
+                      <input className="form-control" type="text" placeholder="Необязательно" value={salaryConfigForm.note} onChange={e => setSalaryConfigForm(f => ({ ...f, note: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn btn-ghost" onClick={() => setSalaryConfigModal(null)}>Отмена</button>
+                    <button className="btn btn-primary" onClick={saveSalaryConfig}>Сохранить</button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            const paymentModal = salaryPaymentModal && (
+              <div className="modal-overlay" onClick={() => setSalaryPaymentModal(null)}>
+                <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <div className="modal-title">Добавить выплату — {salaryPaymentModal.name}</div>
+                    <button className="modal-close" onClick={() => setSalaryPaymentModal(null)}>✕</button>
+                  </div>
+                  <div className="modal-body" style={{ display: "grid", gap: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                      <div>
+                        <label className="form-label">Сумма</label>
+                        <input className="form-control" type="number" min="0" placeholder="0" value={salaryPaymentForm.amount} onChange={e => setSalaryPaymentForm(f => ({ ...f, amount: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="form-label">Валюта</label>
+                        <select className="form-control" value={salaryPaymentForm.currency} onChange={e => setSalaryPaymentForm(f => ({ ...f, currency: e.target.value }))}>
+                          {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="form-label">Тип выплаты</label>
+                      <select className="form-control" value={salaryPaymentForm.type} onChange={e => setSalaryPaymentForm(f => ({ ...f, type: e.target.value }))}>
+                        {Object.entries(PAYMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">Примечание</label>
+                      <input className="form-control" type="text" placeholder="Необязательно" value={salaryPaymentForm.note} onChange={e => setSalaryPaymentForm(f => ({ ...f, note: e.target.value }))} />
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 12px", borderRadius: 8, background: "var(--bg-input)", border: "1px solid var(--border)" }}>
+                      <input type="checkbox" checked={salaryPaymentForm.isPaid} onChange={e => setSalaryPaymentForm(f => ({ ...f, isPaid: e.target.checked }))} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>Отметить как выплачено</div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Если деньги уже переданы сотруднику</div>
+                      </div>
+                    </label>
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn btn-ghost" onClick={() => setSalaryPaymentModal(null)}>Отмена</button>
+                    <button className="btn btn-primary" onClick={addSalaryPayment}>Добавить</button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── CABINET VIEW ──────────────────────────────────────────────
+            if (selectedSalaryEmp) {
+              const emp = selectedSalaryEmp;
+              const cfg = emp.salaryConfig;
+              const debt = emp.balance ?? 0;
+              const isInDebt = debt > 0;
+              const avatarColor = ["#6366F1","#059669","#D97706","#DC2626","#0EA5E9"][emp.email.charCodeAt(0) % 5];
+
+              return (
+                <div style={{ display: "grid", gap: 16 }}>
+                  {/* Back header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <button className="btn btn-ghost" onClick={() => setSelectedSalaryEmp(null)} style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                      Все сотрудники
+                    </button>
+                    <div style={{ width: 1, height: 24, background: "var(--border)" }} />
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: avatarColor + "22", color: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
+                      {(emp.name || emp.email)?.[0]?.toUpperCase() ?? "?"}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 16 }}>{emp.name || emp.email}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` · ${emp.position}` : ""}</div>
+                    </div>
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                      <input type="month" value={salaryPeriod} onChange={e => { setSalaryPeriod(e.target.value); loadSalary(e.target.value); }}
+                        style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }} />
+                    </div>
+                  </div>
+
+                  {/* Metric cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                    {[
+                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Ставка $${fmt(emp.baseUsd ?? 0)} + Сделки $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#6366F1" },
+                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
+                      { label: isInDebt ? "Долг (не выплачено)" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? "Требует выплаты" : "Переплата или ровно", color: isInDebt ? "#DC2626" : "#059669" },
+                    ].map(m => (
+                      <div key={m.label} style={{ background: "var(--bg-card)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
+                        <div style={{ fontSize: 26, fontWeight: 800, color: m.color, lineHeight: 1.1 }}>{m.value}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>{m.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Main grid: settings + history */}
+                  <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14 }}>
+
+                    {/* Left: Salary settings */}
+                    <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                      <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>Настройки зарплаты</div>
+                        <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
+                          onClick={() => {
+                            setSalaryConfigModal({ userId: emp.userId, name: emp.name || emp.email, config: cfg });
+                            setSalaryConfigForm({ baseAmount: cfg?.baseAmount ? String(cfg.baseAmount) : "", currency: cfg?.currency ?? "USD", payDay: cfg?.payDay ? String(cfg.payDay) : "1", note: cfg?.note ?? "" });
+                          }}>
+                          {cfg ? "Изменить" : "Настроить"}
+                        </button>
+                      </div>
+                      <div style={{ padding: "16px 18px", display: "grid", gap: 14 }}>
+                        {cfg ? (
+                          <>
+                            <div>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Ставка в месяц</div>
+                              <div style={{ fontSize: 22, fontWeight: 700 }}>{Number(cfg.baseAmount).toLocaleString()} <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>{cfg.currency}</span></div>
+                              {cfg.currency !== "USD" && <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>≈ ${fmt(emp.baseUsd ?? 0)} USD</div>}
+                            </div>
+                            <div style={{ display: "flex", gap: 20 }}>
+                              <div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>День выплаты</div>
+                                <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.payDay}-е</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Валюта</div>
+                                <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.currency}</div>
+                              </div>
+                            </div>
+                            {cfg.note && (
+                              <div style={{ padding: "10px 12px", borderRadius: 8, background: "var(--bg-input)", fontSize: 12, color: "var(--text-secondary)" }}>
+                                {cfg.note}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div style={{ padding: "24px 0", textAlign: "center" }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 14 }}>Ставка не настроена</div>
+                            <button className="btn btn-primary" style={{ fontSize: 12 }}
+                              onClick={() => {
+                                setSalaryConfigModal({ userId: emp.userId, name: emp.name || emp.email, config: null });
+                                setSalaryConfigForm({ baseAmount: "", currency: "USD", payDay: "1", note: "" });
+                              }}>
+                              Установить ставку
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Deal earnings breakdown */}
+                        <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 14 }}>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сделки за {salaryPeriod}</div>
+                          {emp.dealEarningsUsd > 0 ? (
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Заработок по сделкам</span>
+                              <span style={{ fontWeight: 700, color: "#059669", fontSize: 15 }}>${fmtDec(emp.dealEarningsUsd)}</span>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Нет сделок за период</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Payment history */}
+                    <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                      <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>История выплат — {salaryPeriod}</div>
+                        <button className="btn btn-primary" style={{ fontSize: 12 }}
+                          onClick={() => {
+                            setSalaryPaymentModal({ userId: emp.userId, name: emp.name || emp.email, orgId: user?.activeOrganizationId ?? "" });
+                            setSalaryPaymentForm({ amount: "", currency: cfg?.currency ?? "USD", type: "BASE", note: "", isPaid: false });
+                          }}>
+                          + Добавить выплату
+                        </button>
+                      </div>
+
+                      <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
+                        {emp.payments.length === 0 ? (
+                          <div style={{ padding: "40px 0", textAlign: "center" }}>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Выплат за этот период нет</div>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Нажмите «+ Добавить выплату», чтобы зафиксировать</div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {emp.payments.map((p: any) => (
+                              <div key={p.id} style={{
+                                display: "flex", alignItems: "center", gap: 12,
+                                padding: "12px 14px", borderRadius: 10,
+                                background: p.isPaid ? "rgba(5,150,105,0.05)" : "rgba(99,102,241,0.04)",
+                                border: `1px solid ${p.isPaid ? "rgba(5,150,105,0.18)" : "rgba(99,102,241,0.15)"}`,
+                              }}>
+                                {/* Status dot */}
+                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: p.isPaid ? "#059669" : "#94A3B8", flexShrink: 0 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                    <span style={{ fontWeight: 700, fontSize: 15 }}>{p.amount.toLocaleString()} {p.currency}</span>
+                                    {p.currency !== "USD" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>≈ ${fmt(p.amountUsd)}</span>}
+                                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "var(--accent-light)", color: "var(--accent)", fontWeight: 500 }}>{PAYMENT_TYPES[p.type] ?? p.type}</span>
+                                    {p.isPaid && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(5,150,105,0.12)", color: "#059669", fontWeight: 600 }}>✓ Выплачено</span>}
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                                    {p.note && <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{p.note}</span>}
+                                    <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{new Date(p.createdAt).toLocaleDateString("ru-RU")}</span>
+                                    {p.isPaid && p.paidAt && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>· выплачено {new Date(p.paidAt).toLocaleDateString("ru-RU")}</span>}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                                  <button onClick={() => togglePaymentPaid(p.id, !p.isPaid)}
+                                    style={{ padding: "5px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                                      background: p.isPaid ? "rgba(220,38,38,0.1)" : "rgba(5,150,105,0.12)",
+                                      color: p.isPaid ? "#DC2626" : "#059669" }}>
+                                    {p.isPaid ? "Отменить" : "Выплатить"}
+                                  </button>
+                                  <button onClick={() => deleteSalaryPayment(p.id)}
+                                    style={{ padding: "5px 8px", borderRadius: 7, border: "none", cursor: "pointer", background: "rgba(220,38,38,0.08)", color: "#DC2626", fontSize: 13 }}>
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {configModal}
+                  {paymentModal}
+                </div>
+              );
+            }
+
+            // ── LIST VIEW ─────────────────────────────────────────────────
             return (
               <div style={{ display: "grid", gap: 16 }}>
                 <div className="page-header">
@@ -4341,224 +4623,129 @@ export default function AppPage() {
                     <div className="page-header-title">Зарплата</div>
                     <div className="page-header-sub">Учёт зарплатного фонда, долгов и выплат сотрудникам</div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input
-                      type="month" value={salaryPeriod}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="month" value={salaryPeriod}
                       onChange={e => { setSalaryPeriod(e.target.value); loadSalary(e.target.value); }}
-                      style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }}
-                    />
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }} />
                     <button className="btn btn-secondary" onClick={() => loadSalary()}>Обновить</button>
                   </div>
                 </div>
 
-                {/* Summary metrics */}
-                <div className="metric-grid" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
+                {/* Summary strip */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
                   {[
-                    { label: "Фонд ЗП (начислено)", value: `$${totalFund.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`, color: "#6366F1", sub: "Ставки + сделки за период" },
-                    { label: "Долг сотрудникам", value: `$${totalDebt.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`, color: totalDebt > 0 ? "#DC2626" : "#059669", sub: "Начислено минус выплачено" },
-                    { label: "Выплачено", value: `$${totalPaid.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`, color: "#059669", sub: "Помечено как выплачено" },
+                    { label: "Фонд ЗП за период", value: `$${fmt(totalFund)}`, sub: "Ставки + заработок по сделкам", color: "#6366F1", bg: "rgba(99,102,241,0.07)" },
+                    { label: "Долг сотрудникам", value: `$${fmt(totalDebt)}`, sub: totalDebt > 0 ? `У ${salaryData.filter((e: any) => (e.balance ?? 0) > 0).length} сотрудников есть долг` : "Все долги погашены", color: totalDebt > 0 ? "#DC2626" : "#059669", bg: totalDebt > 0 ? "rgba(220,38,38,0.06)" : "rgba(5,150,105,0.06)" },
+                    { label: "Итого выплачено", value: `$${fmt(totalPaid)}`, sub: "Подтверждённые выплаты", color: "#059669", bg: "rgba(5,150,105,0.06)" },
                   ].map(m => (
-                    <div key={m.label} className="metric-card" style={{ padding: "18px 20px" }}>
-                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 4 }}>{m.label}</div>
-                      <div style={{ fontSize: 24, fontWeight: 700, color: m.color }}>{m.value}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>{m.sub}</div>
+                    <div key={m.label} style={{ padding: "18px 22px", borderRadius: 14, background: m.bg, border: `1px solid ${m.color}22` }}>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 800, color: m.color }}>{m.value}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>{m.sub}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Employee cards */}
-                {salaryLoading ? (
-                  <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
-                ) : salaryData.length === 0 ? (
-                  <div className="card" style={{ padding: 32, textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {salaryData.map((emp: any) => {
-                      const cfg = emp.salaryConfig;
-                      const debt = emp.balance ?? 0;
-                      const isInDebt = debt > 0;
-                      return (
-                        <div key={emp.userId} className="card" style={{ padding: 0, overflow: "hidden" }}>
-                          {/* Header */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", borderBottom: "1px solid var(--border-light)", background: isInDebt ? "rgba(220,38,38,0.03)" : "transparent" }}>
-                            <div style={{ width: 42, height: 42, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
-                              {(emp.name || emp.email)?.[0]?.toUpperCase() ?? "?"}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, fontSize: 15 }}>{emp.name || emp.email}</div>
-                              <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                                {emp.position ?? emp.role}
-                                {cfg && <span style={{ marginLeft: 8 }}>· День ЗП: {cfg.payDay}-е</span>}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <button className="btn btn-secondary" style={{ fontSize: 12 }}
-                                onClick={() => {
-                                  setSalaryConfigModal({ userId: emp.userId, name: emp.name || emp.email, config: cfg });
-                                  setSalaryConfigForm({ baseAmount: cfg?.baseAmount ? String(cfg.baseAmount) : "", currency: cfg?.currency ?? "USD", payDay: cfg?.payDay ? String(cfg.payDay) : "1", note: cfg?.note ?? "" });
-                                }}>
-                                {cfg ? "Изменить ставку" : "Установить ставку"}
-                              </button>
-                              <button className="btn btn-primary" style={{ fontSize: 12 }}
-                                onClick={() => {
-                                  setSalaryPaymentModal({ userId: emp.userId, name: emp.name || emp.email, orgId: user?.activeOrganizationId ?? "" });
-                                  setSalaryPaymentForm({ amount: "", currency: "USD", type: "BASE", note: "", isPaid: false });
-                                }}>
-                                + Выплата
-                              </button>
-                            </div>
-                          </div>
+                {/* Employee table */}
+                <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                  <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14 }}>
+                    Сотрудники ({salaryData.length})
+                  </div>
+                  {salaryLoading ? (
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                  ) : salaryData.length === 0 ? (
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников в офисе</div>
+                  ) : (
+                    <>
+                      {/* Table header */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto", padding: "8px 20px", borderBottom: "1px solid var(--border-light)", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", gap: 8 }}>
+                        <span>Сотрудник</span>
+                        <span style={{ textAlign: "right" }}>Ставка</span>
+                        <span style={{ textAlign: "right" }}>Сделки</span>
+                        <span style={{ textAlign: "right" }}>Начислено</span>
+                        <span style={{ textAlign: "right" }}>Выплачено</span>
+                        <span style={{ textAlign: "right" }}>Баланс</span>
+                        <span />
+                      </div>
+                      {salaryData.map((emp: any) => {
+                        const cfg = emp.salaryConfig;
+                        const debt = emp.balance ?? 0;
+                        const isInDebt = debt > 0;
+                        const avatarColor = ["#6366F1","#059669","#D97706","#DC2626","#0EA5E9"][emp.email.charCodeAt(0) % 5];
 
-                          {/* Body */}
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-                            {/* Left: accruals */}
-                            <div style={{ padding: "14px 20px", borderRight: "1px solid var(--border-light)" }}>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Начислено за {salaryPeriod}</div>
-                              <div style={{ display: "grid", gap: 6 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                                  <span style={{ color: "var(--text-secondary)" }}>Базовая ставка</span>
-                                  <span style={{ fontWeight: 600 }}>
-                                    {cfg ? `${Number(cfg.baseAmount).toLocaleString()} ${cfg.currency}` : "—"}
-                                    {cfg && cfg.currency !== "USD" && <span style={{ color: "var(--text-tertiary)", marginLeft: 4, fontSize: 11 }}>≈ ${emp.baseUsd?.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span>}
-                                  </span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                                  <span style={{ color: "var(--text-secondary)" }}>По сделкам</span>
-                                  <span style={{ fontWeight: 600, color: "#059669" }}>${emp.dealEarningsUsd?.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}</span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, paddingTop: 6, borderTop: "1px solid var(--border-light)", marginTop: 2 }}>
-                                  <span style={{ fontWeight: 600 }}>Итого начислено</span>
-                                  <span style={{ fontWeight: 700, color: "#6366F1" }}>${emp.totalAccrued?.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
-                                  <span style={{ fontWeight: 600 }}>Выплачено</span>
-                                  <span style={{ fontWeight: 700, color: "#059669" }}>${emp.paidUsd?.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, paddingTop: 6, borderTop: "1px solid var(--border-light)", marginTop: 2 }}>
-                                  <span style={{ fontWeight: 700 }}>Остаток / Долг</span>
-                                  <span style={{ fontWeight: 800, color: isInDebt ? "#DC2626" : "#059669" }}>
-                                    {isInDebt ? "-" : ""}${Math.abs(debt).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}
-                                    {isInDebt && <span style={{ marginLeft: 4, fontSize: 12 }}>🔴</span>}
-                                    {!isInDebt && debt < 0 && <span style={{ marginLeft: 4, fontSize: 12 }}>✅</span>}
-                                  </span>
-                                </div>
+                        return (
+                          <div key={emp.userId} style={{
+                            display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto",
+                            padding: "12px 20px", gap: 8, alignItems: "center",
+                            borderBottom: "1px solid var(--border-light)",
+                            cursor: "pointer", transition: "background 0.12s",
+                          }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "")}
+                            onClick={() => setSelectedSalaryEmp(emp)}>
+
+                            {/* Name */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 36, height: 36, borderRadius: "50%", background: avatarColor + "22", color: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                                {(emp.name || emp.email)?.[0]?.toUpperCase() ?? "?"}
                               </div>
+                              <div>
+                                <div style={{ fontWeight: 600, fontSize: 14 }}>{emp.name || emp.email}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` · ${emp.position}` : ""}</div>
+                              </div>
+                              {cfg && <div style={{ marginLeft: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--bg-input)", color: "var(--text-tertiary)" }}>ЗП {cfg.payDay}-е</div>}
                             </div>
 
-                            {/* Right: payment history */}
-                            <div style={{ padding: "14px 20px" }}>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>История выплат</div>
-                              {emp.payments.length === 0 ? (
-                                <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Нет записей за период</div>
+                            {/* Base salary */}
+                            <div style={{ textAlign: "right" }}>
+                              {cfg ? (
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>${fmt(emp.baseUsd ?? 0)}</span>
                               ) : (
-                                <div style={{ display: "grid", gap: 6, maxHeight: 200, overflowY: "auto" }}>
-                                  {emp.payments.map((p: any) => (
-                                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: p.isPaid ? "rgba(5,150,105,0.06)" : "rgba(220,38,38,0.05)", border: `1px solid ${p.isPaid ? "rgba(5,150,105,0.15)" : "rgba(220,38,38,0.15)"}` }}>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                          <span style={{ fontSize: 12, fontWeight: 600 }}>{p.amount.toLocaleString()} {p.currency}</span>
-                                          {p.currency !== "USD" && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>≈${p.amountUsd}</span>}
-                                          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "var(--accent-light)", color: "var(--accent)" }}>{PAYMENT_TYPES[p.type] ?? p.type}</span>
-                                        </div>
-                                        {p.note && <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{p.note}</div>}
-                                        <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>{new Date(p.createdAt).toLocaleDateString("ru-RU")}</div>
-                                      </div>
-                                      <button
-                                        title={p.isPaid ? "Отменить выплату" : "Отметить выплаченным"}
-                                        onClick={() => togglePaymentPaid(p.id, !p.isPaid)}
-                                        style={{ padding: "4px 8px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, background: p.isPaid ? "rgba(5,150,105,0.15)" : "var(--accent-light)", color: p.isPaid ? "#059669" : "var(--accent)" }}>
-                                        {p.isPaid ? "✓ Выплачено" : "Выплатить"}
-                                      </button>
-                                      <button onClick={() => deleteSalaryPayment(p.id)} title="Удалить" style={{ padding: "4px 6px", borderRadius: 6, border: "none", cursor: "pointer", background: "rgba(220,38,38,0.1)", color: "#DC2626", fontSize: 11 }}>✕</button>
-                                    </div>
-                                  ))}
-                                </div>
+                                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>—</span>
                               )}
                             </div>
+
+                            {/* Deal earnings */}
+                            <div style={{ textAlign: "right" }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: emp.dealEarningsUsd > 0 ? "#059669" : "var(--text-tertiary)" }}>
+                                ${fmtDec(emp.dealEarningsUsd ?? 0)}
+                              </span>
+                            </div>
+
+                            {/* Total accrued */}
+                            <div style={{ textAlign: "right" }}>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: "#6366F1" }}>${fmt(emp.totalAccrued ?? 0)}</span>
+                            </div>
+
+                            {/* Paid */}
+                            <div style={{ textAlign: "right" }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: "#059669" }}>${fmt(emp.paidUsd ?? 0)}</span>
+                            </div>
+
+                            {/* Balance */}
+                            <div style={{ textAlign: "right" }}>
+                              <span style={{ fontSize: 14, fontWeight: 800, color: isInDebt ? "#DC2626" : "#059669" }}>
+                                {isInDebt ? "−" : "+"}${fmt(Math.abs(debt))}
+                              </span>
+                              {isInDebt && <div style={{ fontSize: 10, color: "#DC2626" }}>долг</div>}
+                            </div>
+
+                            {/* Actions */}
+                            <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
+                              <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
+                                onClick={() => setSelectedSalaryEmp(emp)}>
+                                Кабинет →
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
 
-                {/* Salary Config Modal */}
-                {salaryConfigModal && (
-                  <div className="modal-overlay" onClick={() => setSalaryConfigModal(null)}>
-                    <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                      <div className="modal-header">
-                        <div className="modal-title">Ставка: {salaryConfigModal.name}</div>
-                        <button className="modal-close" onClick={() => setSalaryConfigModal(null)}>✕</button>
-                      </div>
-                      <div className="modal-body" style={{ display: "grid", gap: 12 }}>
-                        <div>
-                          <label className="form-label">Базовая ставка (в месяц)</label>
-                          <input className="form-control" type="number" min="0" placeholder="0" value={salaryConfigForm.baseAmount} onChange={e => setSalaryConfigForm(f => ({ ...f, baseAmount: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="form-label">Валюта ставки</label>
-                          <select className="form-control" value={salaryConfigForm.currency} onChange={e => setSalaryConfigForm(f => ({ ...f, currency: e.target.value }))}>
-                            {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="form-label">День выплаты зарплаты (число месяца)</label>
-                          <input className="form-control" type="number" min="1" max="31" value={salaryConfigForm.payDay} onChange={e => setSalaryConfigForm(f => ({ ...f, payDay: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="form-label">Примечание</label>
-                          <input className="form-control" type="text" placeholder="Необязательно" value={salaryConfigForm.note} onChange={e => setSalaryConfigForm(f => ({ ...f, note: e.target.value }))} />
-                        </div>
-                      </div>
-                      <div className="modal-footer">
-                        <button className="btn btn-ghost" onClick={() => setSalaryConfigModal(null)}>Отмена</button>
-                        <button className="btn btn-primary" onClick={saveSalaryConfig}>Сохранить</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Payment Modal */}
-                {salaryPaymentModal && (
-                  <div className="modal-overlay" onClick={() => setSalaryPaymentModal(null)}>
-                    <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-                      <div className="modal-header">
-                        <div className="modal-title">Выплата: {salaryPaymentModal.name}</div>
-                        <button className="modal-close" onClick={() => setSalaryPaymentModal(null)}>✕</button>
-                      </div>
-                      <div className="modal-body" style={{ display: "grid", gap: 12 }}>
-                        <div>
-                          <label className="form-label">Сумма</label>
-                          <input className="form-control" type="number" min="0" placeholder="0" value={salaryPaymentForm.amount} onChange={e => setSalaryPaymentForm(f => ({ ...f, amount: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="form-label">Валюта</label>
-                          <select className="form-control" value={salaryPaymentForm.currency} onChange={e => setSalaryPaymentForm(f => ({ ...f, currency: e.target.value }))}>
-                            {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="form-label">Тип</label>
-                          <select className="form-control" value={salaryPaymentForm.type} onChange={e => setSalaryPaymentForm(f => ({ ...f, type: e.target.value }))}>
-                            {Object.entries(PAYMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="form-label">Примечание</label>
-                          <input className="form-control" type="text" placeholder="Необязательно" value={salaryPaymentForm.note} onChange={e => setSalaryPaymentForm(f => ({ ...f, note: e.target.value }))} />
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <input type="checkbox" id="isPaid" checked={salaryPaymentForm.isPaid} onChange={e => setSalaryPaymentForm(f => ({ ...f, isPaid: e.target.checked }))} />
-                          <label htmlFor="isPaid" style={{ fontSize: 13, cursor: "pointer" }}>Уже выплачено (отметить сразу)</label>
-                        </div>
-                      </div>
-                      <div className="modal-footer">
-                        <button className="btn btn-ghost" onClick={() => setSalaryPaymentModal(null)}>Отмена</button>
-                        <button className="btn btn-primary" onClick={addSalaryPayment}>Добавить</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {configModal}
+                {paymentModal}
               </div>
             );
           })() : null}
