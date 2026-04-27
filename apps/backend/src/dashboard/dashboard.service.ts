@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal, CalcStep, computeChain, computeMediatorAiPayroll, MEDIATOR_AI_PAYROLL } from '../deals/deal-payout.util';
+import { getPayrollBaseForTemplateDeal, getEffectiveRates, CalcStep, computeChain, computeMediatorAiPayroll, MEDIATOR_AI_PAYROLL } from '../deals/deal-payout.util';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -57,9 +57,12 @@ export class DashboardService {
       template: { fields?: Array<{ key: string; type: string }> } | null;
       dataRows: Array<{ data: unknown }>;
       participants: Array<{ pct: number }>;
+      rateSnapshot?: unknown;
     },
-    rates: Record<string, number>,
+    currentRates: Record<string, number>,
   ): { gross: number; officeIncome: number; payrollBase: number } {
+    // Use historical rates from deal snapshot if available
+    const rates = getEffectiveRates(d, currentRates);
     const tpl = d.template as any;
     const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
 
@@ -129,6 +132,7 @@ export class DashboardService {
           dataRows: { select: { data: true } },
           template: { select: TEMPLATE_SELECT },
           participants: true,
+          // rateSnapshot is a scalar Json field — included automatically
         },
       }),
       this.loadRates(),
@@ -151,16 +155,18 @@ export class DashboardService {
       const tpl = d.template as any;
       const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
       const currency = this.getDealCurrency(tpl, first);
+      // Use deal's historical rate snapshot when available
+      const effectiveRates = getEffectiveRates(d, rates);
 
       const { gross, officeIncome } = this.calcDealAmounts(d as any, rates);
       totalAmountOut += gross;
       totalOfficeIncome += officeIncome;
 
-      // Worker payroll base in deal currency → USD
+      // Worker payroll base in deal currency → USD (using historical rates)
       const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
       for (const p of d.participants) {
         if (payrollBase > 0) {
-          totalWorkersPayoutUsdt += toUsd((payrollBase * p.pct) / 100, currency, rates);
+          totalWorkersPayoutUsdt += toUsd((payrollBase * p.pct) / 100, currency, effectiveRates);
         }
       }
     }
@@ -235,6 +241,7 @@ export class DashboardService {
           const tpl = d.template as any;
           const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
           const currency = this.getDealCurrency(tpl, first);
+          const effectiveRates = getEffectiveRates(d, rates);
 
           const { gross, officeIncome } = this.calcDealAmounts(d as any, rates);
           totalAmountOut += gross;
@@ -243,7 +250,7 @@ export class DashboardService {
           const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
           for (const p of d.participants) {
             if (payrollBase > 0) {
-              totalWorkersPayoutUsdt += toUsd((payrollBase * p.pct) / 100, currency, rates);
+              totalWorkersPayoutUsdt += toUsd((payrollBase * p.pct) / 100, currency, effectiveRates);
             }
           }
         }

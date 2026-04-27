@@ -2,6 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { DealStatus, OperationType } from '@prisma/client';
 
+/** Load current exchange rates from DB as a plain map { code → rateToUsd } */
+async function loadRateSnapshot(prisma: PrismaService): Promise<Record<string, number>> {
+  const rows = await prisma.exchangeRate.findMany();
+  const map: Record<string, number> = {};
+  for (const r of rows) map[r.code] = Number(r.rateToUsd);
+  return map;
+}
+
 type AmountInput = {
   amountIn: number;
   currencyIn: string;
@@ -45,7 +53,7 @@ export class DealsService {
     return deal;
   }
 
-  create(
+  async create(
     organizationId: string,
     data: {
       title: string;
@@ -57,6 +65,7 @@ export class DealsService {
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
     },
   ) {
+    const rateSnapshot = await loadRateSnapshot(this.prisma);
     return this.prisma.deal.create({
       data: {
         organizationId,
@@ -66,6 +75,7 @@ export class DealsService {
         status: data.status ?? 'NEW',
         comment: data.comment ?? null,
         templateId: data.templateId ?? null,
+        rateSnapshot: Object.keys(rateSnapshot).length > 0 ? rateSnapshot : undefined,
         dataRows: data.dataRows
           ? { create: data.dataRows.map((r, i) => ({ data: r.data as object, order: r.order ?? i })) }
           : undefined,

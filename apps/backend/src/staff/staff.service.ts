@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal } from '../deals/deal-payout.util';
+import { getPayrollBaseForTemplateDeal, getEffectiveRates } from '../deals/deal-payout.util';
 
 function toUsd(amount: number, currency: string, rates: Record<string, number>): number {
   if (!amount) return 0;
@@ -77,7 +77,10 @@ export class StaffService {
         const currency = getDealCurrency(tpl, first);
 
         const { base } = getPayrollBaseForTemplateDeal(deal as Parameters<typeof getPayrollBaseForTemplateDeal>[0]);
-        if (base > 0) totalPayout += toUsd((base * dp.pct) / 100, currency, rates);
+        if (base > 0) {
+          const effectiveRates = getEffectiveRates(deal, rates);
+          totalPayout += toUsd((base * dp.pct) / 100, currency, effectiveRates);
+        }
       }
 
       const { dealParticipants, ...rest } = u;
@@ -174,7 +177,8 @@ export class StaffService {
 
       const { base } = getPayrollBaseForTemplateDeal(deal as Parameters<typeof getPayrollBaseForTemplateDeal>[0]);
       const rawPayout = base > 0 ? (base * dp.pct) / 100 : 0;
-      const payout = toUsd(rawPayout, currency, rates);
+      const effectiveRates = getEffectiveRates(deal, rates);
+      const payout = toUsd(rawPayout, currency, effectiveRates);
       return {
         id: deal.id, title: deal.title, status: deal.status,
         dealDate: deal.dealDate, pct: dp.pct,

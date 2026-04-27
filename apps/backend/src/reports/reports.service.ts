@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal } from '../deals/deal-payout.util';
+import { getPayrollBaseForTemplateDeal, getEffectiveRates } from '../deals/deal-payout.util';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -82,11 +82,12 @@ export class ReportsService {
           dealsCount: 0,
           payoutUsdt: 0,
         };
+        const effectiveRates = getEffectiveRates(d, rates);
         const rawPayout = dealBase > 0 ? (dealBase * p.pct) / 100 : 0;
         map.set(key, {
           ...prev,
           dealsCount: prev.dealsCount + 1,
-          payoutUsdt: prev.payoutUsdt + toUsd(rawPayout, dealCurrency, rates),
+          payoutUsdt: prev.payoutUsdt + toUsd(rawPayout, dealCurrency, effectiveRates),
         });
       });
     });

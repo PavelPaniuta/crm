@@ -179,6 +179,8 @@ model Deal {
   templateId    String?
   template      DealTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
+  rateSnapshot  Json?  // { "EUR": 1.08, "PLN": 4.1, ... } — rates at the time of deal creation
+
   @@index([organizationId])
   @@index([clientId])
   @@index([templateId])

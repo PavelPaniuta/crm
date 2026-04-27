@@ -83,6 +83,32 @@ export function computeMediatorAiPayroll(
   return { G, M, R1, A, R2, F, P };
 }
 
+// ─── Historical rate helpers ─────────────────────────────────────────────────
+
+/**
+ * Returns the rates that should be used for a deal.
+ * If the deal has a rateSnapshot (captured at creation time), use it.
+ * Otherwise fall back to current rates.
+ */
+export function getEffectiveRates(
+  deal: { rateSnapshot?: unknown },
+  currentRates: Record<string, number>,
+): Record<string, number> {
+  const snap = deal.rateSnapshot;
+  if (snap && typeof snap === 'object' && !Array.isArray(snap)) {
+    const map = snap as Record<string, unknown>;
+    if (Object.keys(map).length > 0) {
+      const r: Record<string, number> = {};
+      for (const [k, v] of Object.entries(map)) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) r[k] = n;
+      }
+      if (Object.keys(r).length > 0) return r;
+    }
+  }
+  return currentRates;
+}
+
 // ─── Unified payroll base resolver ──────────────────────────────────────────
 
 export function getPayrollBaseForTemplateDeal(

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal } from '../deals/deal-payout.util';
+import { getPayrollBaseForTemplateDeal, getEffectiveRates } from '../deals/deal-payout.util';
 
 function toUsd(amount: number, currency: string, rates: Record<string, number>): number {
   if (!amount) return 0;
@@ -89,7 +89,10 @@ export class SalaryService {
         const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
         const currency = getDealCurrency(tpl, first);
         const { base } = getPayrollBaseForTemplateDeal(deal as any);
-        if (base > 0) dealEarningsUsd += toUsd((base * dp.pct) / 100, currency, rates);
+        if (base > 0) {
+          const effectiveRates = getEffectiveRates(deal, rates);
+          dealEarningsUsd += toUsd((base * dp.pct) / 100, currency, effectiveRates);
+        }
       }
 
       // Base salary in USD
