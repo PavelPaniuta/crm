@@ -10,6 +10,14 @@ function endOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
 }
 
+function toUsd(amount: number, currency: string, rates: Record<string, number>): number {
+  if (!amount) return 0;
+  if (!currency || currency === 'USD') return amount;
+  const rate = rates[currency];
+  if (!rate || rate === 0) return amount;
+  return amount / rate;
+}
+
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
@@ -21,25 +29,32 @@ export class ReportsService {
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
     const toDate = to ? new Date(to) : endOfDay(now);
 
-    const deals = await this.prisma.deal.findMany({
-      where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
-      include: {
-        amounts: true,
-        dataRows: { select: { data: true } },
-        template: {
-          select: {
-            incomeFieldKey: true,
-            calcPreset: true,
-            payrollPoolPct: true,
-            calcGrossFieldKey: true,
-            calcMediatorPctKey: true,
-            calcAiPctKey: true,
-            calcSteps: true,
+    const [deals, ratesArr] = await Promise.all([
+      this.prisma.deal.findMany({
+        where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
+        include: {
+          amounts: true,
+          dataRows: { select: { data: true } },
+          template: {
+            select: {
+              incomeFieldKey: true,
+              calcPreset: true,
+              payrollPoolPct: true,
+              calcGrossFieldKey: true,
+              calcMediatorPctKey: true,
+              calcAiPctKey: true,
+              calcSteps: true,
+              fields: { select: { key: true, type: true } },
+            },
           },
+          participants: { include: { user: true } },
         },
-        participants: { include: { user: true } },
-      },
-    });
+      }),
+      this.prisma.exchangeRate.findMany(),
+    ]);
+
+    const rates: Record<string, number> = {};
+    for (const r of ratesArr) rates[r.code] = Number(r.rateToUsd);
 
     const map = new Map<
       string,
@@ -48,6 +63,16 @@ export class ReportsService {
 
     deals.forEach((d) => {
       const { base: dealBase } = getPayrollBaseForTemplateDeal(d as any);
+
+      // Determine deal currency from CURRENCY-type template field
+      const tpl = d.template as any;
+      const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
+      let dealCurrency = 'USD';
+      if (tpl?.fields && first) {
+        const cf = tpl.fields.find((f: any) => f.type === 'CURRENCY');
+        if (cf) dealCurrency = String(first[cf.key] ?? 'USD');
+      }
+
       d.participants.forEach((p) => {
         const key = p.userId;
         const prev = map.get(key) ?? {
@@ -57,10 +82,11 @@ export class ReportsService {
           dealsCount: 0,
           payoutUsdt: 0,
         };
+        const rawPayout = dealBase > 0 ? (dealBase * p.pct) / 100 : 0;
         map.set(key, {
           ...prev,
           dealsCount: prev.dealsCount + 1,
-          payoutUsdt: prev.payoutUsdt + (dealBase * p.pct) / 100,
+          payoutUsdt: prev.payoutUsdt + toUsd(rawPayout, dealCurrency, rates),
         });
       });
     });
