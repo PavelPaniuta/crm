@@ -732,7 +732,7 @@ export default function AppPage() {
     setSalaryLoading(true);
     try {
       const p = period ?? salaryPeriod;
-      const orgId = user?.organizationId ?? "";
+      const orgId = user?.activeOrganizationId ?? "";
       const res = await fetch(`/api/salary/overview?organizationId=${orgId}&period=${p}`, { credentials: "include" });
       if (res.ok) setSalaryData(await res.json());
     } finally { setSalaryLoading(false); }
@@ -4401,7 +4401,7 @@ export default function AppPage() {
                               </button>
                               <button className="btn btn-primary" style={{ fontSize: 12 }}
                                 onClick={() => {
-                                  setSalaryPaymentModal({ userId: emp.userId, name: emp.name || emp.email, orgId: user?.organizationId ?? "" });
+                                  setSalaryPaymentModal({ userId: emp.userId, name: emp.name || emp.email, orgId: user?.activeOrganizationId ?? "" });
                                   setSalaryPaymentForm({ amount: "", currency: "USD", type: "BASE", note: "", isPaid: false });
                                 }}>
                                 + Выплата
