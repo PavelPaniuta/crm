@@ -800,3 +800,6 @@ select.form-input { cursor: pointer; }
 
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* ===== ANIMATIONS ===== */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

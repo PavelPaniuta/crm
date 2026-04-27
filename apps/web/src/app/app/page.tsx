@@ -366,6 +366,8 @@ export default function AppPage() {
   });
   const [ratesModalOpen, setRatesModalOpen] = useState(false);
   const [ratesEditing, setRatesEditing] = useState<Record<string, string>>({});
+  const [ratesSyncing, setRatesSyncing] = useState(false);
+  const [ratesLastSync, setRatesLastSync] = useState<string | null>(null);
 
   // --- Theme ---
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -672,13 +674,35 @@ export default function AppPage() {
 
   async function loadExchangeRates() {
     try {
-      const res = await fetch("/api/exchange-rates", { credentials: "include" });
-      if (!res.ok) return;
-      const j: Array<{ code: string; rateToUsd: string | number }> = await res.json();
-      const map: Record<string, number> = {};
-      for (const r of j) map[r.code] = Number(r.rateToUsd);
-      if (Object.keys(map).length > 0) setExchangeRates(map);
+      const [ratesRes, metaRes] = await Promise.all([
+        fetch("/api/exchange-rates", { credentials: "include" }),
+        fetch("/api/exchange-rates/meta", { credentials: "include" }),
+      ]);
+      if (ratesRes.ok) {
+        const j: Array<{ code: string; rateToUsd: string | number }> = await ratesRes.json();
+        const map: Record<string, number> = {};
+        for (const r of j) map[r.code] = Number(r.rateToUsd);
+        if (Object.keys(map).length > 0) setExchangeRates(map);
+      }
+      if (metaRes.ok) {
+        const m = await metaRes.json();
+        if (m.lastSyncedAt) setRatesLastSync(m.lastSyncedAt);
+      }
     } catch { /* ignore */ }
+  }
+
+  async function syncRatesNow() {
+    setRatesSyncing(true);
+    try {
+      const res = await fetch("/api/exchange-rates/sync", { method: "POST", credentials: "include" });
+      if (res.ok) {
+        setRatesLastSync(new Date().toISOString());
+        await loadExchangeRates();
+      } else {
+        const j = await res.json().catch(() => ({}));
+        alert(j.message || "Не удалось обновить курсы");
+      }
+    } finally { setRatesSyncing(false); }
   }
 
   function toUsd(amount: number, currency: string): number {
@@ -4990,13 +5014,32 @@ export default function AppPage() {
               {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
                 <div className="card">
                   <div className="card-header">
-                    <span className="card-title">Курсы валют</span>
-                    <button className="btn btn-secondary" onClick={() => {
-                      const init: Record<string, string> = {};
-                      for (const c of CURRENCIES) init[c] = String(exchangeRates[c] ?? "");
-                      setRatesEditing(init);
-                      setRatesModalOpen(true);
-                    }}>Изменить курсы</button>
+                    <div>
+                      <span className="card-title">Курсы валют</span>
+                      {ratesLastSync && (
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                          Обновлено: {new Date(ratesLastSync).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {user?.role === "SUPER_ADMIN" && (
+                        <button className="btn btn-secondary" onClick={syncRatesNow} disabled={ratesSyncing}
+                          style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+                            style={{ animation: ratesSyncing ? "spin 1s linear infinite" : "none" }}>
+                            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                          </svg>
+                          {ratesSyncing ? "Обновление…" : "Авто-обновить"}
+                        </button>
+                      )}
+                      <button className="btn btn-secondary" onClick={() => {
+                        const init: Record<string, string> = {};
+                        for (const c of CURRENCIES) init[c] = String(exchangeRates[c] ?? "");
+                        setRatesEditing(init);
+                        setRatesModalOpen(true);
+                      }}>Изменить вручную</button>
+                    </div>
                   </div>
                   <div className="card-body" style={{ padding: "10px 16px" }}>
                     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -5008,7 +5051,9 @@ export default function AppPage() {
                         </div>
                       ))}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>Курсы используются для конвертации расходов. 1 USD — базовая валюта.</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>
+                      Курсы обновляются автоматически каждый день в 06:00 и при запуске сервера. 1 USD — базовая валюта.
+                    </div>
                   </div>
                 </div>
               )}

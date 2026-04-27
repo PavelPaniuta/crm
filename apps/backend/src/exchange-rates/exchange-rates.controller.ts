@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -13,6 +13,18 @@ export class ExchangeRatesController {
   @Get()
   list() {
     return this.svc.list();
+  }
+
+  @Get('meta')
+  meta() {
+    return { lastSyncedAt: this.svc.getLastSyncedAt() };
+  }
+
+  @Post('sync')
+  @UseGuards(RolesGuard)
+  @Roles(Role.SUPER_ADMIN)
+  sync() {
+    return this.svc.syncRates();
   }
 
   @Put(':code')
