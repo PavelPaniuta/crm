@@ -21,6 +21,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { ChatModule } from './chat/chat.module';
 import { AuditModule } from './audit/audit.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { SalaryModule } from './salary/salary.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
     ChatModule,
     AuditModule,
     ExchangeRatesModule,
+    SalaryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

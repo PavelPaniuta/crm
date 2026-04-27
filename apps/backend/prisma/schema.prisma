@@ -64,6 +64,7 @@ model Organization {
   memberships   UserMembership[]
   tasks         Task[]
   chatMessages  ChatMessage[] @relation("OrgMessages")
+  salaryPayments SalaryPayment[]
 }
 
 model User {
@@ -94,6 +95,8 @@ model User {
   chatReadAs        ChatLastRead[] @relation("ChatReader")
   chatReadOther     ChatLastRead[] @relation("ChatOther")
   auditLogs         AuditLog[]
+  salaryConfig      EmployeeSalaryConfig?
+  salaryPayments    SalaryPayment[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -358,6 +361,48 @@ model ExchangeRate {
   name      String
   rateToUsd Decimal  @db.Decimal(18, 6)
   updatedAt DateTime @updatedAt
+}
+
+// Salary configuration per employee
+model EmployeeSalaryConfig {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseAmount Decimal  @db.Decimal(18, 2) @default(0)  // monthly base salary
+  currency   String   @default("USD")
+  payDay     Int      @default(1)  // day of month 1-31
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+enum SalaryPaymentType {
+  BASE       // базовая ставка
+  DEAL_BONUS // бонус по сделкам
+  ADVANCE    // аванс
+  MANUAL     // ручная корректировка
+}
+
+// Individual salary payment records
+model SalaryPayment {
+  id             String             @id @default(cuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  amount         Decimal            @db.Decimal(18, 2)
+  currency       String             @default("USD")
+  period         String             // "2026-04" — month-year
+  type           SalaryPaymentType  @default(MANUAL)
+  note           String?
+  isPaid         Boolean            @default(false)
+  paidAt         DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([period])
 }
 
 // Direct messages between two users in same org
