@@ -2749,76 +2749,141 @@ export default function AppPage() {
                       {/* Participants */}
                       {(() => {
                         const incomeBase = participantIncomeInfo.base;
-                        const incomeLabel = participantIncomeInfo.label;
+                        const activeTplForParts = dealTemplateId ? templates.find(t => t.id === dealTemplateId) : null;
+                        const isMediator = activeTplForParts?.calcPreset === CALC_MEDIATOR_AI_PAYROLL;
+                        const filledParticipants = dealParticipants.filter(p => p.userId);
+                        const totalPct = dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0);
+                        const remaining = 100 - totalPct;
+
+                        function splitEvenly() {
+                          const filled = dealParticipants.filter(p => p.userId);
+                          if (filled.length === 0) return;
+                          const base = Math.floor(100 / filled.length);
+                          const rem = 100 - base * filled.length;
+                          setDealParticipants(prev => {
+                            let extra = rem;
+                            return prev.map(p => {
+                              if (!p.userId) return p;
+                              const add = extra > 0 ? 1 : 0;
+                              extra -= add;
+                              return { ...p, pct: String(base + add) };
+                            });
+                          });
+                        }
+
                         return (
-                          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                              <div>
-                                <div className="form-label" style={{ margin: 0 }}>Участники (сотрудники)</div>
-                                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-                                  {incomeBase > 0
-                                    ? <span>База для %: <strong style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong>{incomeLabel ? ` (${incomeLabel})` : ""} · сумма % по людям = 100% этой базы</span>
-                                    : "Выплата = % × выбранная база (укажите поля в шаблоне)"}
+                          <div style={{ border: `2px solid ${isMediator ? "var(--accent)44" : "var(--border)"}`, borderRadius: 14, overflow: "hidden" }}>
+                            {/* Header */}
+                            <div style={{ padding: "12px 16px", background: isMediator ? "var(--accent)08" : "var(--bg-metric)", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                                  👥 Зарплата сотрудников
+                                  {totalPct === 100 && filledParticipants.length > 0 && (
+                                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 600 }}>✓ распределено</span>
+                                  )}
                                 </div>
+                                {isMediator && incomeBase > 0 ? (
+                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
+                                    Фонд для распределения:&nbsp;
+                                    <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontSize: 14 }}>{incomeBase.toLocaleString()}</strong>
+                                    &nbsp;— это {parsePayrollPoolPct(activeTplForParts!)}% от суммы после всех вычетов. Раздели 100% этой суммы между сотрудниками.
+                                  </div>
+                                ) : incomeBase > 0 ? (
+                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
+                                    База: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong> · укажи % каждому сотруднику, в сумме 100%
+                                  </div>
+                                ) : (
+                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-tertiary)" }}>Укажи суммы в полях выше — сразу увидишь сколько получит каждый</div>
+                                )}
                               </div>
-                              <button className="btn btn-secondary" onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: "0" }])}>
-                                + Добавить
-                              </button>
+                              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                                {filledParticipants.length > 1 && (
+                                  <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={splitEvenly} title="Разделить поровну">⚖️ Поровну</button>
+                                )}
+                                <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: remaining > 0 ? String(remaining) : "0" }])}>
+                                  + Сотрудник
+                                </button>
+                              </div>
                             </div>
-                            <div style={{ display: "grid", gap: 6 }}>
-                              {dealParticipants.map((p) => {
+
+                            {/* Rows */}
+                            <div style={{ padding: dealParticipants.length ? "8px 12px" : 0, display: "grid", gap: 6 }}>
+                              {dealParticipants.map((p, idx) => {
                                 const pct = Number(p.pct) || 0;
-                                const earn = Math.round(incomeBase * pct / 100 * 100) / 100;
+                                const earn = incomeBase > 0 ? Math.round(incomeBase * pct / 100 * 100) / 100 : 0;
                                 const worker = dealWorkers.find(w => w.id === p.userId);
+                                const initials = worker?.name
+                                  ? worker.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+                                  : (worker?.email?.[0] ?? "?").toUpperCase();
                                 return (
-                                  <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--bg-metric)", borderRadius: 10 }}>
+                                  <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr 80px auto 32px", gap: 8, alignItems: "center", padding: "8px 4px", borderRadius: 10, background: p.userId ? "var(--bg-metric)" : "transparent" }}>
+                                    {/* Avatar */}
+                                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: p.userId ? "var(--accent)" : "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: p.userId ? "#fff" : "var(--text-tertiary)", flexShrink: 0 }}>
+                                      {p.userId ? initials : idx + 1}
+                                    </div>
+                                    {/* Employee select */}
                                     <select
                                       className="form-input"
                                       value={p.userId}
                                       onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
-                                      style={{ flex: 1 }}
                                     >
-                                      <option value="">— выбрать —</option>
+                                      <option value="">— выбрать сотрудника —</option>
                                       {dealWorkers.map((w) => (
                                         <option key={w.id} value={w.id}>
-                                          {w.name || w.email}{w.position ? ` · ${w.position}` : ""}{w.organization ? ` [${w.organization.name}]` : ""}
+                                          {w.name || w.email}{w.position ? ` · ${w.position}` : ""}
                                         </option>
                                       ))}
                                     </select>
-                                    <input
-                                      className="form-input"
-                                      value={p.pct}
-                                      onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, pct: e.target.value } : x))}
-                                      style={{ width: 70, textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}
-                                      placeholder="0"
-                                    />
-                                    <span style={{ color: "var(--text-secondary)" }}>%</span>
-                                    <div style={{ minWidth: 110, textAlign: "right" }}>
-                                      {incomeBase > 0 ? (
-                                        <>
-                                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)", fontSize: 14 }}>{earn.toLocaleString()}</div>
-                                          {worker?.name && <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{worker.name}</div>}
-                                        </>
-                                      ) : <span style={{ color: "var(--text-tertiary)" }}>—</span>}
+                                    {/* Pct + earn */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                      <input
+                                        className="form-input"
+                                        value={p.pct}
+                                        onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, pct: e.target.value } : x))}
+                                        style={{ width: 52, textAlign: "center", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}
+                                        placeholder="0"
+                                      />
+                                      <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>%</span>
                                     </div>
-                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16, padding: "4px 8px" }} onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}>×</span>
+                                    {/* Amount */}
+                                    <div style={{ minWidth: 80, textAlign: "right" }}>
+                                      {incomeBase > 0 && p.userId ? (
+                                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)", fontSize: 13 }}>
+                                          {earn.toLocaleString()}
+                                        </div>
+                                      ) : <span style={{ color: "var(--border)" }}>—</span>}
+                                    </div>
+                                    {/* Remove */}
+                                    <button
+                                      style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}
+                                      onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}
+                                    >×</button>
                                   </div>
                                 );
                               })}
                             </div>
-                            {dealParticipants.length > 1 && incomeBase > 0 && (
-                              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                                  Итого %: <strong style={{ color: dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0) === 100 ? "var(--green)" : "var(--amber)" }}>
-                                    {dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0)}%
-                                  </strong>
+
+                            {/* Footer: progress bar + total */}
+                            {dealParticipants.length > 0 && (
+                              <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-light)", background: "var(--bg-metric)" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Распределено: <strong style={{ color: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--amber)" }}>{totalPct}%</strong></span>
+                                  {incomeBase > 0 && (
+                                    <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+                                      {dealParticipants.filter(p => p.userId).reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()} из {incomeBase.toLocaleString()}
+                                    </span>
+                                  )}
                                 </div>
-                                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)" }}>
-                                  Распределено: {dealParticipants.reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()}
+                                <div style={{ height: 6, borderRadius: 6, background: "var(--border)", overflow: "hidden" }}>
+                                  <div style={{ height: "100%", borderRadius: 6, background: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--accent)", width: `${Math.min(totalPct, 100)}%`, transition: "width 0.2s" }} />
                                 </div>
+                                {totalPct !== 100 && (
+                                  <div style={{ marginTop: 6, fontSize: 12, color: totalPct > 100 ? "var(--red)" : "var(--amber)" }}>
+                                    {totalPct > 100 ? `⚠ Превышение на ${totalPct - 100}% — уменьши проценты` : `Осталось распределить: ${100 - totalPct}%${incomeBase > 0 ? ` (${Math.round(incomeBase * (100 - totalPct) / 100 * 100) / 100} в сумме)` : ""}`}
+                                  </div>
+                                )}
                               </div>
                             )}
-                            <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: pctStatus.color }}>{pctStatus.text}</div>
                           </div>
                         );
                       })()}
