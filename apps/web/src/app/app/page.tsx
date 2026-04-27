@@ -1510,10 +1510,12 @@ export default function AppPage() {
     setRatesEditing({});
   }
 
-  async function loadDashboard() {
+  async function loadDashboard(from?: string, to?: string) {
     setDashLoading(true);
+    const f = from ?? dashFrom;
+    const t = to ?? dashTo;
     try {
-      const res = await fetch(`/api/dashboard?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
+      const res = await fetch(`/api/dashboard?from=${f}&to=${t}`, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
       if (!res.ok) return;
       setDash(await res.json());
@@ -1573,10 +1575,12 @@ export default function AppPage() {
     await loadOrgs();
   }
 
-  async function loadGlobalDash() {
+  async function loadGlobalDash(from?: string, to?: string) {
     setGlobalDashLoading(true);
+    const f = from ?? dashFrom;
+    const t = to ?? dashTo;
     try {
-      const res = await fetch(`/api/dashboard/global?from=${dashFrom}&to=${dashTo}`, { credentials: "include" });
+      const res = await fetch(`/api/dashboard/global?from=${f}&to=${t}`, { credentials: "include" });
       if (res.ok) setGlobalDash(await res.json());
     } finally { setGlobalDashLoading(false); }
   }
@@ -2230,7 +2234,7 @@ export default function AppPage() {
 
               {/* Period bar */}
               <div className="dash-period-bar" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <div className="dash-period-dates" style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
+                <div className="dash-period-dates" style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, flexWrap: "wrap" }}>
                   <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} style={{ maxWidth: 160 }} />
                   <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>—</span>
                   <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ maxWidth: 160 }} />
@@ -2238,6 +2242,18 @@ export default function AppPage() {
                     <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                     Обновить
                   </button>
+                  {/* Quick period shortcuts */}
+                  {([
+                    { label: "Месяц", getRange: () => { const n = new Date(); return { f: new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0,10), t: n.toISOString().slice(0,10) }; } },
+                    { label: "3 мес",  getRange: () => { const n = new Date(); return { f: new Date(n.getFullYear(), n.getMonth()-2, 1).toISOString().slice(0,10), t: n.toISOString().slice(0,10) }; } },
+                    { label: "Год",    getRange: () => { const n = new Date(); return { f: new Date(n.getFullYear(), 0, 1).toISOString().slice(0,10), t: n.toISOString().slice(0,10) }; } },
+                    { label: "Всё",    getRange: () => ({ f: "2020-01-01", t: new Date().toISOString().slice(0,10) }) },
+                  ]).map(q => (
+                    <button key={q.label} className="btn btn-ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }}
+                      onClick={() => { const { f, t } = q.getRange(); setDashFrom(f); setDashTo(t); if (dashView === "global") loadGlobalDash(f, t); else loadDashboard(f, t); }}>
+                      {q.label}
+                    </button>
+                  ))}
                 </div>
                 {isSuperAdmin ? (
                   <div className="filter-tabs dash-view-tabs">
@@ -2358,11 +2374,26 @@ export default function AppPage() {
                         </div>
                         <div className="chart-body">
                           <AreaChart
-                            data={deals.slice(0, 30).map((d, i) => ({
-                              label: d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru", { day: "numeric", month: "short" }) : `#${i + 1}`,
-                              value: d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0),
-                            })).reverse()}
-                            title="Выход (USDT)"
+                            data={deals.slice(0, 30).map((d, i) => {
+                              let value = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+                              if (value === 0 && d.template && d.dataRows && d.dataRows.length > 0) {
+                                const rowData = (d.dataRows[0] as any).data as Record<string, string>;
+                                const tpl = d.template as DealTemplate;
+                                if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+                                  const chain = computeChain(rowData, tpl.calcSteps as CalcStep[]);
+                                  if (chain.length > 0) value = chain[0].source;
+                                } else if (tpl.incomeFieldKey) {
+                                  value = Number(rowData[tpl.incomeFieldKey]) || 0;
+                                } else if (tpl.calcGrossFieldKey) {
+                                  value = Number(rowData[tpl.calcGrossFieldKey]) || 0;
+                                }
+                              }
+                              return {
+                                label: d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru", { day: "numeric", month: "short" }) : `#${i + 1}`,
+                                value,
+                              };
+                            }).reverse()}
+                            title="Выход"
                             height={230}
                             color="#6366F1"
                           />
