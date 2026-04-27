@@ -2373,8 +2373,16 @@ export default function AppPage() {
                           </div>
                         </div>
                         <div className="chart-body">
-                          <AreaChart
-                            data={deals.slice(0, 30).map((d, i) => {
+                          {(() => {
+                            // Filter deals by selected period and group by date
+                            const fromTs = dashFrom ? new Date(dashFrom).getTime() : 0;
+                            const toTs = dashTo ? new Date(dashTo + "T23:59:59").getTime() : Infinity;
+                            const byDay: Record<string, number> = {};
+                            for (const d of deals) {
+                              const dt = d.dealDate ? new Date(d.dealDate) : null;
+                              if (!dt) continue;
+                              const ts = dt.getTime();
+                              if (ts < fromTs || ts > toTs) continue;
                               let value = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
                               if (value === 0 && d.template && d.dataRows && d.dataRows.length > 0) {
                                 const rowData = (d.dataRows[0] as any).data as Record<string, string>;
@@ -2388,15 +2396,24 @@ export default function AppPage() {
                                   value = Number(rowData[tpl.calcGrossFieldKey]) || 0;
                                 }
                               }
-                              return {
-                                label: d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru", { day: "numeric", month: "short" }) : `#${i + 1}`,
-                                value,
-                              };
-                            }).reverse()}
-                            title="Выход"
-                            height={230}
-                            color="#6366F1"
-                          />
+                              const key = dt.toISOString().slice(0, 10);
+                              byDay[key] = (byDay[key] ?? 0) + value;
+                            }
+                            const chartData = Object.entries(byDay)
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([dateStr, value]) => ({
+                                label: new Date(dateStr).toLocaleDateString("ru", { day: "numeric", month: "short" }),
+                                value: Math.round(value * 100) / 100,
+                              }));
+                            return (
+                              <AreaChart
+                                data={chartData}
+                                title="Выход"
+                                height={230}
+                                color="#6366F1"
+                              />
+                            );
+                          })()}
                         </div>
                       </div>
 
