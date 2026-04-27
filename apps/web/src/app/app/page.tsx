@@ -399,6 +399,9 @@ export default function AppPage() {
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [dealEditingId, setDealEditingId] = useState<string | null>(null);
   const [dealFilter, setDealFilter] = useState<"ALL" | DealStatus>("ALL");
+  const [legacyImportYear, setLegacyImportYear] = useState("2026");
+  const [legacyImporting, setLegacyImporting] = useState(false);
+  const legacyImportInputRef = useRef<HTMLInputElement>(null);
   const [dealDate, setDealDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dealStatus, setDealStatus] = useState<DealStatus>("NEW");
   const [dealClientSearch, setDealClientSearch] = useState("");
@@ -742,6 +745,37 @@ export default function AppPage() {
       const j = await res.json();
       setDeals(Array.isArray(j) ? j : []);
     } finally { setDealsLoading(false); }
+  }
+
+  async function importLegacyDeals(file: File) {
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      alert("Нужен файл .xlsx");
+      return;
+    }
+    setLegacyImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const y = Number(legacyImportYear) || 2026;
+      const res = await fetch(`/api/deals/import-legacy?year=${encodeURIComponent(String(y))}&currency=PLN`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(j.message || "Ошибка импорта");
+        return;
+      }
+      const msg = [`Создано сделок: ${j.created ?? 0}`];
+      if (j.errors?.length) msg.push(`Строки с замечаниями:\n${j.errors.slice(0, 8).join("\n")}`);
+      if (j.templateId) msg.push(`Шаблон: «Легаси (импорт)»`);
+      alert(msg.join("\n\n"));
+      await loadDeals();
+    } finally {
+      setLegacyImporting(false);
+      if (legacyImportInputRef.current) legacyImportInputRef.current.value = "";
+    }
   }
 
   async function loadStaff() {
@@ -2690,6 +2724,35 @@ export default function AppPage() {
                     ))}
                   </div>
                   <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
+                  {isManager && (
+                    <>
+                      <input
+                        className="form-input"
+                        style={{ width: 72 }}
+                        title="Год для дат «23.04» (без года в ячейке)"
+                        value={legacyImportYear}
+                        onChange={(e) => setLegacyImportYear(e.target.value)}
+                      />
+                      <input
+                        ref={legacyImportInputRef}
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void importLegacyDeals(f);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={legacyImporting}
+                        onClick={() => legacyImportInputRef.current?.click()}
+                      >
+                        {legacyImporting ? "Импорт…" : "Импорт Excel"}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
