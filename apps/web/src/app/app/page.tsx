@@ -806,6 +806,8 @@ export default function AppPage() {
         const member = await memberRes.json();
         const memberships = membershipsRes.ok ? await membershipsRes.json() : [];
         setStaffMember({ ...member, extraMemberships: memberships });
+        if (salaryData.length === 0) loadSalary();
+        if (tasks.length === 0) loadTasks();
       }
     } finally { setStaffMemberLoading(false); }
   }
@@ -2110,10 +2112,10 @@ export default function AppPage() {
               <div className="nav-section">Финансы</div>
               {renderItem("expenses")}
               {isAdmin && renderItem("reports")}
+              {isAdmin && renderItem("salary")}
               <div className="nav-divider" />
               <div className="nav-section">Команда</div>
               {isAdmin && renderItem("staff")}
-              {isAdmin && renderItem("salary")}
               {renderItem("tasks")}
               {renderItem("chat")}
               <div className="nav-divider" />
@@ -2647,7 +2649,23 @@ export default function AppPage() {
                         deals
                           .filter((d) => dealFilter === "ALL" || d.status === dealFilter)
                           .map((d) => {
-                            const totalOut = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+                            let totalOut = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+                            let dealCurrencyLabel = d.amounts[0]?.currencyOut ?? "";
+                            if (totalOut === 0 && d.template && d.dataRows && d.dataRows.length > 0) {
+                              const rowData = (d.dataRows[0] as any).data as Record<string, string>;
+                              const tpl = d.template as DealTemplate;
+                              // find currency field
+                              const currField = tpl.fields?.find((f: any) => f.type === "CURRENCY");
+                              if (currField) dealCurrencyLabel = rowData[currField.key] ?? "";
+                              if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+                                const chain = computeChain(rowData, tpl.calcSteps as CalcStep[]);
+                                if (chain.length > 0) totalOut = chain[0].source;
+                              } else if (tpl.incomeFieldKey) {
+                                totalOut = Number(rowData[tpl.incomeFieldKey]) || 0;
+                              } else if (tpl.calcGrossFieldKey) {
+                                totalOut = Number(rowData[tpl.calcGrossFieldKey]) || 0;
+                              }
+                            }
                             const workerParts = d.participants.map((p) => {
                               const label = p.user.name || p.user.email.split("@")[0];
                               return `${label} ${p.pct}%`;
@@ -2665,7 +2683,7 @@ export default function AppPage() {
                                   </span>
                                 </td>
                                 <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} onClick={() => openDealEditModal(d)}>
-                                  {totalOut.toLocaleString()}
+                                  {totalOut > 0 ? `${totalOut.toLocaleString("ru-RU")}${dealCurrencyLabel ? " " + dealCurrencyLabel : ""}` : "—"}
                                 </td>
                                 {isAdmin && (
                                   <td style={{ width: 40, padding: "0 8px 0 0" }}>
@@ -4251,20 +4269,116 @@ export default function AppPage() {
                       )}
 
                       {/* stats */}
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
-                        {[
-                          { label: "Сделок", value: staffMember.dealsCount },
-                          { label: "Выплаты", value: `$${staffMember.totalPayout}` },
-                          { label: "Зарплата", value: "—", badge: "скоро" },
-                          { label: "Задачи", value: "—", badge: "скоро" },
-                        ].map((s) => (
-                          <div key={s.label} className="card" style={{ padding: "16px 18px" }}>
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{s.label}</div>
-                            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{s.value}</div>
-                            {s.badge && <div style={{ fontSize: 10, color: "var(--accent)", marginTop: 4 }}>{s.badge}</div>}
-                          </div>
-                        ))}
-                      </div>
+                      {(() => {
+                        const empSalary = salaryData.find((s: any) => s.userId === staffMember.id);
+                        const empTasks = tasks.filter((t: any) => t.assignee?.id === staffMember.id);
+                        const activeTasks = empTasks.filter((t: any) => t.status !== "DONE" && t.status !== "CANCELLED");
+                        return (
+                          <>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+                              {[
+                                { label: "Сделок", value: staffMember.dealsCount },
+                                { label: "Выплаты (сделки)", value: `$${staffMember.totalPayout}` },
+                                { label: "Начислено (ЗП)", value: empSalary ? `$${empSalary.totalAccrued}` : salaryLoading ? "…" : "—" },
+                                { label: "Задачи (актив.)", value: tasksLoading ? "…" : activeTasks.length },
+                              ].map((s) => (
+                                <div key={s.label} className="card" style={{ padding: "16px 18px" }}>
+                                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{s.label}</div>
+                                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{s.value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Salary block */}
+                            <div className="card" style={{ padding: "20px 24px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>Зарплата ({salaryPeriod})</div>
+                                {isAdmin && (
+                                  <button className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}
+                                    onClick={() => {
+                                      setSalaryConfigModal({ userId: staffMember.id, name: staffMember.name || staffMember.email });
+                                      setSalaryConfigForm({
+                                        baseAmount: String(empSalary?.salaryConfig?.baseAmount ?? ""),
+                                        currency: empSalary?.salaryConfig?.currency ?? "USD",
+                                        payDay: String(empSalary?.salaryConfig?.payDay ?? "1"),
+                                        note: empSalary?.salaryConfig?.note ?? "",
+                                      });
+                                    }}>
+                                    {empSalary?.salaryConfig ? "Изменить" : "Настроить"}
+                                  </button>
+                                )}
+                              </div>
+                              {salaryLoading ? (
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
+                              ) : empSalary ? (
+                                <>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
+                                    {[
+                                      { label: "Начислено", val: `$${empSalary.totalAccrued}`, color: "var(--text-primary)" },
+                                      { label: "Выплачено", val: `$${empSalary.paidUsd}`, color: "#22c55e" },
+                                      { label: "Баланс", val: `$${empSalary.balance}`, color: empSalary.balance < 0 ? "#ef4444" : "var(--text-primary)" },
+                                    ].map(m => (
+                                      <div key={m.label} style={{ background: "var(--bg-hover)", borderRadius: 8, padding: "10px 14px" }}>
+                                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{m.label}</div>
+                                        <div style={{ fontSize: 17, fontWeight: 700, color: m.color }}>{m.val}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {empSalary.salaryConfig && (
+                                    <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 16, flexWrap: "wrap" }}>
+                                      <span>Ставка: <b>{empSalary.salaryConfig.baseAmount} {empSalary.salaryConfig.currency}</b></span>
+                                      <span>День выплаты: <b>{empSalary.salaryConfig.payDay}</b></span>
+                                      <span>Бонусы по сделкам: <b>${empSalary.dealEarningsUsd}</b></span>
+                                    </div>
+                                  )}
+                                  {empSalary.payments?.length > 0 && (
+                                    <div style={{ marginTop: 14 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Выплаты</div>
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                        {empSalary.payments.slice(0, 5).map((p: any) => (
+                                          <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "6px 10px", background: "var(--bg-hover)", borderRadius: 6 }}>
+                                            <span style={{ color: "var(--text-secondary)" }}>{({ BASE: "Ставка", DEAL_BONUS: "Бонус", ADVANCE: "Аванс", MANUAL: "Вручную" } as Record<string,string>)[p.type] ?? p.type}</span>
+                                            <span style={{ fontWeight: 600 }}>{p.amount} {p.currency}</span>
+                                            <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: p.isPaid ? "#22c55e22" : "#f59e0b22", color: p.isPaid ? "#22c55e" : "#f59e0b" }}>
+                                              {p.isPaid ? "Выплачено" : "Ожидает"}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Зарплата не настроена. {isAdmin ? "Нажмите «Настроить» чтобы задать ставку." : ""}</div>
+                              )}
+                            </div>
+
+                            {/* Tasks block */}
+                            <div className="card" style={{ padding: "20px 24px" }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Задачи</div>
+                              {tasksLoading ? (
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
+                              ) : empTasks.length === 0 ? (
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Нет задач</div>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                  {empTasks.slice(0, 10).map((t: any) => (
+                                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "var(--bg-hover)", borderRadius: 8, fontSize: 13, cursor: "pointer" }}
+                                      onClick={() => { setTab("tasks"); setTaskDetail(t); }}>
+                                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                                      <span style={{ marginLeft: 12, padding: "2px 8px", borderRadius: 10, fontSize: 11, flexShrink: 0,
+                                        background: t.status === "DONE" ? "#22c55e22" : t.status === "CANCELLED" ? "#ef444422" : t.status === "IN_PROGRESS" ? "#3b82f622" : "#f59e0b22",
+                                        color: t.status === "DONE" ? "#22c55e" : t.status === "CANCELLED" ? "#ef4444" : t.status === "IN_PROGRESS" ? "#3b82f6" : "#f59e0b" }}>
+                                        {({ TODO: "К выполнению", IN_PROGRESS: "В работе", DONE: "Готово", CANCELLED: "Отменена" } as Record<string,string>)[t.status] ?? t.status}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       {/* recent deals */}
                       {staffMember.recentDeals?.length > 0 && (
