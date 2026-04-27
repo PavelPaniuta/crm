@@ -66,28 +66,25 @@ export class DashboardService {
         // Classic deal: income = amountOut
         const dealOut = d.amounts.reduce((s, a) => s + Number(a.amountOut), 0);
         totalAmountOut += dealOut;
-        // Office income = amountOut minus worker payouts for this deal
         const workerCut = d.participants.reduce((s, p) => s + (dealOut * p.pct) / 100, 0);
         totalOfficeIncome += dealOut - workerCut;
       } else if (tpl && first) {
-        // Template deal: gross from incomeFieldKey or first chain step
-        if (tpl.incomeFieldKey) {
-          totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
-        } else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
-          const step0 = (tpl.calcSteps as CalcStep[])[0];
-          if (step0?.sourceType === 'field') totalAmountOut += Number(first[step0.sourceId]) || 0;
-        }
-
-        // Office income: last chain step result (P)
         if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
+          // Chain-based: both gross and office income from the same computation
           const chain = computeChain(first, tpl.calcSteps as CalcStep[]);
-          if (chain.length > 0) totalOfficeIncome += Math.max(0, chain[chain.length - 1].result);
+          if (chain.length > 0) {
+            totalAmountOut += chain[0].source;
+            totalOfficeIncome += Math.max(0, chain[chain.length - 1].result);
+          }
         } else if (tpl.calcPreset === MEDIATOR_AI_PAYROLL) {
           const c = computeMediatorAiPayroll(first, tpl);
-          if (c) totalOfficeIncome += Math.max(0, c.P);
+          if (c) {
+            totalAmountOut += c.G;
+            totalOfficeIncome += Math.max(0, c.P);
+          }
         } else if (tpl.incomeFieldKey) {
-          // Simple template: income field minus worker cuts
           const gross = Number(first[tpl.incomeFieldKey]) || 0;
+          totalAmountOut += gross;
           const workerCut = d.participants.reduce((s, p) => s + (gross * p.pct) / 100, 0);
           totalOfficeIncome += gross - workerCut;
         }
@@ -170,20 +167,21 @@ export class DashboardService {
             const workerCut = d.participants.reduce((s, p) => s + (dealOut * p.pct) / 100, 0);
             totalOfficeIncome += dealOut - workerCut;
           } else if (tpl && first) {
-            if (tpl.incomeFieldKey) totalAmountOut += Number(first[tpl.incomeFieldKey]) || 0;
-            else if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
-              const step0 = (tpl.calcSteps as CalcStep[])[0];
-              if (step0?.sourceType === 'field') totalAmountOut += Number(first[step0.sourceId]) || 0;
-            }
-
             if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
               const chain = computeChain(first, tpl.calcSteps as CalcStep[]);
-              if (chain.length > 0) totalOfficeIncome += Math.max(0, chain[chain.length - 1].result);
+              if (chain.length > 0) {
+                totalAmountOut += chain[0].source;
+                totalOfficeIncome += Math.max(0, chain[chain.length - 1].result);
+              }
             } else if (tpl.calcPreset === MEDIATOR_AI_PAYROLL) {
               const c = computeMediatorAiPayroll(first, tpl);
-              if (c) totalOfficeIncome += Math.max(0, c.P);
+              if (c) {
+                totalAmountOut += c.G;
+                totalOfficeIncome += Math.max(0, c.P);
+              }
             } else if (tpl.incomeFieldKey) {
               const gross = Number(first[tpl.incomeFieldKey]) || 0;
+              totalAmountOut += gross;
               const workerCut = d.participants.reduce((s, p) => s + (gross * p.pct) / 100, 0);
               totalOfficeIncome += gross - workerCut;
             }
