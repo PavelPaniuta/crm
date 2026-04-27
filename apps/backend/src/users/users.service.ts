@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -70,6 +70,13 @@ export class UsersService {
     // ADMIN cannot create SUPER_ADMIN
     if (!isSuperAdmin(requesterRole) && data.role === Role.SUPER_ADMIN) {
       throw new ForbiddenException('Недостаточно прав для создания SUPER_ADMIN');
+    }
+
+    const duplicate = await this.prisma.user.findFirst({
+      where: { organizationId: orgId, email: data.email.trim() },
+    });
+    if (duplicate) {
+      throw new ConflictException(`Пользователь с логином «${data.email.trim()}» уже существует в этом офисе`);
     }
 
     const passwordHash = await bcrypt.hash(data.password, 10);
