@@ -13,15 +13,13 @@
 set -e
 N="${1:?Usage: $0 <N> — number of earliest migration folders to mark as applied without running SQL}"
 BACKEND="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$BACKEND"
-if [ -f node_modules/prisma/build/index.js ]; then
-  PRISMA_CLI=node_modules/prisma/build/index.js
-elif [ -f ../../node_modules/prisma/build/index.js ]; then
-  PRISMA_CLI=../../node_modules/prisma/build/index.js
-else
-  echo "Prisma CLI not found (expected apps/backend/node_modules or monorepo root node_modules)" >&2
+ROOT="$(cd "$BACKEND/../.." && pwd)"
+PRISMA_CLI="$(find "$ROOT" -type f -path '*/node_modules/prisma/build/index.js' 2>/dev/null | head -n 1)"
+if [ -z "$PRISMA_CLI" ] || [ ! -f "$PRISMA_CLI" ]; then
+  echo "Prisma CLI not found under $ROOT" >&2
   exit 1
 fi
+cd "$BACKEND"
 i=0
 for d in $(ls -1 prisma/migrations | sort); do
   [ -f "prisma/migrations/$d/migration.sql" ] || continue

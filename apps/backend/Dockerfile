@@ -14,18 +14,17 @@ COPY apps/backend ./apps/backend
 WORKDIR /app
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 
-# Локальный CLI из node_modules (6.x). npm exec/npx без пути на Docker часто качают prisma@7.
+# CLI Prisma 6.x только из установленного tree (npm workspaces кладёт пакет в разные вложенности).
+# Не использовать npx/npm exec prisma — тянут prisma@7.
 RUN set -e; \
-  if [ -f node_modules/prisma/build/index.js ]; then \
-    node node_modules/prisma/build/index.js generate --schema apps/backend/prisma/schema.prisma; \
-  elif [ -f apps/backend/node_modules/prisma/build/index.js ]; then \
-    node apps/backend/node_modules/prisma/build/index.js generate --schema apps/backend/prisma/schema.prisma; \
-  else \
-    echo "Prisma CLI not found after npm ci" >&2; \
-    ls -la node_modules/prisma 2>/dev/null || true; \
-    ls -la apps/backend/node_modules/prisma 2>/dev/null || true; \
+  PRISMA_JS="$(find . -type f -path '*/node_modules/prisma/build/index.js' 2>/dev/null | head -n 1)"; \
+  if [ -z "$PRISMA_JS" ] || [ ! -f "$PRISMA_JS" ]; then \
+    echo "Prisma CLI not found (expected */node_modules/prisma/build/index.js)" >&2; \
+    find . -maxdepth 5 -type d -name prisma 2>/dev/null | head -40 >&2 || true; \
     exit 1; \
-  fi
+  fi; \
+  echo "Using $PRISMA_JS"; \
+  node "$PRISMA_JS" generate --schema apps/backend/prisma/schema.prisma
 
 # Build Nest
 RUN npm run build -w @biscrm/backend
