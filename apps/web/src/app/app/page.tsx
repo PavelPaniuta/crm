@@ -437,6 +437,7 @@ export default function AppPage() {
   const [newClientForm, setNewClientForm] = useState<ClientFormState>(emptyClientForm);
   const [newClientCustom, setNewClientCustom] = useState<Record<string, string>>({});
   const [clientPasteImport, setClientPasteImport] = useState("");
+  const [clientCreateModalOpen, setClientCreateModalOpen] = useState(false);
   const [clientEditOpen, setClientEditOpen] = useState(false);
   const [clientEditing, setClientEditing] = useState<Client | null>(null);
   const [clientEditForm, setClientEditForm] = useState<ClientFormState>(emptyClientForm);
@@ -811,6 +812,38 @@ export default function AppPage() {
     if (clientStatusFilter === "all") return clients;
     return clients.filter((c) => (c.status?.id ?? c.statusId) === clientStatusFilter);
   }, [clients, clientStatusFilter]);
+
+  /** Группировка списка по статусу (порядок как в настройках воронки). */
+  const clientsGroupedByStatus = useMemo(() => {
+    type Section = { key: string; label: string; color: string | null | undefined; clients: Client[] };
+    const map = new Map<string, Client[]>();
+    for (const c of clientsFiltered) {
+      const sid = (c.status?.id ?? c.statusId) || "__none__";
+      if (!map.has(sid)) map.set(sid, []);
+      map.get(sid)!.push(c);
+    }
+    const used = new Set<string>();
+    const sections: Section[] = [];
+    for (const s of [...clientStatuses].sort((a, b) => a.sortOrder - b.sortOrder)) {
+      const list = map.get(s.id);
+      if (list?.length) {
+        sections.push({ key: s.id, label: s.label, color: s.color, clients: list });
+        used.add(s.id);
+      }
+    }
+    const none = map.get("__none__");
+    if (none?.length) {
+      sections.push({ key: "__none__", label: "Без статуса", color: null, clients: none });
+      used.add("__none__");
+    }
+    for (const [key, list] of map) {
+      if (!used.has(key) && list.length) {
+        const st = list[0]?.status;
+        sections.push({ key, label: st?.label ?? "Статус", color: st?.color, clients: list });
+      }
+    }
+    return sections;
+  }, [clientsFiltered, clientStatuses]);
 
   useEffect(() => {
     setClientStatusDrafts(
@@ -1415,9 +1448,10 @@ export default function AppPage() {
         });
         if (res.ok) {
           const name = String(p.name ?? "").trim();
+          void loadClients();
           setAgentHistory((h) => [
             ...h,
-            { role: "assistant", content: `✅ Карточка клиента создана${name ? `: ${name}` : ""}.\nОткройте вкладку «Клиенты», чтобы посмотреть или отредактировать.` },
+            { role: "assistant", content: `✅ Карточка клиента создана${name ? `: ${name}` : ""}.\nСписок во вкладке «Клиенты» обновлён; при необходимости откройте её или «Редактировать» в карточке.` },
           ]);
         } else {
           const err = await res.json().catch(() => ({}));
@@ -1882,7 +1916,15 @@ export default function AppPage() {
     setNewClientForm(emptyClientForm());
     setNewClientCustom({});
     setClientPasteImport("");
+    setClientCreateModalOpen(false);
     await loadClients();
+  }
+
+  function openClientCreateModal() {
+    setNewClientForm(emptyClientForm());
+    setNewClientCustom({});
+    setClientPasteImport("");
+    setClientCreateModalOpen(true);
   }
 
   function openClientEdit(c: Client) {
@@ -2823,7 +2865,7 @@ export default function AppPage() {
                     {[
                       { title: "Новая сделка", desc: "Создать сделку с клиентом", action: () => { setTab("deals"); setTimeout(openDealModal, 50); }, color: "#6366F1", bg: "rgba(99,102,241,0.1)",
                         icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
-                      { title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => setTab("clients"), color: "#059669", bg: "rgba(5,150,105,0.1)",
+                      { title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => { setTab("clients"); openClientCreateModal(); }, color: "#059669", bg: "rgba(5,150,105,0.1)",
                         icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
                       { title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses"), color: "#D97706", bg: "rgba(217,119,6,0.1)",
                         icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> },
@@ -3711,120 +3753,12 @@ export default function AppPage() {
           {/* ===== CLIENTS ===== */}
           {tab === "clients" ? (
             <div style={{ display: "grid", gap: 16 }}>
-              <div className="page-header">
-                <div className="page-header-left">
+              <div className="page-header" style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+                <div className="page-header-left" style={{ flex: "1 1 260px", minWidth: 0 }}>
                   <div className="page-header-title">Клиенты</div>
-                  <div className="page-header-sub">Карточки лидов и звонков, статусы и доп. поля настраиваются в «Настройки»</div>
+                  <div className="page-header-sub">Список сгруппирован по статусам воронки. Добавление — кнопкой ниже или через AI ассистента (одно подтверждение). Воронку и поля настраивают в «Настройки».</div>
                 </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header" style={{ alignItems: "flex-start", gap: 12 }}>
-                  <div>
-                    <span className="card-title">Новый клиент</span>
-                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4, maxWidth: 560, lineHeight: 1.45 }}>
-                      Заполните блоки по порядку или вставьте текст из бота — поля разнесены по смыслу, чтобы не теряться.
-                    </div>
-                  </div>
-                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>Создать клиента</button>
-                </div>
-                <div className="card-body" style={{ display: "grid", gap: 18 }}>
-                  <div style={clientFormSectionStyle(true)}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Из Telegram / бота</div>
-                    <div className="form-label">Вставьте целиком сообщение</div>
-                    <textarea className="form-input" rows={4} value={clientPasteImport} onChange={(e) => setClientPasteImport(e.target.value)} placeholder="Строки «Клиент:», «Телефон:», «Банк:», «Ассистент:», Summary, время звонка…" style={{ resize: "vertical", minHeight: 80 }} />
-                    <button type="button" className="btn btn-secondary" style={{ justifySelf: "start" }} onClick={applyClientPasteToNewForm}>Разобрать текст и подставить в форму</button>
-                  </div>
-
-                  <div style={clientFormSectionStyle()}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Обязательно</div>
-                    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                      <div>
-                        <div className="form-label">Имя клиента *</div>
-                        <input className="form-input" value={newClientForm.name} onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))} placeholder="Как в CRM" />
-                      </div>
-                      <div>
-                        <div className="form-label">Телефон *</div>
-                        <input className="form-input" value={newClientForm.phone} onChange={(e) => setNewClientForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+48 …" style={{ fontFamily: "'JetBrains Mono', monospace" }} />
-                      </div>
-                      <div>
-                        <div className="form-label">Статус воронки</div>
-                        <select className="form-input" value={newClientForm.statusId} onChange={(e) => setNewClientForm((f) => ({ ...f, statusId: e.target.value }))}>
-                          <option value="">Авто — первый статус в списке</option>
-                          {clientStatuses.map((s) => (
-                            <option key={s.id} value={s.id}>{s.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={clientFormSectionStyle()}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Данные звонка / лида</div>
-                    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                      <div>
-                        <div className="form-label">Банк</div>
-                        <input className="form-input" value={newClientForm.bank} onChange={(e) => setNewClientForm((f) => ({ ...f, bank: e.target.value }))} placeholder="PKO BP, …" />
-                      </div>
-                      <div>
-                        <div className="form-label">Ассистент</div>
-                        <input className="form-input" value={newClientForm.assistantName} onChange={(e) => setNewClientForm((f) => ({ ...f, assistantName: e.target.value }))} placeholder="Кто вёл линию" />
-                      </div>
-                      <div>
-                        <div className="form-label">Начало звонка</div>
-                        <input className="form-input" type="datetime-local" value={newClientForm.callStartedAt} onChange={(e) => setNewClientForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="form-label">Итог разговора (summary)</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Текст из бота или кратко своими словами</div>
-                      <textarea className="form-input" rows={4} value={newClientForm.callSummary} onChange={(e) => setNewClientForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical", minHeight: 88 }} />
-                    </div>
-                  </div>
-
-                  <div style={clientFormSectionStyle(true)}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Только для офиса</div>
-                    <div>
-                      <div className="form-label">Внутренняя заметка</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Не для карточки из бота; видят сотрудники CRM</div>
-                      <input className="form-input" value={newClientForm.note} onChange={(e) => setNewClientForm((f) => ({ ...f, note: e.target.value }))} placeholder="Напоминание менеджеру" />
-                    </div>
-                  </div>
-
-                  {clientFieldDefs.length > 0 ? (
-                    <div style={clientFormSectionStyle()}>
-                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Дополнительные поля</div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: -6, marginBottom: 4 }}>Настраиваются в «Настройки» → клиенты</div>
-                      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-                        {clientFieldDefs.map((def) => (
-                          <div key={def.id} style={{ paddingBottom: 12, borderBottom: "1px dashed var(--border-light)" }}>
-                            <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>{FIELD_TYPE_LABELS[def.type]}</div>
-                            {def.type === "CHECKBOX" ? (
-                              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                                <input type="checkbox" checked={newClientCustom[def.key] === "true"} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
-                                <span style={{ fontSize: 13 }}>Да</span>
-                              </label>
-                            ) : def.type === "SELECT" && def.options ? (
-                              <select className="form-input" value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
-                                <option value="">Выберите…</option>
-                                {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
-                                  <option key={o} value={o}>{o}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
-                    <button type="button" className="btn btn-primary" onClick={createClient} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>Создать клиента</button>
-                  </div>
-                </div>
+                <button type="button" className="btn btn-primary" style={{ flexShrink: 0 }} onClick={() => openClientCreateModal()}>+ Добавить клиента</button>
               </div>
 
               <div className="card">
@@ -3854,59 +3788,78 @@ export default function AppPage() {
                         <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                       </div>
                       <div className="empty-state-title">Нет клиентов</div>
-                      <div className="empty-state-desc">Измените фильтр или добавьте клиента выше</div>
+                      <div className="empty-state-desc">Измените фильтр или нажмите «Добавить клиента» / создайте карточку через AI ассистента</div>
                     </div>
                   ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-                      {clientsFiltered.map((c) => {
-                        const st = c.status;
-                        const badgeBg = st?.color ? `${st.color}22` : "var(--accent-light)";
-                        const badgeFg = st?.color ?? "var(--accent)";
+                    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+                      {clientsGroupedByStatus.map((sec) => {
+                        const accent = sec.color || "var(--accent)";
+                        const tint = sec.color ? `${sec.color}14` : "var(--bg-metric)";
                         return (
-                          <div key={c.id} className="card" style={{
-                            border: "1px solid var(--border-light)",
-                            margin: 0,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 0,
-                            overflow: "hidden",
-                            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-                          }}>
-                            <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, background: "var(--bg-card)" }}>
-                              <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
-                                <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 700, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                  {(c.name || "?")[0].toUpperCase()}
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.25 }}>{c.name}</div>
-                                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{c.phone}</div>
-                                </div>
+                          <div key={sec.key} style={{ borderRadius: 14, border: "1px solid var(--border-light)", overflow: "hidden", background: "var(--bg-card)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                            <div style={{
+                              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+                              padding: "12px 16px", background: tint, borderLeft: `4px solid ${accent}`,
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                                <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)" }}>{sec.label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", background: "var(--bg-card)", padding: "3px 10px", borderRadius: 999, border: "1px solid var(--border-light)" }}>{sec.clients.length}</span>
                               </div>
-                              {st ? (
-                                <span className="badge" style={{ background: badgeBg, color: badgeFg, flexShrink: 0, fontSize: 11 }}>{st.label}</span>
-                              ) : null}
                             </div>
-                            <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-secondary)", display: "grid", gap: 8, background: "var(--bg-metric)", borderTop: "1px solid var(--border-light)" }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Звонок</div>
-                              {c.bank ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Банк</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.bank}</div> : <div style={{ color: "var(--text-tertiary)" }}>Банк не указан</div>}
-                              {c.assistantName ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Ассистент</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.assistantName}</div> : null}
-                              {c.callStartedAt ? (
-                                <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Время</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>
-                                  {new Date(c.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                </div>
-                              ) : null}
-                            </div>
-                            {c.callSummary ? (
-                              <div style={{ padding: "12px 16px 14px" }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 8 }}>Итог разговора</div>
-                                <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, maxHeight: 130, overflow: "auto" }}>
-                                  {c.callSummary}
-                                </div>
-                              </div>
-                            ) : null}
-                            <div style={{ display: "flex", gap: 8, padding: "12px 16px", marginTop: "auto", borderTop: "1px solid var(--border-light)", background: "var(--bg-card)" }}>
-                              <button type="button" className="btn btn-secondary" style={{ flex: 1, fontSize: 13 }} onClick={() => openClientEdit(c)}>Редактировать</button>
-                              <button type="button" className="btn btn-ghost" style={{ fontSize: 13, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
+                            <div style={{ padding: "16px 14px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+                              {sec.clients.map((c) => {
+                                const st = c.status;
+                                const badgeBg = st?.color ? `${st.color}22` : "var(--accent-light)";
+                                const badgeFg = st?.color ?? "var(--accent)";
+                                return (
+                                  <div key={c.id} className="card" style={{
+                                    border: "1px solid var(--border-light)",
+                                    margin: 0,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 0,
+                                    overflow: "hidden",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                                  }}>
+                                    <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, background: "var(--bg-card)" }}>
+                                      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                                        <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 700, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                          {(c.name || "?")[0].toUpperCase()}
+                                        </div>
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.25 }}>{c.name}</div>
+                                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{c.phone}</div>
+                                        </div>
+                                      </div>
+                                      {st ? (
+                                        <span className="badge" style={{ background: badgeBg, color: badgeFg, flexShrink: 0, fontSize: 11 }}>{st.label}</span>
+                                      ) : null}
+                                    </div>
+                                    <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-secondary)", display: "grid", gap: 8, background: "var(--bg-metric)", borderTop: "1px solid var(--border-light)" }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Звонок</div>
+                                      {c.bank ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Банк</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.bank}</div> : <div style={{ color: "var(--text-tertiary)" }}>Банк не указан</div>}
+                                      {c.assistantName ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Ассистент</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.assistantName}</div> : null}
+                                      {c.callStartedAt ? (
+                                        <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Время</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>
+                                          {new Date(c.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    {c.callSummary ? (
+                                      <div style={{ padding: "12px 16px 14px" }}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 8 }}>Итог разговора</div>
+                                        <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, maxHeight: 130, overflow: "auto" }}>
+                                          {c.callSummary}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    <div style={{ display: "flex", gap: 8, padding: "12px 16px", marginTop: "auto", borderTop: "1px solid var(--border-light)", background: "var(--bg-card)" }}>
+                                      <button type="button" className="btn btn-secondary" style={{ flex: 1, fontSize: 13 }} onClick={() => openClientEdit(c)}>Редактировать</button>
+                                      <button type="button" className="btn btn-ghost" style={{ fontSize: 13, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -3915,6 +3868,119 @@ export default function AppPage() {
                   )}
                 </div>
               </div>
+
+              {clientCreateModalOpen ? (
+                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 55 }}
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) setClientCreateModalOpen(false); }}>
+                  <div className="card" style={{ width: 640, maxWidth: "100%", maxHeight: "92vh", overflow: "auto", margin: 0 }}>
+                    <div className="card-header" style={{ alignItems: "flex-start", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span className="card-title">Новый клиент</span>
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4, lineHeight: 1.45 }}>Вставьте текст из бота или заполните поля вручную</div>
+                      </div>
+                      <button type="button" className="btn btn-secondary" onClick={() => setClientCreateModalOpen(false)}>Закрыть</button>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 18 }}>
+                      <div style={clientFormSectionStyle(true)}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Из Telegram / бота</div>
+                        <div className="form-label">Вставьте целиком сообщение</div>
+                        <textarea className="form-input" rows={4} value={clientPasteImport} onChange={(e) => setClientPasteImport(e.target.value)} placeholder="Строки «Клиент:», «Телефон:», «Банк:», «Ассистент:», Summary, время звонка…" style={{ resize: "vertical", minHeight: 80 }} />
+                        <button type="button" className="btn btn-secondary" style={{ justifySelf: "start" }} onClick={applyClientPasteToNewForm}>Разобрать текст и подставить в форму</button>
+                      </div>
+
+                      <div style={clientFormSectionStyle()}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Обязательно</div>
+                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                          <div>
+                            <div className="form-label">Имя клиента *</div>
+                            <input className="form-input" value={newClientForm.name} onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))} placeholder="Как в CRM" />
+                          </div>
+                          <div>
+                            <div className="form-label">Телефон *</div>
+                            <input className="form-input" value={newClientForm.phone} onChange={(e) => setNewClientForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+48 …" style={{ fontFamily: "'JetBrains Mono', monospace" }} />
+                          </div>
+                          <div>
+                            <div className="form-label">Статус воронки</div>
+                            <select className="form-input" value={newClientForm.statusId} onChange={(e) => setNewClientForm((f) => ({ ...f, statusId: e.target.value }))}>
+                              <option value="">Авто — первый статус в списке</option>
+                              {clientStatuses.map((s) => (
+                                <option key={s.id} value={s.id}>{s.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={clientFormSectionStyle()}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Данные звонка / лида</div>
+                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                          <div>
+                            <div className="form-label">Банк</div>
+                            <input className="form-input" value={newClientForm.bank} onChange={(e) => setNewClientForm((f) => ({ ...f, bank: e.target.value }))} placeholder="PKO BP, …" />
+                          </div>
+                          <div>
+                            <div className="form-label">Ассистент</div>
+                            <input className="form-input" value={newClientForm.assistantName} onChange={(e) => setNewClientForm((f) => ({ ...f, assistantName: e.target.value }))} placeholder="Кто вёл линию" />
+                          </div>
+                          <div>
+                            <div className="form-label">Начало звонка</div>
+                            <input className="form-input" type="datetime-local" value={newClientForm.callStartedAt} onChange={(e) => setNewClientForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="form-label">Итог разговора (summary)</div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Текст из бота или кратко своими словами</div>
+                          <textarea className="form-input" rows={4} value={newClientForm.callSummary} onChange={(e) => setNewClientForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical", minHeight: 88 }} />
+                        </div>
+                      </div>
+
+                      <div style={clientFormSectionStyle(true)}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Только для офиса</div>
+                        <div>
+                          <div className="form-label">Внутренняя заметка</div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Не для карточки из бота; видят сотрудники CRM</div>
+                          <input className="form-input" value={newClientForm.note} onChange={(e) => setNewClientForm((f) => ({ ...f, note: e.target.value }))} placeholder="Напоминание менеджеру" />
+                        </div>
+                      </div>
+
+                      {clientFieldDefs.length > 0 ? (
+                        <div style={clientFormSectionStyle()}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Дополнительные поля</div>
+                          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: -6, marginBottom: 4 }}>Настраиваются в «Настройки» → клиенты</div>
+                          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+                            {clientFieldDefs.map((def) => (
+                              <div key={def.id} style={{ paddingBottom: 12, borderBottom: "1px dashed var(--border-light)" }}>
+                                <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>{FIELD_TYPE_LABELS[def.type]}</div>
+                                {def.type === "CHECKBOX" ? (
+                                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                                    <input type="checkbox" checked={newClientCustom[def.key] === "true"} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
+                                    <span style={{ fontSize: 13 }}>Да</span>
+                                  </label>
+                                ) : def.type === "SELECT" && def.options ? (
+                                  <select className="form-input" value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
+                                    <option value="">Выберите…</option>
+                                    {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
+                                      <option key={o} value={o}>{o}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 8, borderTop: "1px solid var(--border-light)", flexWrap: "wrap" }}>
+                        <button type="button" className="btn btn-secondary" onClick={() => setClientCreateModalOpen(false)}>Отмена</button>
+                        <button type="button" className="btn btn-primary" onClick={() => void createClient()} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>Создать клиента</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {clientEditOpen && clientEditing ? (
                 <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
