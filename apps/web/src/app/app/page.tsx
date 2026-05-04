@@ -180,6 +180,29 @@ type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
 
+const FIELD_TYPE_LABELS: Record<FieldType, string> = {
+  TEXT: "Текст",
+  NUMBER: "Число",
+  SELECT: "Список",
+  DATE: "Дата",
+  PERCENT: "Процент",
+  CHECKBOX: "Да / нет",
+  CURRENCY: "Сумма",
+};
+
+const FIELD_TYPES_ALL: FieldType[] = ["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"];
+
+function clientFormSectionStyle(muted?: boolean): React.CSSProperties {
+  return {
+    border: "1px solid var(--border-light)",
+    borderRadius: 12,
+    padding: "16px 18px",
+    background: muted ? "var(--bg-metric)" : "var(--bg-card)",
+    display: "grid",
+    gap: 14,
+  };
+}
+
 type ClientFieldDef = {
   id: string;
   key: string;
@@ -3659,98 +3682,133 @@ export default function AppPage() {
               </div>
 
               <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Добавить клиента</span>
-                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>+ Создать</button>
+                <div className="card-header" style={{ alignItems: "flex-start", gap: 12 }}>
+                  <div>
+                    <span className="card-title">Новый клиент</span>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4, maxWidth: 560, lineHeight: 1.45 }}>
+                      Заполните блоки по порядку или вставьте текст из бота — поля разнесены по смыслу, чтобы не теряться.
+                    </div>
+                  </div>
+                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>Создать клиента</button>
                 </div>
-                <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <div className="form-label">Вставить текст из бота / Telegram</div>
-                    <textarea className="form-input" rows={4} value={clientPasteImport} onChange={(e) => setClientPasteImport(e.target.value)} placeholder="Вставьте сообщение со строками «Клиент:», «Телефон:», …" style={{ resize: "vertical", minHeight: 72 }} />
-                    <button type="button" className="btn btn-secondary" style={{ justifySelf: "start" }} onClick={applyClientPasteToNewForm}>Заполнить форму из текста</button>
+                <div className="card-body" style={{ display: "grid", gap: 18 }}>
+                  <div style={clientFormSectionStyle(true)}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Из Telegram / бота</div>
+                    <div className="form-label">Вставьте целиком сообщение</div>
+                    <textarea className="form-input" rows={4} value={clientPasteImport} onChange={(e) => setClientPasteImport(e.target.value)} placeholder="Строки «Клиент:», «Телефон:», «Банк:», «Ассистент:», Summary, время звонка…" style={{ resize: "vertical", minHeight: 80 }} />
+                    <button type="button" className="btn btn-secondary" style={{ justifySelf: "start" }} onClick={applyClientPasteToNewForm}>Разобрать текст и подставить в форму</button>
                   </div>
-                  <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
-                    <div>
-                      <div className="form-label">Имя клиента *</div>
-                      <input className="form-input" value={newClientForm.name} onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))} />
-                    </div>
-                    <div>
-                      <div className="form-label">Телефон *</div>
-                      <input className="form-input" value={newClientForm.phone} onChange={(e) => setNewClientForm((f) => ({ ...f, phone: e.target.value }))} />
-                    </div>
-                    <div>
-                      <div className="form-label">Статус</div>
-                      <select className="form-input" value={newClientForm.statusId} onChange={(e) => setNewClientForm((f) => ({ ...f, statusId: e.target.value }))}>
-                        <option value="">По умолчанию (первый в списке)</option>
-                        {clientStatuses.map((s) => (
-                          <option key={s.id} value={s.id}>{s.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <div className="form-label">Банк</div>
-                      <input className="form-input" value={newClientForm.bank} onChange={(e) => setNewClientForm((f) => ({ ...f, bank: e.target.value }))} />
-                    </div>
-                    <div>
-                      <div className="form-label">Ассистент</div>
-                      <input className="form-input" value={newClientForm.assistantName} onChange={(e) => setNewClientForm((f) => ({ ...f, assistantName: e.target.value }))} />
-                    </div>
-                    <div>
-                      <div className="form-label">Начало звонка</div>
-                      <input className="form-input" type="datetime-local" value={newClientForm.callStartedAt} onChange={(e) => setNewClientForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
+
+                  <div style={clientFormSectionStyle()}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Обязательно</div>
+                    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                      <div>
+                        <div className="form-label">Имя клиента *</div>
+                        <input className="form-input" value={newClientForm.name} onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))} placeholder="Как в CRM" />
+                      </div>
+                      <div>
+                        <div className="form-label">Телефон *</div>
+                        <input className="form-input" value={newClientForm.phone} onChange={(e) => setNewClientForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+48 …" style={{ fontFamily: "'JetBrains Mono', monospace" }} />
+                      </div>
+                      <div>
+                        <div className="form-label">Статус воронки</div>
+                        <select className="form-input" value={newClientForm.statusId} onChange={(e) => setNewClientForm((f) => ({ ...f, statusId: e.target.value }))}>
+                          <option value="">Авто — первый статус в списке</option>
+                          {clientStatuses.map((s) => (
+                            <option key={s.id} value={s.id}>{s.label}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div className="form-label">Summary / итог разговора</div>
-                    <textarea className="form-input" rows={3} value={newClientForm.callSummary} onChange={(e) => setNewClientForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical" }} />
+
+                  <div style={clientFormSectionStyle()}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Данные звонка / лида</div>
+                    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                      <div>
+                        <div className="form-label">Банк</div>
+                        <input className="form-input" value={newClientForm.bank} onChange={(e) => setNewClientForm((f) => ({ ...f, bank: e.target.value }))} placeholder="PKO BP, …" />
+                      </div>
+                      <div>
+                        <div className="form-label">Ассистент</div>
+                        <input className="form-input" value={newClientForm.assistantName} onChange={(e) => setNewClientForm((f) => ({ ...f, assistantName: e.target.value }))} placeholder="Кто вёл линию" />
+                      </div>
+                      <div>
+                        <div className="form-label">Начало звонка</div>
+                        <input className="form-input" type="datetime-local" value={newClientForm.callStartedAt} onChange={(e) => setNewClientForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="form-label">Итог разговора (summary)</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Текст из бота или кратко своими словами</div>
+                      <textarea className="form-input" rows={4} value={newClientForm.callSummary} onChange={(e) => setNewClientForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical", minHeight: 88 }} />
+                    </div>
                   </div>
-                  <div>
-                    <div className="form-label">Внутренняя заметка</div>
-                    <input className="form-input" value={newClientForm.note} onChange={(e) => setNewClientForm((f) => ({ ...f, note: e.target.value }))} placeholder="Не показывается в карточке лида из бота" />
+
+                  <div style={clientFormSectionStyle(true)}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Только для офиса</div>
+                    <div>
+                      <div className="form-label">Внутренняя заметка</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Не для карточки из бота; видят сотрудники CRM</div>
+                      <input className="form-input" value={newClientForm.note} onChange={(e) => setNewClientForm((f) => ({ ...f, note: e.target.value }))} placeholder="Напоминание менеджеру" />
+                    </div>
                   </div>
+
                   {clientFieldDefs.length > 0 ? (
-                    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
-                      {clientFieldDefs.map((def) => (
-                        <div key={def.id}>
-                          <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
-                          {def.type === "CHECKBOX" ? (
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                              <input type="checkbox" checked={newClientCustom[def.key] === "true"} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
-                              <span style={{ fontSize: 13 }}>Да</span>
-                            </label>
-                          ) : def.type === "SELECT" && def.options ? (
-                            <select className="form-input" value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
-                              <option value="">—</option>
-                              {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
-                                <option key={o} value={o}>{o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
-                          )}
-                        </div>
-                      ))}
+                    <div style={clientFormSectionStyle()}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Дополнительные поля</div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: -6, marginBottom: 4 }}>Настраиваются в «Настройки» → клиенты</div>
+                      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+                        {clientFieldDefs.map((def) => (
+                          <div key={def.id} style={{ paddingBottom: 12, borderBottom: "1px dashed var(--border-light)" }}>
+                            <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>{FIELD_TYPE_LABELS[def.type]}</div>
+                            {def.type === "CHECKBOX" ? (
+                              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                                <input type="checkbox" checked={newClientCustom[def.key] === "true"} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
+                                <span style={{ fontSize: 13 }}>Да</span>
+                              </label>
+                            ) : def.type === "SELECT" && def.options ? (
+                              <select className="form-input" value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
+                                <option value="">Выберите…</option>
+                                {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
+                                  <option key={o} value={o}>{o}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
+                    <button type="button" className="btn btn-primary" onClick={createClient} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>Создать клиента</button>
+                  </div>
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-header" style={{ flexWrap: "wrap", gap: 10 }}>
-                  <span className="card-title">Клиенты</span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", flex: 1, justifyContent: "flex-end" }}>
-                    <input className="form-input" style={{ maxWidth: 220 }} placeholder="Поиск…" value={clientSearchQ} onChange={(e) => setClientSearchQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void loadClients(); }} />
+                <div className="card-header" style={{ flexDirection: "column", alignItems: "stretch", gap: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                    <span className="card-title">Список клиентов</span>
+                    <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Обновить список</button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginRight: 4 }}>Фильтры</span>
+                    <input className="form-input" style={{ minWidth: 180, flex: "1 1 160px", maxWidth: 280 }} placeholder="Поиск по имени, телефону, банку…" value={clientSearchQ} onChange={(e) => setClientSearchQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void loadClients(); }} />
                     <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Найти</button>
-                    <select className="form-input" style={{ maxWidth: 200 }} value={clientStatusFilter} onChange={(e) => setClientStatusFilter(e.target.value)}>
+                    <select className="form-input" style={{ minWidth: 200, maxWidth: 260 }} value={clientStatusFilter} onChange={(e) => setClientStatusFilter(e.target.value)}>
                       <option value="all">Все статусы</option>
                       {clientStatuses.map((s) => (
                         <option key={s.id} value={s.id}>{s.label}</option>
                       ))}
                     </select>
-                    <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Обновить</button>
                   </div>
                 </div>
-                <div className="card-body" style={{ padding: 16 }}>
+                <div className="card-body" style={{ padding: "18px 16px 20px" }}>
                   {clientsLoading ? (
                     <div style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</div>
                   ) : clientsFiltered.length === 0 ? (
@@ -3762,44 +3820,56 @@ export default function AppPage() {
                       <div className="empty-state-desc">Измените фильтр или добавьте клиента выше</div>
                     </div>
                   ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
                       {clientsFiltered.map((c) => {
                         const st = c.status;
                         const badgeBg = st?.color ? `${st.color}22` : "var(--accent-light)";
                         const badgeFg = st?.color ?? "var(--accent)";
                         return (
-                          <div key={c.id} className="card" style={{ border: "1px solid var(--border-light)", margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                              <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
-                                <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 700, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <div key={c.id} className="card" style={{
+                            border: "1px solid var(--border-light)",
+                            margin: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 0,
+                            overflow: "hidden",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                          }}>
+                            <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, background: "var(--bg-card)" }}>
+                              <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                                <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 700, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                   {(c.name || "?")[0].toUpperCase()}
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
-                                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)" }}>{c.phone}</div>
+                                  <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.25 }}>{c.name}</div>
+                                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{c.phone}</div>
                                 </div>
                               </div>
                               {st ? (
-                                <span className="badge" style={{ background: badgeBg, color: badgeFg, flexShrink: 0 }}>{st.label}</span>
+                                <span className="badge" style={{ background: badgeBg, color: badgeFg, flexShrink: 0, fontSize: 11 }}>{st.label}</span>
                               ) : null}
                             </div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "grid", gap: 4 }}>
-                              {c.bank ? <div><span style={{ color: "var(--text-tertiary)" }}>Банк:</span> {c.bank}</div> : null}
-                              {c.assistantName ? <div><span style={{ color: "var(--text-tertiary)" }}>Ассистент:</span> {c.assistantName}</div> : null}
+                            <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-secondary)", display: "grid", gap: 8, background: "var(--bg-metric)", borderTop: "1px solid var(--border-light)" }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Звонок</div>
+                              {c.bank ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Банк</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.bank}</div> : <div style={{ color: "var(--text-tertiary)" }}>Банк не указан</div>}
+                              {c.assistantName ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Ассистент</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.assistantName}</div> : null}
                               {c.callStartedAt ? (
-                                <div><span style={{ color: "var(--text-tertiary)" }}>Звонок:</span>{" "}
+                                <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Время</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>
                                   {new Date(c.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                                 </div>
                               ) : null}
                             </div>
                             {c.callSummary ? (
-                              <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.45, borderTop: "1px solid var(--border-light)", paddingTop: 8, maxHeight: 120, overflow: "auto" }}>
-                                {c.callSummary}
+                              <div style={{ padding: "12px 16px 14px" }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 8 }}>Итог разговора</div>
+                                <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, maxHeight: 130, overflow: "auto" }}>
+                                  {c.callSummary}
+                                </div>
                               </div>
                             ) : null}
-                            <div style={{ display: "flex", gap: 6, marginTop: "auto", paddingTop: 4 }}>
-                              <button type="button" className="btn btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => openClientEdit(c)}>Изменить</button>
-                              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
+                            <div style={{ display: "flex", gap: 8, padding: "12px 16px", marginTop: "auto", borderTop: "1px solid var(--border-light)", background: "var(--bg-card)" }}>
+                              <button type="button" className="btn btn-secondary" style={{ flex: 1, fontSize: 13 }} onClick={() => openClientEdit(c)}>Редактировать</button>
+                              <button type="button" className="btn btn-ghost" style={{ fontSize: 13, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
                             </div>
                           </div>
                         );
@@ -3812,73 +3882,93 @@ export default function AppPage() {
               {clientEditOpen && clientEditing ? (
                 <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
                   onMouseDown={(e) => { if (e.target === e.currentTarget) setClientEditOpen(false); }}>
-                  <div className="card" style={{ width: 520, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
-                    <div className="card-header">
-                      <span className="card-title">Редактировать клиента</span>
-                      <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
+                  <div className="card" style={{ width: 580, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
+                    <div className="card-header" style={{ alignItems: "flex-start" }}>
+                      <div>
+                        <span className="card-title">Редактирование клиента</span>
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>Блоки ниже совпадают с формой создания</div>
+                      </div>
+                      <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Закрыть</button>
                     </div>
-                    <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-                        <div>
-                          <div className="form-label">Имя *</div>
-                          <input className="form-input" value={clientEditForm.name} onChange={(e) => setClientEditForm((f) => ({ ...f, name: e.target.value }))} />
+                    <div className="card-body" style={{ display: "grid", gap: 16 }}>
+                      <div style={clientFormSectionStyle()}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Основное</div>
+                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                          <div>
+                            <div className="form-label">Имя *</div>
+                            <input className="form-input" value={clientEditForm.name} onChange={(e) => setClientEditForm((f) => ({ ...f, name: e.target.value }))} />
+                          </div>
+                          <div>
+                            <div className="form-label">Телефон *</div>
+                            <input className="form-input" value={clientEditForm.phone} onChange={(e) => setClientEditForm((f) => ({ ...f, phone: e.target.value }))} style={{ fontFamily: "'JetBrains Mono', monospace" }} />
+                          </div>
                         </div>
                         <div>
-                          <div className="form-label">Телефон *</div>
-                          <input className="form-input" value={clientEditForm.phone} onChange={(e) => setClientEditForm((f) => ({ ...f, phone: e.target.value }))} />
+                          <div className="form-label">Статус воронки</div>
+                          <select className="form-input" value={clientEditForm.statusId} onChange={(e) => setClientEditForm((f) => ({ ...f, statusId: e.target.value }))}>
+                            {clientStatuses.map((s) => (
+                              <option key={s.id} value={s.id}>{s.label}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
-                      <div>
-                        <div className="form-label">Статус</div>
-                        <select className="form-input" value={clientEditForm.statusId} onChange={(e) => setClientEditForm((f) => ({ ...f, statusId: e.target.value }))}>
-                          {clientStatuses.map((s) => (
-                            <option key={s.id} value={s.id}>{s.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                      <div style={clientFormSectionStyle()}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Звонок / лид</div>
+                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                          <div>
+                            <div className="form-label">Банк</div>
+                            <input className="form-input" value={clientEditForm.bank} onChange={(e) => setClientEditForm((f) => ({ ...f, bank: e.target.value }))} />
+                          </div>
+                          <div>
+                            <div className="form-label">Ассистент</div>
+                            <input className="form-input" value={clientEditForm.assistantName} onChange={(e) => setClientEditForm((f) => ({ ...f, assistantName: e.target.value }))} />
+                          </div>
+                        </div>
                         <div>
-                          <div className="form-label">Банк</div>
-                          <input className="form-input" value={clientEditForm.bank} onChange={(e) => setClientEditForm((f) => ({ ...f, bank: e.target.value }))} />
+                          <div className="form-label">Начало звонка</div>
+                          <input className="form-input" type="datetime-local" value={clientEditForm.callStartedAt} onChange={(e) => setClientEditForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
                         </div>
                         <div>
-                          <div className="form-label">Ассистент</div>
-                          <input className="form-input" value={clientEditForm.assistantName} onChange={(e) => setClientEditForm((f) => ({ ...f, assistantName: e.target.value }))} />
+                          <div className="form-label">Итог разговора</div>
+                          <textarea className="form-input" rows={4} value={clientEditForm.callSummary} onChange={(e) => setClientEditForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical" }} />
                         </div>
                       </div>
-                      <div>
-                        <div className="form-label">Начало звонка</div>
-                        <input className="form-input" type="datetime-local" value={clientEditForm.callStartedAt} onChange={(e) => setClientEditForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
-                      </div>
-                      <div>
-                        <div className="form-label">Summary</div>
-                        <textarea className="form-input" rows={3} value={clientEditForm.callSummary} onChange={(e) => setClientEditForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical" }} />
-                      </div>
-                      <div>
-                        <div className="form-label">Внутренняя заметка</div>
-                        <input className="form-input" value={clientEditForm.note} onChange={(e) => setClientEditForm((f) => ({ ...f, note: e.target.value }))} />
-                      </div>
-                      {clientFieldDefs.map((def) => (
-                        <div key={def.id}>
-                          <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
-                          {def.type === "CHECKBOX" ? (
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                              <input type="checkbox" checked={clientEditCustom[def.key] === "true"} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
-                              <span style={{ fontSize: 13 }}>Да</span>
-                            </label>
-                          ) : def.type === "SELECT" && def.options ? (
-                            <select className="form-input" value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
-                              <option value="">—</option>
-                              {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
-                                <option key={o} value={o}>{o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
-                          )}
+                      <div style={clientFormSectionStyle(true)}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Только для офиса</div>
+                        <div>
+                          <div className="form-label">Внутренняя заметка</div>
+                          <input className="form-input" value={clientEditForm.note} onChange={(e) => setClientEditForm((f) => ({ ...f, note: e.target.value }))} />
                         </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                      </div>
+                      {clientFieldDefs.length > 0 ? (
+                        <div style={clientFormSectionStyle()}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Дополнительные поля</div>
+                          <div style={{ display: "grid", gap: 14 }}>
+                            {clientFieldDefs.map((def) => (
+                              <div key={def.id}>
+                                <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>{FIELD_TYPE_LABELS[def.type]}</div>
+                                {def.type === "CHECKBOX" ? (
+                                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <input type="checkbox" checked={clientEditCustom[def.key] === "true"} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
+                                    <span style={{ fontSize: 13 }}>Да</span>
+                                  </label>
+                                ) : def.type === "SELECT" && def.options ? (
+                                  <select className="form-input" value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
+                                    <option value="">—</option>
+                                    {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
+                                      <option key={o} value={o}>{o}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
                         <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
                         <button type="button" className="btn btn-primary" onClick={() => void saveClientEdit()}>Сохранить</button>
                       </div>
@@ -5568,27 +5658,41 @@ export default function AppPage() {
                   <div className="card">
                     <div className="card-header">
                       <div>
-                        <span className="card-title">Клиенты: статусы воронки</span>
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>Slug не меняется после создания. Цвет — hex, например #3b82f6</div>
+                        <span className="card-title">Клиенты — статусы воронки</span>
+                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+                          <strong>Код</strong> — латиница для системы (не меняется). <strong>Название</strong> — как видят сотрудники в CRM.
+                          <strong> Порядок</strong> — сортировка в списках. <strong>Цвет</strong> — hex, например <code style={{ fontSize: 11 }}>#3b82f6</code>.
+                          <strong> Конец воронки</strong> — отметка «финальный» статус (например закрыт).
+                        </div>
                       </div>
                       <button type="button" className="btn btn-secondary" onClick={() => void loadClientStatuses()}>Обновить</button>
                     </div>
-                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
-                        <div style={{ minWidth: 140 }}>
-                          <div className="form-label">Новый slug</div>
-                          <input className="form-input" value={newClientStatusSlug} onChange={(e) => setNewClientStatusSlug(e.target.value)} placeholder="callback" />
+                    <div className="card-body" style={{ display: "grid", gap: 18 }}>
+                      <div style={clientFormSectionStyle(true)}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Добавить статус</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                          <div style={{ minWidth: 160 }}>
+                            <div className="form-label">Код (латиница)</div>
+                            <input className="form-input" value={newClientStatusSlug} onChange={(e) => setNewClientStatusSlug(e.target.value)} placeholder="naprimer_ozhidaet" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 200 }}>
+                            <div className="form-label">Название в интерфейсе</div>
+                            <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="Например: Ожидает ответа" />
+                          </div>
+                          <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>Добавить статус</button>
                         </div>
-                        <div style={{ flex: 1, minWidth: 160 }}>
-                          <div className="form-label">Название</div>
-                          <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="Обратный звонок" />
-                        </div>
-                        <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>+ Статус</button>
                       </div>
-                      <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 10, overflow: "auto" }}>
+                      <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "auto" }}>
                         <table className="data-table">
-                          <thead>
-                            <tr><th>Slug</th><th>Название</th><th>Порядок</th><th>Цвет</th><th>Финальный</th><th style={{ width: 160 }}></th></tr>
+                          <thead style={{ background: "var(--bg-metric)" }}>
+                            <tr>
+                              <th><span style={{ display: "block" }}>Код</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>системный</span></th>
+                              <th>Как в CRM</th>
+                              <th style={{ width: 100 }}>Порядок</th>
+                              <th style={{ width: 120 }}>Цвет (HEX)</th>
+                              <th style={{ width: 110 }}><span style={{ display: "block" }}>Конец</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>воронки</span></th>
+                              <th style={{ width: 180 }}>Действия</th>
+                            </tr>
                           </thead>
                           <tbody>
                             {clientStatuses.map((s) => {
@@ -5644,35 +5748,49 @@ export default function AppPage() {
                   <div className="card">
                     <div className="card-header">
                       <div>
-                        <span className="card-title">Клиенты: дополнительные поля</span>
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>Поля карточки клиента (кроме банка, ассистента, summary). Для SELECT укажите варианты через запятую или с новой строки.</div>
+                        <span className="card-title">Клиенты — дополнительные поля</span>
+                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+                          Поля появляются в форме клиента под стандартными блоками. Банк, ассистент и итог звонка уже есть отдельно.
+                          Для типа «Список» в колонке вариантов укажите значения через запятую или с новой строки.
+                        </div>
                       </div>
                       <button type="button" className="btn btn-secondary" onClick={() => void loadClientFieldDefinitions()}>Обновить</button>
                     </div>
-                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
-                        <div style={{ minWidth: 120 }}>
-                          <div className="form-label">Ключ</div>
-                          <input className="form-input" value={newClientFieldKey} onChange={(e) => setNewClientFieldKey(e.target.value)} placeholder="source" />
+                    <div className="card-body" style={{ display: "grid", gap: 18 }}>
+                      <div style={clientFormSectionStyle(true)}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Новое поле</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                          <div style={{ minWidth: 140 }}>
+                            <div className="form-label">Код поля (латиница)</div>
+                            <input className="form-input" value={newClientFieldKey} onChange={(e) => setNewClientFieldKey(e.target.value)} placeholder="istochnik" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 180 }}>
+                            <div className="form-label">Подпись в форме</div>
+                            <input className="form-input" value={newClientFieldLabel} onChange={(e) => setNewClientFieldLabel(e.target.value)} placeholder="Источник лида" />
+                          </div>
+                          <div style={{ width: 200 }}>
+                            <div className="form-label">Тип данных</div>
+                            <select className="form-input" value={newClientFieldType} onChange={(e) => setNewClientFieldType(e.target.value as FieldType)}>
+                              {FIELD_TYPES_ALL.map((t) => (
+                                <option key={t} value={t}>{FIELD_TYPE_LABELS[t]}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>Добавить поле</button>
                         </div>
-                        <div style={{ flex: 1, minWidth: 140 }}>
-                          <div className="form-label">Подпись</div>
-                          <input className="form-input" value={newClientFieldLabel} onChange={(e) => setNewClientFieldLabel(e.target.value)} placeholder="Источник лида" />
-                        </div>
-                        <div style={{ width: 160 }}>
-                          <div className="form-label">Тип</div>
-                          <select className="form-input" value={newClientFieldType} onChange={(e) => setNewClientFieldType(e.target.value as FieldType)}>
-                            {(["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"] as const).map((t) => (
-                              <option key={t} value={t}>{t}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>+ Поле</button>
                       </div>
-                      <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 10, overflow: "auto" }}>
+                      <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "auto" }}>
                         <table className="data-table">
-                          <thead>
-                            <tr><th>Ключ</th><th>Подпись</th><th>Тип</th><th>Порядок</th><th>Обяз.</th><th>Варианты (SELECT)</th><th style={{ width: 160 }}></th></tr>
+                          <thead style={{ background: "var(--bg-metric)" }}>
+                            <tr>
+                              <th><span style={{ display: "block" }}>Код</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>не меняется</span></th>
+                              <th>Подпись</th>
+                              <th style={{ width: 160 }}>Тип</th>
+                              <th style={{ width: 90 }}>Порядок</th>
+                              <th style={{ width: 80 }}>Обяз.</th>
+                              <th style={{ minWidth: 160 }}><span style={{ display: "block" }}>Варианты</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>для списка</span></th>
+                              <th style={{ width: 180 }}>Действия</th>
+                            </tr>
                           </thead>
                           <tbody>
                             {clientFieldDefs.map((f) => {
@@ -5683,10 +5801,10 @@ export default function AppPage() {
                                   <td>
                                     <input className="form-input" style={{ height: 32 }} value={d?.label ?? f.label} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), label: e.target.value } }))} />
                                   </td>
-                                  <td style={{ width: 130 }}>
-                                    <select className="form-input" style={{ height: 32 }} value={d?.type ?? f.type} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), type: e.target.value as FieldType } }))}>
-                                      {(["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"] as const).map((t) => (
-                                        <option key={t} value={t}>{t}</option>
+                                  <td style={{ width: 180 }}>
+                                    <select className="form-input" style={{ height: 36 }} value={d?.type ?? f.type} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), type: e.target.value as FieldType } }))}>
+                                      {FIELD_TYPES_ALL.map((t) => (
+                                        <option key={t} value={t}>{FIELD_TYPE_LABELS[t]}</option>
                                       ))}
                                     </select>
                                   </td>
