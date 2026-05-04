@@ -196,4 +196,32 @@ export class ClientsService {
     await this.prisma.client.delete({ where: { id } });
     return { ok: true };
   }
+
+  async listComments(organizationId: string, clientId: string) {
+    const client = await this.prisma.client.findFirst({
+      where: { id: clientId, organizationId },
+      select: { id: true },
+    });
+    if (!client) throw new NotFoundException();
+    return this.prisma.clientComment.findMany({
+      where: { clientId },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async addComment(organizationId: string, clientId: string, userId: string, body: string) {
+    const text = body?.trim() ?? '';
+    if (!text) throw new BadRequestException('Пустой комментарий');
+    if (text.length > 20000) throw new BadRequestException('Комментарий слишком длинный');
+    const client = await this.prisma.client.findFirst({
+      where: { id: clientId, organizationId },
+      select: { id: true },
+    });
+    if (!client) throw new NotFoundException();
+    return this.prisma.clientComment.create({
+      data: { clientId, userId, body: text },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+  }
 }

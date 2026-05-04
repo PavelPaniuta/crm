@@ -40,6 +40,13 @@ type Client = {
   customData?: Record<string, unknown>;
 };
 
+type ClientCommentEntry = {
+  id: string;
+  body: string;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string };
+};
+
 type ClientFormState = {
   name: string;
   phone: string;
@@ -439,6 +446,10 @@ export default function AppPage() {
   const [clientPasteImport, setClientPasteImport] = useState("");
   const [clientCreateModalOpen, setClientCreateModalOpen] = useState(false);
   const [clientViewOpen, setClientViewOpen] = useState<Client | null>(null);
+  const [clientDetailComments, setClientDetailComments] = useState<ClientCommentEntry[]>([]);
+  const [clientDetailCommentText, setClientDetailCommentText] = useState("");
+  const [clientDetailCommentsLoading, setClientDetailCommentsLoading] = useState(false);
+  const [clientCommentPosting, setClientCommentPosting] = useState(false);
   const [clientEditOpen, setClientEditOpen] = useState(false);
   const [clientEditing, setClientEditing] = useState<Client | null>(null);
   const [clientEditForm, setClientEditForm] = useState<ClientFormState>(emptyClientForm);
@@ -814,37 +825,52 @@ export default function AppPage() {
     return clients.filter((c) => (c.status?.id ?? c.statusId) === clientStatusFilter);
   }, [clients, clientStatusFilter]);
 
-  /** Группировка списка по статусу (порядок как в настройках воронки). */
-  const clientsGroupedByStatus = useMemo(() => {
-    type Section = { key: string; label: string; color: string | null | undefined; clients: Client[] };
-    const map = new Map<string, Client[]>();
+  /** Колонки канбана: порядок статусов из настроек; «Без статуса» — в конце. При фильтре одного статуса — одна колонка. */
+  const clientKanbanColumns = useMemo(() => {
+    type Col = { key: string; label: string; color: string | null | undefined; clients: Client[] };
+    const sorted = [...clientStatuses].sort((a, b) => a.sortOrder - b.sortOrder);
+    const statusIds = new Set(sorted.map((s) => s.id));
+    const byKey = new Map<string, Client[]>();
     for (const c of clientsFiltered) {
-      const sid = (c.status?.id ?? c.statusId) || "__none__";
-      if (!map.has(sid)) map.set(sid, []);
-      map.get(sid)!.push(c);
+      const raw = (c.status?.id ?? c.statusId) || "__none__";
+      const key = raw === "__none__" || !statusIds.has(raw) ? "__none__" : raw;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push(c);
     }
-    const used = new Set<string>();
-    const sections: Section[] = [];
-    for (const s of [...clientStatuses].sort((a, b) => a.sortOrder - b.sortOrder)) {
-      const list = map.get(s.id);
-      if (list?.length) {
-        sections.push({ key: s.id, label: s.label, color: s.color, clients: list });
-        used.add(s.id);
+    if (clientStatusFilter !== "all") {
+      const s = sorted.find((x) => x.id === clientStatusFilter);
+      if (s) return [{ key: s.id, label: s.label, color: s.color, clients: byKey.get(s.id) ?? [] }];
+      return [{ key: clientStatusFilter, label: "Клиенты", color: null, clients: clientsFiltered }];
+    }
+    const cols: Col[] = sorted.map((s) => ({ key: s.id, label: s.label, color: s.color, clients: byKey.get(s.id) ?? [] }));
+    const none = byKey.get("__none__") ?? [];
+    if (none.length) cols.push({ key: "__none__", label: "Без статуса", color: null, clients: none });
+    return cols;
+  }, [clientsFiltered, clientStatuses, clientStatusFilter]);
+
+  useEffect(() => {
+    if (!clientViewOpen) {
+      setClientDetailComments([]);
+      setClientDetailCommentText("");
+      setClientDetailCommentsLoading(false);
+      return;
+    }
+    const id = clientViewOpen.id;
+    let cancelled = false;
+    setClientDetailCommentsLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/clients/${id}/comments`, { credentials: "include" });
+        const j = res.ok ? await res.json() : [];
+        if (!cancelled) setClientDetailComments(Array.isArray(j) ? j : []);
+      } catch {
+        if (!cancelled) setClientDetailComments([]);
+      } finally {
+        if (!cancelled) setClientDetailCommentsLoading(false);
       }
-    }
-    const none = map.get("__none__");
-    if (none?.length) {
-      sections.push({ key: "__none__", label: "Без статуса", color: null, clients: none });
-      used.add("__none__");
-    }
-    for (const [key, list] of map) {
-      if (!used.has(key) && list.length) {
-        const st = list[0]?.status;
-        sections.push({ key, label: st?.label ?? "Статус", color: st?.color, clients: list });
-      }
-    }
-    return sections;
-  }, [clientsFiltered, clientStatuses]);
+    })();
+    return () => { cancelled = true; };
+  }, [clientViewOpen?.id]);
 
   useEffect(() => {
     setClientStatusDrafts(
@@ -2039,6 +2065,29 @@ export default function AppPage() {
     if (!res.ok) return alert("Не удалось удалить клиента");
     setClientViewOpen((v) => (v?.id === id ? null : v));
     await loadClients();
+  }
+
+  async function postClientComment() {
+    if (!clientViewOpen || !clientDetailCommentText.trim()) return;
+    setClientCommentPosting(true);
+    try {
+      const res = await fetch(`/api/clients/${clientViewOpen.id}/comments`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: clientDetailCommentText.trim() }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.message ?? "Не удалось добавить комментарий");
+        return;
+      }
+      const created = (await res.json()) as ClientCommentEntry;
+      setClientDetailComments((prev) => [...prev, created]);
+      setClientDetailCommentText("");
+    } finally {
+      setClientCommentPosting(false);
+    }
   }
 
   // ---- expenses ----
@@ -3758,7 +3807,7 @@ export default function AppPage() {
               <div className="page-header" style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
                 <div className="page-header-left" style={{ flex: "1 1 260px", minWidth: 0 }}>
                   <div className="page-header-title">Клиенты</div>
-                  <div className="page-header-sub">Компактные строки по статусам — клик по строке открывает полную карточку. Добавление — кнопкой или через AI ассистента. Воронку настраивают в «Настройки».</div>
+                  <div className="page-header-sub">Колонки по статусам воронки (прокрутка вниз и вбок). Клик по карточке — детали и комментарии. Добавление — кнопкой или AI ассистент. Воронку — в «Настройки».</div>
                 </div>
                 <button type="button" className="btn btn-primary" style={{ flexShrink: 0 }} onClick={() => openClientCreateModal()}>+ Добавить клиента</button>
               </div>
@@ -3793,41 +3842,41 @@ export default function AppPage() {
                       <div className="empty-state-desc">Измените фильтр или нажмите «Добавить клиента» / создайте карточку через AI ассистента</div>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{
-                        display: "grid",
-                        gridTemplateColumns: "32px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 22px",
-                        gap: 10,
-                        padding: "2px 12px 6px",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: "0.04em",
-                        textTransform: "uppercase",
-                        color: "var(--text-tertiary)",
-                        borderBottom: "1px solid var(--border-light)",
-                      }}>
-                        <span />
-                        <span>Имя · телефон</span>
-                        <span>Банк</span>
-                        <span>Ассистент</span>
-                        <span />
-                      </div>
-                      {clientsGroupedByStatus.map((sec) => {
-                        const accent = sec.color || "var(--accent)";
-                        const tint = sec.color ? `${sec.color}0d` : "var(--bg-metric)";
+                    <div style={{ display: "flex", gap: 12, alignItems: "stretch", overflowX: "auto", paddingBottom: 6, maxHeight: "calc(100vh - 240px)", minHeight: 280 }}>
+                      {clientKanbanColumns.map((col) => {
+                        const accent = col.color || "var(--accent)";
+                        const tint = col.color ? `${col.color}12` : "var(--bg-metric)";
                         return (
-                          <div key={sec.key} style={{ borderRadius: 10, border: "1px solid var(--border-light)", overflow: "hidden", background: "var(--bg-card)" }}>
+                          <div
+                            key={col.key}
+                            style={{
+                              flex: "0 0 268px",
+                              display: "flex",
+                              flexDirection: "column",
+                              minHeight: 0,
+                              maxHeight: "100%",
+                              borderRadius: 12,
+                              border: "1px solid var(--border-light)",
+                              background: "var(--bg-card)",
+                              overflow: "hidden",
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                            }}
+                          >
                             <div style={{
-                              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap",
-                              padding: "6px 12px", background: tint, borderLeft: `3px solid ${accent}`,
+                              flexShrink: 0,
+                              padding: "8px 12px",
+                              background: tint,
+                              borderBottom: "1px solid var(--border-light)",
+                              borderLeft: `3px solid ${accent}`,
                             }}>
-                              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>{sec.label}</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)" }}>{sec.clients.length}</span>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)", lineHeight: 1.3 }}>{col.label}</div>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{col.clients.length} шт.</div>
                             </div>
-                            <div role="list" style={{ padding: 0 }}>
-                              {sec.clients.map((c) => {
-                                const bankShort = c.bank ? (c.bank.length > 22 ? `${c.bank.slice(0, 21)}…` : c.bank) : null;
-                                return (
+                            <div role="list" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                              {col.clients.length === 0 ? (
+                                <div style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "16px 8px", textAlign: "center", lineHeight: 1.45 }}>Нет клиентов</div>
+                              ) : (
+                                col.clients.map((c) => (
                                   <div
                                     key={c.id}
                                     role="button"
@@ -3835,37 +3884,40 @@ export default function AppPage() {
                                     onClick={() => setClientViewOpen(c)}
                                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setClientViewOpen(c); } }}
                                     style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "32px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 22px",
-                                      gap: 10,
-                                      alignItems: "center",
-                                      padding: "6px 12px",
+                                      padding: "8px 10px",
+                                      borderRadius: 10,
+                                      border: "1px solid var(--border-light)",
+                                      background: "var(--bg-card)",
                                       cursor: "pointer",
-                                      borderTop: "1px solid var(--border-light)",
-                                      fontSize: 13,
-                                      transition: "background 0.12s ease",
+                                      transition: "box-shadow 0.12s ease, border-color 0.12s ease",
                                     }}
-                                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)"; }}
-                                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                                    onMouseEnter={(e) => {
+                                      (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
+                                      (e.currentTarget as HTMLDivElement).style.borderColor = "var(--accent)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+                                      (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-light)";
+                                    }}
                                   >
-                                    <div style={{
-                                      width: 32, height: 32, borderRadius: 9, background: "var(--green-bg)", color: "var(--green-text)",
-                                      fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                    }}>{(c.name || "?")[0].toUpperCase()}</div>
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ fontWeight: 600, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-                                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.phone}</div>
+                                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                      <div style={{
+                                        width: 28, height: 28, borderRadius: 8, background: "var(--green-bg)", color: "var(--green-text)",
+                                        fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                                      }}>{(c.name || "?")[0].toUpperCase()}</div>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.phone}</div>
+                                      </div>
                                     </div>
-                                    <div style={{ minWidth: 0, fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.bank ?? undefined}>
-                                      {bankShort ?? "—"}
-                                    </div>
-                                    <div style={{ minWidth: 0, fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.assistantName ?? undefined}>
-                                      {c.assistantName ?? "—"}
-                                    </div>
-                                    <span style={{ color: "var(--text-tertiary)", fontSize: 16, lineHeight: 1, textAlign: "center" }} aria-hidden>›</span>
+                                    {(c.bank || c.assistantName) ? (
+                                      <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={[c.bank, c.assistantName].filter(Boolean).join(" · ")}>
+                                        {[c.bank, c.assistantName].filter(Boolean).join(" · ")}
+                                      </div>
+                                    ) : null}
                                   </div>
-                                );
-                              })}
+                                ))
+                              )}
                             </div>
                           </div>
                         );
@@ -3939,6 +3991,48 @@ export default function AppPage() {
                             })}
                           </div>
                         ) : null}
+                      </div>
+                      <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Комментарии</div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4, marginBottom: 10, lineHeight: 1.45 }}>
+                          Дописывайте факты по ходу работы — видят все с доступом к клиентам.
+                        </div>
+                        {clientDetailCommentsLoading ? (
+                          <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "8px 0" }}>Загрузка…</div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto", marginBottom: 10 }}>
+                            {clientDetailComments.length === 0 ? (
+                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Пока нет комментариев</div>
+                            ) : (
+                              clientDetailComments.map((cm) => (
+                                <div key={cm.id} style={{ padding: "8px 10px", background: "var(--bg-metric)", borderRadius: 8, border: "1px solid var(--border-light)" }}>
+                                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 4 }}>
+                                    {(cm.user.name || cm.user.email)} · {new Date(cm.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </div>
+                                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.45, color: "var(--text-primary)" }}>{cm.body}</div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                        <textarea
+                          className="form-input"
+                          rows={2}
+                          value={clientDetailCommentText}
+                          onChange={(e) => setClientDetailCommentText(e.target.value)}
+                          placeholder="Новый комментарий…"
+                          disabled={clientCommentPosting}
+                          style={{ resize: "vertical", minHeight: 52 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ marginTop: 8, width: "100%" }}
+                          disabled={!clientDetailCommentText.trim() || clientCommentPosting}
+                          onClick={() => void postClientComment()}
+                        >
+                          {clientCommentPosting ? "Отправка…" : "Добавить комментарий"}
+                        </button>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
                         <button type="button" className="btn btn-secondary" onClick={() => void deleteClient(clientViewOpen.id)}>Удалить</button>

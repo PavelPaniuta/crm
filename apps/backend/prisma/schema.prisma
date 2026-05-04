@@ -100,6 +100,7 @@ model User {
   auditLogs         AuditLog[]
   salaryConfig      EmployeeSalaryConfig?
   salaryPayments    SalaryPayment[]
+  clientComments    ClientComment[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -196,11 +197,25 @@ model Client {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  deals Deal[]
+  deals    Deal[]
+  comments ClientComment[]
 
   @@index([organizationId])
   @@index([statusId])
   @@unique([organizationId, phone])
+}
+
+model ClientComment {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([userId])
 }
 
 model Deal {

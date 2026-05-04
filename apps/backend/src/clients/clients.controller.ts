@@ -12,6 +12,20 @@ export class ClientsController {
     return this.clients.list(req.user.activeOrganizationId, q);
   }
 
+  @Get(':id/comments')
+  listComments(@Req() req: any, @Param('id') id: string) {
+    return this.clients.listComments(req.user.activeOrganizationId, id);
+  }
+
+  @Post(':id/comments')
+  addComment(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { body: string },
+  ) {
+    return this.clients.addComment(req.user.activeOrganizationId, id, req.user.id, body.body);
+  }
+
   @Post()
   create(
     @Req() req: any,
