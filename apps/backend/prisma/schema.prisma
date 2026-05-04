@@ -65,6 +65,9 @@ model Organization {
   tasks         Task[]
   chatMessages  ChatMessage[] @relation("OrgMessages")
   salaryPayments SalaryPayment[]
+
+  clientStatuses         ClientStatus[]
+  clientFieldDefinitions ClientFieldDefinition[]
 }
 
 model User {
@@ -140,11 +143,53 @@ model AuditLog {
   @@index([createdAt])
 }
 
+model ClientStatus {
+  id             String   @id @default(cuid())
+  slug           String
+  label          String
+  sortOrder      Int      @default(0)
+  color          String?
+  isTerminal     Boolean  @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clients        Client[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+model ClientFieldDefinition {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  label          String
+  type           FieldType @default(TEXT)
+  required       Boolean   @default(false)
+  order          Int       @default(0)
+  options        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
+
 model Client {
   id        String   @id @default(cuid())
   name      String
   phone     String
   note      String?
+  statusId  String?
+  status    ClientStatus? @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  bank          String?
+  assistantName String?
+  callSummary   String?   @db.Text
+  callStartedAt DateTime?
+  customData    Json      @default("{}")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -154,6 +199,7 @@ model Client {
   deals Deal[]
 
   @@index([organizationId])
+  @@index([statusId])
   @@unique([organizationId, phone])
 }
 

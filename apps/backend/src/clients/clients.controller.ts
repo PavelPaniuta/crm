@@ -13,7 +13,21 @@ export class ClientsController {
   }
 
   @Post()
-  create(@Req() req: any, @Body() body: { name: string; phone: string; note?: string }) {
+  create(
+    @Req() req: any,
+    @Body()
+    body: {
+      name: string;
+      phone: string;
+      note?: string | null;
+      statusId?: string | null;
+      bank?: string | null;
+      assistantName?: string | null;
+      callSummary?: string | null;
+      callStartedAt?: string | null;
+      customData?: Record<string, unknown> | null;
+    },
+  ) {
     return this.clients.create(req.user.activeOrganizationId, body);
   }
 
@@ -21,7 +35,18 @@ export class ClientsController {
   update(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { name?: string; phone?: string; note?: string | null },
+    @Body()
+    body: {
+      name?: string;
+      phone?: string;
+      note?: string | null;
+      statusId?: string | null;
+      bank?: string | null;
+      assistantName?: string | null;
+      callSummary?: string | null;
+      callStartedAt?: string | null;
+      customData?: Record<string, unknown> | null;
+    },
   ) {
     return this.clients.update(req.user.activeOrganizationId, id, body);
   }
@@ -31,4 +56,3 @@ export class ClientsController {
     return this.clients.remove(req.user.activeOrganizationId, id);
   }
 }
-

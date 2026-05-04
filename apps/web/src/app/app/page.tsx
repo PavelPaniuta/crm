@@ -17,12 +17,85 @@ type User = {
   activeOrganizationId: string;
 };
 
+type ClientPipelineStatus = {
+  id: string;
+  slug: string;
+  label: string;
+  sortOrder: number;
+  color: string | null;
+  isTerminal: boolean;
+};
+
 type Client = {
   id: string;
   name: string;
   phone: string;
   note?: string | null;
+  statusId?: string | null;
+  status?: ClientPipelineStatus | null;
+  bank?: string | null;
+  assistantName?: string | null;
+  callSummary?: string | null;
+  callStartedAt?: string | null;
+  customData?: Record<string, unknown>;
 };
+
+type ClientFormState = {
+  name: string;
+  phone: string;
+  note: string;
+  statusId: string;
+  bank: string;
+  assistantName: string;
+  callSummary: string;
+  callStartedAt: string;
+};
+
+function emptyClientForm(): ClientFormState {
+  return {
+    name: "",
+    phone: "",
+    note: "",
+    statusId: "",
+    bank: "",
+    assistantName: "",
+    callSummary: "",
+    callStartedAt: "",
+  };
+}
+
+/** Разбор текста из бота / мессенджера (строки «Клиент:», «Телефон:», …). */
+function parseClientLeadPaste(text: string): Partial<ClientFormState> {
+  const norm = text.replace(/\r\n/g, "\n");
+  const pickLine = (re: RegExp) => {
+    const m = norm.match(re);
+    return m ? m[1].replace(/\s+$/u, "").trim() : "";
+  };
+  const out: Partial<ClientFormState> = {};
+  const assistant = pickLine(/[Аа]ссистент\s*[:：]\s*(.+)/im);
+  if (assistant) out.assistantName = assistant;
+  const bank = pickLine(/Банк\s*[:：]\s*(.+)/im);
+  if (bank) out.bank = bank;
+  const name = pickLine(/Клиент\s*[:：]\s*(.+)/im);
+  if (name) out.name = name;
+  const phone = pickLine(/Телефон\s*[:：]\s*(.+)/im);
+  if (phone) out.phone = phone;
+  const sumM = norm.match(/Summary\s*[:：]\s*([\s\S]+?)(?=\n\s*[⏰]|\n\s*Время\s+начала|$)/im);
+  if (sumM) out.callSummary = sumM[1].trim();
+  else {
+    const one = pickLine(/Summary\s*[:：]\s*(.+)/im);
+    if (one) out.callSummary = one;
+  }
+  const timeM = norm.match(/Время\s+начала\s+звонка\s*[:：]\s*(.+)/im);
+  if (timeM) {
+    const p = timeM[1].trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\s*,\s*(\d{1,2}):(\d{2})/);
+    if (p) {
+      const [, d, mo, y, h, mi] = p;
+      out.callStartedAt = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}`;
+    }
+  }
+  return out;
+}
 
 type Expense = {
   id: string;
@@ -106,6 +179,16 @@ type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "setting
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
+
+type ClientFieldDef = {
+  id: string;
+  key: string;
+  label: string;
+  type: FieldType;
+  required: boolean;
+  order: number;
+  options?: string | null;
+};
 
 type TemplateField = {
   id: string;
@@ -221,7 +304,7 @@ type Deal = {
   clientId?: string | null;
   templateId?: string | null;
   template?: DealTemplate | null;
-  client?: { id: string; name: string; phone: string } | null;
+  client?: { id: string; name: string; phone: string; status?: ClientPipelineStatus | null } | null;
   amounts: Array<{
     id: string;
     amountIn: string;
@@ -324,12 +407,24 @@ export default function AppPage() {
   // --- Clients ---
   const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
-  const [newClientName, setNewClientName] = useState("");
-  const [newClientPhone, setNewClientPhone] = useState("");
+  const [clientStatuses, setClientStatuses] = useState<ClientPipelineStatus[]>([]);
+  const [clientFieldDefs, setClientFieldDefs] = useState<ClientFieldDef[]>([]);
+  const [clientStatusFilter, setClientStatusFilter] = useState<string>("all");
+  const [clientSearchQ, setClientSearchQ] = useState("");
+  const [newClientForm, setNewClientForm] = useState<ClientFormState>(emptyClientForm);
+  const [newClientCustom, setNewClientCustom] = useState<Record<string, string>>({});
+  const [clientPasteImport, setClientPasteImport] = useState("");
   const [clientEditOpen, setClientEditOpen] = useState(false);
   const [clientEditing, setClientEditing] = useState<Client | null>(null);
-  const [clientEditName, setClientEditName] = useState("");
-  const [clientEditPhone, setClientEditPhone] = useState("");
+  const [clientEditForm, setClientEditForm] = useState<ClientFormState>(emptyClientForm);
+  const [clientEditCustom, setClientEditCustom] = useState<Record<string, string>>({});
+  const [newClientStatusSlug, setNewClientStatusSlug] = useState("");
+  const [newClientStatusLabel, setNewClientStatusLabel] = useState("");
+  const [newClientFieldKey, setNewClientFieldKey] = useState("");
+  const [newClientFieldLabel, setNewClientFieldLabel] = useState("");
+  const [newClientFieldType, setNewClientFieldType] = useState<FieldType>("TEXT");
+  const [clientStatusDrafts, setClientStatusDrafts] = useState<Record<string, { label: string; sortOrder: string; color: string; isTerminal: boolean }>>({});
+  const [clientFieldDrafts, setClientFieldDrafts] = useState<Record<string, { label: string; order: string; options: string; type: FieldType; required: boolean }>>({});
 
   // --- Expenses ---
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -628,13 +723,23 @@ export default function AppPage() {
   }, [chatMessages, tab]);
 
   useEffect(() => {
-    if (tab === "clients") loadClients();
+    if (tab === "clients") {
+      void loadClients();
+      void loadClientStatuses();
+      void loadClientFieldDefinitions();
+    }
     if (tab === "expenses") loadExpenses();
     if (tab === "deals") { loadDeals(); loadTemplates(); }
     if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") { loadProfile(); void loadSessions(); }
-    if (tab === "settings") { loadUsers(); loadOrgs(); loadTemplates(); if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") { void loadAuditLog(0); void loadExchangeRates(); } }
+    if (tab === "settings") {
+      loadUsers(); loadOrgs(); loadTemplates();
+      if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") {
+        void loadAuditLog(0); void loadExchangeRates();
+        void loadClientStatuses(); void loadClientFieldDefinitions();
+      }
+    }
     if (tab === "staff") loadStaff();
     if (tab === "salary") loadSalary();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
@@ -656,13 +761,54 @@ export default function AppPage() {
   async function loadClients() {
     setClientsLoading(true);
     try {
-      const res = await fetch("/api/clients", { credentials: "include" });
+      const q = clientSearchQ.trim();
+      const url = q ? `/api/clients?q=${encodeURIComponent(q)}` : "/api/clients";
+      const res = await fetch(url, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
       if (!res.ok) return;
       const j = await res.json();
       setClients(Array.isArray(j) ? j : []);
     } finally { setClientsLoading(false); }
   }
+
+  async function loadClientStatuses() {
+    const res = await fetch("/api/client-statuses", { credentials: "include" });
+    if (res.status === 401) { router.replace("/login"); return; }
+    if (res.ok) setClientStatuses(await res.json());
+  }
+
+  async function loadClientFieldDefinitions() {
+    const res = await fetch("/api/client-field-definitions", { credentials: "include" });
+    if (res.status === 401) { router.replace("/login"); return; }
+    if (res.ok) setClientFieldDefs(await res.json());
+  }
+
+  const clientsFiltered = useMemo(() => {
+    if (clientStatusFilter === "all") return clients;
+    return clients.filter((c) => (c.status?.id ?? c.statusId) === clientStatusFilter);
+  }, [clients, clientStatusFilter]);
+
+  useEffect(() => {
+    setClientStatusDrafts(
+      Object.fromEntries(
+        clientStatuses.map((s) => [
+          s.id,
+          { label: s.label, sortOrder: String(s.sortOrder), color: s.color ?? "", isTerminal: s.isTerminal },
+        ]),
+      ),
+    );
+  }, [clientStatuses]);
+
+  useEffect(() => {
+    setClientFieldDrafts(
+      Object.fromEntries(
+        clientFieldDefs.map((f) => [
+          f.id,
+          { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required },
+        ]),
+      ),
+    );
+  }, [clientFieldDefs]);
 
   async function loadExpenses() {
     setExpensesLoading(true);
@@ -1645,34 +1791,147 @@ export default function AppPage() {
   }
 
   // ---- clients ----
+  function applyClientPasteToNewForm() {
+    const p = parseClientLeadPaste(clientPasteImport);
+    setNewClientForm((f) => ({ ...f, ...p }));
+  }
+
   async function createClient() {
+    const { name, phone, note, statusId, bank, assistantName, callSummary, callStartedAt } = newClientForm;
+    if (!name.trim() || !phone.trim()) return alert("Укажите имя и телефон");
+    const customData: Record<string, string> = {};
+    for (const def of clientFieldDefs) {
+      const v = newClientCustom[def.key]?.trim() ?? "";
+      if (v) customData[def.key] = v;
+    }
     const res = await fetch("/api/clients", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newClientName, phone: newClientPhone }),
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: phone.trim(),
+        note: note.trim() || undefined,
+        statusId: statusId || undefined,
+        bank: bank.trim() || null,
+        assistantName: assistantName.trim() || null,
+        callSummary: callSummary.trim() || null,
+        callStartedAt: callStartedAt || null,
+        customData: Object.keys(customData).length ? customData : undefined,
+      }),
     });
-    if (!res.ok) return alert("Не удалось создать клиента");
-    setNewClientName(""); setNewClientPhone("");
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return alert(j.message ?? "Не удалось создать клиента");
+    }
+    setNewClientForm(emptyClientForm());
+    setNewClientCustom({});
+    setClientPasteImport("");
     await loadClients();
   }
 
   function openClientEdit(c: Client) {
     setClientEditing(c);
-    setClientEditName(c.name);
-    setClientEditPhone(c.phone);
+    setClientEditForm({
+      name: c.name,
+      phone: c.phone,
+      note: c.note ?? "",
+      statusId: c.status?.id ?? c.statusId ?? "",
+      bank: c.bank ?? "",
+      assistantName: c.assistantName ?? "",
+      callSummary: c.callSummary ?? "",
+      callStartedAt: c.callStartedAt
+        ? new Date(c.callStartedAt).toISOString().slice(0, 16)
+        : "",
+    });
+    const cd = c.customData && typeof c.customData === "object" ? (c.customData as Record<string, unknown>) : {};
+    const next: Record<string, string> = {};
+    for (const def of clientFieldDefs) {
+      next[def.key] = cd[def.key] != null ? String(cd[def.key]) : "";
+    }
+    setClientEditCustom(next);
     setClientEditOpen(true);
   }
 
   async function saveClientEdit() {
     if (!clientEditing) return;
+    const { name, phone, note, statusId, bank, assistantName, callSummary, callStartedAt } = clientEditForm;
+    if (!name.trim() || !phone.trim()) return alert("Укажите имя и телефон");
+    const customData: Record<string, string> = {};
+    for (const def of clientFieldDefs) {
+      customData[def.key] = clientEditCustom[def.key]?.trim() ?? "";
+    }
     const res = await fetch(`/api/clients/${clientEditing.id}`, {
       method: "PATCH", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: clientEditName, phone: clientEditPhone }),
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: phone.trim(),
+        note: note.trim() || null,
+        statusId: statusId || null,
+        bank: bank.trim() || null,
+        assistantName: assistantName.trim() || null,
+        callSummary: callSummary.trim() || null,
+        callStartedAt: callStartedAt || null,
+        customData,
+      }),
     });
-    if (!res.ok) return alert("Не удалось обновить клиента");
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return alert(j.message ?? "Не удалось обновить клиента");
+    }
     setClientEditOpen(false);
     await loadClients();
+  }
+
+  async function deleteClientStatusRow(id: string) {
+    if (!confirm("Удалить статус?")) return;
+    const res = await fetch(`/api/client-statuses/${id}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return alert(j.message ?? "Нельзя удалить");
+    }
+    await loadClientStatuses();
+  }
+
+  async function addClientStatusRow() {
+    const slug = newClientStatusSlug.trim().toLowerCase();
+    const label = newClientStatusLabel.trim();
+    if (!slug || !label) return alert("Slug и название обязательны (slug: латиница, например follow_up)");
+    const res = await fetch("/api/client-statuses", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, label }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return alert(j.message ?? "Ошибка");
+    }
+    setNewClientStatusSlug(""); setNewClientStatusLabel("");
+    await loadClientStatuses();
+  }
+
+  async function deleteClientFieldRow(id: string) {
+    if (!confirm("Удалить поле? Значения в карточках останутся в JSON, но поле скроется.")) return;
+    const res = await fetch(`/api/client-field-definitions/${id}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) return alert("Ошибка");
+    await loadClientFieldDefinitions();
+  }
+
+  async function addClientFieldRow() {
+    const key = newClientFieldKey.trim().toLowerCase();
+    const label = newClientFieldLabel.trim();
+    if (!key || !label) return alert("Ключ и подпись обязательны");
+    const res = await fetch("/api/client-field-definitions", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, label, type: newClientFieldType }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return alert(j.message ?? "Ошибка");
+    }
+    setNewClientFieldKey(""); setNewClientFieldLabel(""); setNewClientFieldType("TEXT");
+    await loadClientFieldDefinitions();
   }
 
   async function deleteClient(id: string) {
@@ -3395,89 +3654,233 @@ export default function AppPage() {
               <div className="page-header">
                 <div className="page-header-left">
                   <div className="page-header-title">Клиенты</div>
-                  <div className="page-header-sub">База клиентов вашего офиса</div>
+                  <div className="page-header-sub">Карточки лидов и звонков, статусы и доп. поля настраиваются в «Настройки»</div>
                 </div>
               </div>
+
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Добавить клиента</span>
-                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientName || !newClientPhone}>+ Создать</button>
+                  <button className="btn btn-primary" onClick={createClient} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>+ Создать</button>
                 </div>
-                <div className="card-body g2">
-                  <div>
-                    <div className="form-label">Имя</div>
-                    <input className="form-input" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
+                <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div className="form-label">Вставить текст из бота / Telegram</div>
+                    <textarea className="form-input" rows={4} value={clientPasteImport} onChange={(e) => setClientPasteImport(e.target.value)} placeholder="Вставьте сообщение со строками «Клиент:», «Телефон:», …" style={{ resize: "vertical", minHeight: 72 }} />
+                    <button type="button" className="btn btn-secondary" style={{ justifySelf: "start" }} onClick={applyClientPasteToNewForm}>Заполнить форму из текста</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                    <div>
+                      <div className="form-label">Имя клиента *</div>
+                      <input className="form-input" value={newClientForm.name} onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="form-label">Телефон *</div>
+                      <input className="form-input" value={newClientForm.phone} onChange={(e) => setNewClientForm((f) => ({ ...f, phone: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="form-label">Статус</div>
+                      <select className="form-input" value={newClientForm.statusId} onChange={(e) => setNewClientForm((f) => ({ ...f, statusId: e.target.value }))}>
+                        <option value="">По умолчанию (первый в списке)</option>
+                        {clientStatuses.map((s) => (
+                          <option key={s.id} value={s.id}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="form-label">Банк</div>
+                      <input className="form-input" value={newClientForm.bank} onChange={(e) => setNewClientForm((f) => ({ ...f, bank: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="form-label">Ассистент</div>
+                      <input className="form-input" value={newClientForm.assistantName} onChange={(e) => setNewClientForm((f) => ({ ...f, assistantName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="form-label">Начало звонка</div>
+                      <input className="form-input" type="datetime-local" value={newClientForm.callStartedAt} onChange={(e) => setNewClientForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
+                    </div>
                   </div>
                   <div>
-                    <div className="form-label">Телефон</div>
-                    <input className="form-input" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} />
+                    <div className="form-label">Summary / итог разговора</div>
+                    <textarea className="form-input" rows={3} value={newClientForm.callSummary} onChange={(e) => setNewClientForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical" }} />
                   </div>
+                  <div>
+                    <div className="form-label">Внутренняя заметка</div>
+                    <input className="form-input" value={newClientForm.note} onChange={(e) => setNewClientForm((f) => ({ ...f, note: e.target.value }))} placeholder="Не показывается в карточке лида из бота" />
+                  </div>
+                  {clientFieldDefs.length > 0 ? (
+                    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                      {clientFieldDefs.map((def) => (
+                        <div key={def.id}>
+                          <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
+                          {def.type === "CHECKBOX" ? (
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                              <input type="checkbox" checked={newClientCustom[def.key] === "true"} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
+                              <span style={{ fontSize: 13 }}>Да</span>
+                            </label>
+                          ) : def.type === "SELECT" && def.options ? (
+                            <select className="form-input" value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
+                              <option value="">—</option>
+                              {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
+                                <option key={o} value={o}>{o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-header">
+                <div className="card-header" style={{ flexWrap: "wrap", gap: 10 }}>
                   <span className="card-title">Клиенты</span>
-                  <button className="btn btn-secondary" onClick={loadClients}>Обновить</button>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", flex: 1, justifyContent: "flex-end" }}>
+                    <input className="form-input" style={{ maxWidth: 220 }} placeholder="Поиск…" value={clientSearchQ} onChange={(e) => setClientSearchQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void loadClients(); }} />
+                    <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Найти</button>
+                    <select className="form-input" style={{ maxWidth: 200 }} value={clientStatusFilter} onChange={(e) => setClientStatusFilter(e.target.value)}>
+                      <option value="all">Все статусы</option>
+                      {clientStatuses.map((s) => (
+                        <option key={s.id} value={s.id}>{s.label}</option>
+                      ))}
+                    </select>
+                    <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Обновить</button>
+                  </div>
                 </div>
-                <div className="card-body table-scroll" style={{ padding: 0 }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Имя</th><th>Телефон</th><th style={{ width: 100 }}></th></tr>
-                    </thead>
-                    <tbody>
-                      {clientsLoading ? (
-                        <tr><td colSpan={3} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
-                      ) : clients.length === 0 ? (
-                        <tr><td colSpan={3}>
-                          <div className="empty-state">
-                            <div className="empty-state-icon">
-                              <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                            </div>
-                            <div className="empty-state-title">Нет клиентов</div>
-                            <div className="empty-state-desc">Добавьте первого клиента используя форму выше</div>
-                          </div>
-                        </td></tr>
-                      ) : (
-                        clients.map((c) => (
-                          <tr key={c.id}>
-                            <td style={{ fontWeight: 500 }}>{c.name}</td>
-                            <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)" }}>{c.phone}</td>
-                            <td style={{ padding: "8px 16px 8px 8px" }}>
-                              <div style={{ display: "flex", gap: 4 }}>
-                                <button className="btn btn-secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }} onClick={() => openClientEdit(c)}>Изменить</button>
-                                <button className="btn btn-ghost" style={{ height: 28, padding: "0 8px", fontSize: 12, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
+                <div className="card-body" style={{ padding: 16 }}>
+                  {clientsLoading ? (
+                    <div style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</div>
+                  ) : clientsFiltered.length === 0 ? (
+                    <div className="empty-state">
+                      <div className="empty-state-icon">
+                        <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      </div>
+                      <div className="empty-state-title">Нет клиентов</div>
+                      <div className="empty-state-desc">Измените фильтр или добавьте клиента выше</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                      {clientsFiltered.map((c) => {
+                        const st = c.status;
+                        const badgeBg = st?.color ? `${st.color}22` : "var(--accent-light)";
+                        const badgeFg = st?.color ?? "var(--accent)";
+                        return (
+                          <div key={c.id} className="card" style={{ border: "1px solid var(--border-light)", margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                              <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                                <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 700, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  {(c.name || "?")[0].toUpperCase()}
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
+                                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)" }}>{c.phone}</div>
+                                </div>
                               </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                              {st ? (
+                                <span className="badge" style={{ background: badgeBg, color: badgeFg, flexShrink: 0 }}>{st.label}</span>
+                              ) : null}
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "grid", gap: 4 }}>
+                              {c.bank ? <div><span style={{ color: "var(--text-tertiary)" }}>Банк:</span> {c.bank}</div> : null}
+                              {c.assistantName ? <div><span style={{ color: "var(--text-tertiary)" }}>Ассистент:</span> {c.assistantName}</div> : null}
+                              {c.callStartedAt ? (
+                                <div><span style={{ color: "var(--text-tertiary)" }}>Звонок:</span>{" "}
+                                  {new Date(c.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              ) : null}
+                            </div>
+                            {c.callSummary ? (
+                              <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.45, borderTop: "1px solid var(--border-light)", paddingTop: 8, maxHeight: 120, overflow: "auto" }}>
+                                {c.callSummary}
+                              </div>
+                            ) : null}
+                            <div style={{ display: "flex", gap: 6, marginTop: "auto", paddingTop: 4 }}>
+                              <button type="button" className="btn btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => openClientEdit(c)}>Изменить</button>
+                              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* client edit modal */}
               {clientEditOpen && clientEditing ? (
                 <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
                   onMouseDown={(e) => { if (e.target === e.currentTarget) setClientEditOpen(false); }}>
-                  <div className="card" style={{ width: 420, maxWidth: "100%" }}>
+                  <div className="card" style={{ width: 520, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
                     <div className="card-header">
                       <span className="card-title">Редактировать клиента</span>
-                      <button className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                      <div>
-                        <div className="form-label">Имя</div>
-                        <input className="form-input" value={clientEditName} onChange={(e) => setClientEditName(e.target.value)} />
+                      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                        <div>
+                          <div className="form-label">Имя *</div>
+                          <input className="form-input" value={clientEditForm.name} onChange={(e) => setClientEditForm((f) => ({ ...f, name: e.target.value }))} />
+                        </div>
+                        <div>
+                          <div className="form-label">Телефон *</div>
+                          <input className="form-input" value={clientEditForm.phone} onChange={(e) => setClientEditForm((f) => ({ ...f, phone: e.target.value }))} />
+                        </div>
                       </div>
                       <div>
-                        <div className="form-label">Телефон</div>
-                        <input className="form-input" value={clientEditPhone} onChange={(e) => setClientEditPhone(e.target.value)} />
+                        <div className="form-label">Статус</div>
+                        <select className="form-input" value={clientEditForm.statusId} onChange={(e) => setClientEditForm((f) => ({ ...f, statusId: e.target.value }))}>
+                          {clientStatuses.map((s) => (
+                            <option key={s.id} value={s.id}>{s.label}</option>
+                          ))}
+                        </select>
                       </div>
+                      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                        <div>
+                          <div className="form-label">Банк</div>
+                          <input className="form-input" value={clientEditForm.bank} onChange={(e) => setClientEditForm((f) => ({ ...f, bank: e.target.value }))} />
+                        </div>
+                        <div>
+                          <div className="form-label">Ассистент</div>
+                          <input className="form-input" value={clientEditForm.assistantName} onChange={(e) => setClientEditForm((f) => ({ ...f, assistantName: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="form-label">Начало звонка</div>
+                        <input className="form-input" type="datetime-local" value={clientEditForm.callStartedAt} onChange={(e) => setClientEditForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
+                      </div>
+                      <div>
+                        <div className="form-label">Summary</div>
+                        <textarea className="form-input" rows={3} value={clientEditForm.callSummary} onChange={(e) => setClientEditForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical" }} />
+                      </div>
+                      <div>
+                        <div className="form-label">Внутренняя заметка</div>
+                        <input className="form-input" value={clientEditForm.note} onChange={(e) => setClientEditForm((f) => ({ ...f, note: e.target.value }))} />
+                      </div>
+                      {clientFieldDefs.map((def) => (
+                        <div key={def.id}>
+                          <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
+                          {def.type === "CHECKBOX" ? (
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                              <input type="checkbox" checked={clientEditCustom[def.key] === "true"} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
+                              <span style={{ fontSize: 13 }}>Да</span>
+                            </label>
+                          ) : def.type === "SELECT" && def.options ? (
+                            <select className="form-input" value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
+                              <option value="">—</option>
+                              {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
+                                <option key={o} value={o}>{o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
+                          )}
+                        </div>
+                      ))}
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                        <button className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
-                        <button className="btn btn-primary" onClick={saveClientEdit}>Сохранить</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
+                        <button type="button" className="btn btn-primary" onClick={() => void saveClientEdit()}>Сохранить</button>
                       </div>
                     </div>
                   </div>
@@ -5159,6 +5562,178 @@ export default function AppPage() {
                   )}
                 </div>
               </div>
+
+              {isAdmin ? (
+                <>
+                  <div className="card">
+                    <div className="card-header">
+                      <div>
+                        <span className="card-title">Клиенты: статусы воронки</span>
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>Slug не меняется после создания. Цвет — hex, например #3b82f6</div>
+                      </div>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientStatuses()}>Обновить</button>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+                        <div style={{ minWidth: 140 }}>
+                          <div className="form-label">Новый slug</div>
+                          <input className="form-input" value={newClientStatusSlug} onChange={(e) => setNewClientStatusSlug(e.target.value)} placeholder="callback" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 160 }}>
+                          <div className="form-label">Название</div>
+                          <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="Обратный звонок" />
+                        </div>
+                        <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>+ Статус</button>
+                      </div>
+                      <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 10, overflow: "auto" }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr><th>Slug</th><th>Название</th><th>Порядок</th><th>Цвет</th><th>Финальный</th><th style={{ width: 160 }}></th></tr>
+                          </thead>
+                          <tbody>
+                            {clientStatuses.map((s) => {
+                              const d = clientStatusDrafts[s.id];
+                              return (
+                                <tr key={s.id}>
+                                  <td><code style={{ fontSize: 12 }}>{s.slug}</code></td>
+                                  <td>
+                                    <input className="form-input" style={{ height: 32 }} value={d?.label ?? s.label} onChange={(e) => setClientStatusDrafts((prev) => ({ ...prev, [s.id]: { ...(prev[s.id] ?? { label: s.label, sortOrder: String(s.sortOrder), color: s.color ?? "", isTerminal: s.isTerminal }), label: e.target.value } }))} />
+                                  </td>
+                                  <td style={{ width: 90 }}>
+                                    <input className="form-input" style={{ height: 32 }} type="number" value={d?.sortOrder ?? String(s.sortOrder)} onChange={(e) => setClientStatusDrafts((prev) => ({ ...prev, [s.id]: { ...(prev[s.id] ?? { label: s.label, sortOrder: String(s.sortOrder), color: s.color ?? "", isTerminal: s.isTerminal }), sortOrder: e.target.value } }))} />
+                                  </td>
+                                  <td style={{ width: 110 }}>
+                                    <input className="form-input" style={{ height: 32 }} value={d?.color ?? s.color ?? ""} onChange={(e) => setClientStatusDrafts((prev) => ({ ...prev, [s.id]: { ...(prev[s.id] ?? { label: s.label, sortOrder: String(s.sortOrder), color: s.color ?? "", isTerminal: s.isTerminal }), color: e.target.value } }))} />
+                                  </td>
+                                  <td>
+                                    <input type="checkbox" checked={d?.isTerminal ?? s.isTerminal} onChange={(e) => setClientStatusDrafts((prev) => ({ ...prev, [s.id]: { ...(prev[s.id] ?? { label: s.label, sortOrder: String(s.sortOrder), color: s.color ?? "", isTerminal: s.isTerminal }), isTerminal: e.target.checked } }))} />
+                                  </td>
+                                  <td>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={async () => {
+                                        const dr = clientStatusDrafts[s.id];
+                                        if (!dr) return;
+                                        const res = await fetch(`/api/client-statuses/${s.id}`, {
+                                          method: "PATCH", credentials: "include",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            label: dr.label,
+                                            sortOrder: Number(dr.sortOrder) || 0,
+                                            color: dr.color.trim() || null,
+                                            isTerminal: dr.isTerminal,
+                                          }),
+                                        });
+                                        if (!res.ok) {
+                                          const j = await res.json().catch(() => ({}));
+                                          return alert(j.message ?? "Ошибка");
+                                        }
+                                        await loadClientStatuses();
+                                      }}>Сохранить</button>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientStatusRow(s.id)}>Удалить</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-header">
+                      <div>
+                        <span className="card-title">Клиенты: дополнительные поля</span>
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>Поля карточки клиента (кроме банка, ассистента, summary). Для SELECT укажите варианты через запятую или с новой строки.</div>
+                      </div>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientFieldDefinitions()}>Обновить</button>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+                        <div style={{ minWidth: 120 }}>
+                          <div className="form-label">Ключ</div>
+                          <input className="form-input" value={newClientFieldKey} onChange={(e) => setNewClientFieldKey(e.target.value)} placeholder="source" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 140 }}>
+                          <div className="form-label">Подпись</div>
+                          <input className="form-input" value={newClientFieldLabel} onChange={(e) => setNewClientFieldLabel(e.target.value)} placeholder="Источник лида" />
+                        </div>
+                        <div style={{ width: 160 }}>
+                          <div className="form-label">Тип</div>
+                          <select className="form-input" value={newClientFieldType} onChange={(e) => setNewClientFieldType(e.target.value as FieldType)}>
+                            {(["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"] as const).map((t) => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>+ Поле</button>
+                      </div>
+                      <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 10, overflow: "auto" }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr><th>Ключ</th><th>Подпись</th><th>Тип</th><th>Порядок</th><th>Обяз.</th><th>Варианты (SELECT)</th><th style={{ width: 160 }}></th></tr>
+                          </thead>
+                          <tbody>
+                            {clientFieldDefs.map((f) => {
+                              const d = clientFieldDrafts[f.id];
+                              return (
+                                <tr key={f.id}>
+                                  <td><code style={{ fontSize: 12 }}>{f.key}</code></td>
+                                  <td>
+                                    <input className="form-input" style={{ height: 32 }} value={d?.label ?? f.label} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), label: e.target.value } }))} />
+                                  </td>
+                                  <td style={{ width: 130 }}>
+                                    <select className="form-input" style={{ height: 32 }} value={d?.type ?? f.type} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), type: e.target.value as FieldType } }))}>
+                                      {(["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"] as const).map((t) => (
+                                        <option key={t} value={t}>{t}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td style={{ width: 80 }}>
+                                    <input className="form-input" style={{ height: 32 }} type="number" value={d?.order ?? String(f.order)} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), order: e.target.value } }))} />
+                                  </td>
+                                  <td>
+                                    <input type="checkbox" checked={d?.required ?? f.required} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), required: e.target.checked } }))} />
+                                  </td>
+                                  <td style={{ minWidth: 160 }}>
+                                    <input className="form-input" style={{ height: 32 }} value={d?.options ?? f.options ?? ""} onChange={(e) => setClientFieldDrafts((prev) => ({ ...prev, [f.id]: { ...(prev[f.id] ?? { label: f.label, order: String(f.order), options: f.options ?? "", type: f.type, required: f.required }), options: e.target.value } }))} />
+                                  </td>
+                                  <td>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={async () => {
+                                        const dr = clientFieldDrafts[f.id];
+                                        if (!dr) return;
+                                        const res = await fetch(`/api/client-field-definitions/${f.id}`, {
+                                          method: "PATCH", credentials: "include",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            label: dr.label,
+                                            type: dr.type,
+                                            required: dr.required,
+                                            order: Number(dr.order) || 0,
+                                            options: dr.options.trim() || null,
+                                          }),
+                                        });
+                                        if (!res.ok) {
+                                          const j = await res.json().catch(() => ({}));
+                                          return alert(j.message ?? "Ошибка");
+                                        }
+                                        await loadClientFieldDefinitions();
+                                      }}>Сохранить</button>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientFieldRow(f.id)}>Удалить</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
 
               <div className="card">
                 <div className="card-header">

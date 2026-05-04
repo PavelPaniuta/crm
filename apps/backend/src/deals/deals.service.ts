@@ -25,7 +25,7 @@ export class DealsService {
   constructor(private prisma: PrismaService) {}
 
   private readonly dealInclude = {
-    client: true,
+    client: { include: { status: true } },
     amounts: true,
     dataRows: { orderBy: { order: 'asc' as const } },
     template: { include: { fields: { orderBy: { order: 'asc' as const } } } },
