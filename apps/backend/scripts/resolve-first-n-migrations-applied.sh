@@ -12,14 +12,16 @@
 #
 set -e
 N="${1:?Usage: $0 <N> — number of earliest migration folders to mark as applied without running SQL}"
-cd "$(dirname "$0")/.."
+BACKEND="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$BACKEND/../.." && pwd)"
+cd "$ROOT"
 i=0
-for d in $(ls -1 prisma/migrations | sort); do
-  [ -f "prisma/migrations/$d/migration.sql" ] || continue
+for d in $(ls -1 "$BACKEND/prisma/migrations" | sort); do
+  [ -f "$BACKEND/prisma/migrations/$d/migration.sql" ] || continue
   i=$((i + 1))
   [ "$i" -le "$N" ] || break
   echo "migrate resolve --applied $d"
-  npx prisma migrate resolve --applied "$d"
+  npm exec --workspace=@biscrm/backend -- prisma migrate resolve --applied "$d"
 done
 echo "migrate deploy"
-npx prisma migrate deploy
+npm exec --workspace=@biscrm/backend -- prisma migrate deploy

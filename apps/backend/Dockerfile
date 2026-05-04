@@ -14,10 +14,8 @@ COPY apps/backend ./apps/backend
 WORKDIR /app
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 
-# generate из каталога backend: npx находит hoisted prisma в /app/node_modules
-WORKDIR /app/apps/backend
-RUN npx prisma generate
-WORKDIR /app
+# Только Prisma из lockfile (6.x). Голый `npx prisma` качает Prisma 7 — другой формат schema (P1012).
+RUN npm exec --workspace=@biscrm/backend -- prisma generate
 
 # Build Nest
 RUN npm run build -w @biscrm/backend
