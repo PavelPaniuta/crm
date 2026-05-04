@@ -13,15 +13,22 @@
 set -e
 N="${1:?Usage: $0 <N> — number of earliest migration folders to mark as applied without running SQL}"
 BACKEND="$(cd "$(dirname "$0")/.." && pwd)"
-ROOT="$(cd "$BACKEND/../.." && pwd)"
-cd "$ROOT"
+cd "$BACKEND"
+if [ -f node_modules/prisma/build/index.js ]; then
+  PRISMA_CLI=node_modules/prisma/build/index.js
+elif [ -f ../../node_modules/prisma/build/index.js ]; then
+  PRISMA_CLI=../../node_modules/prisma/build/index.js
+else
+  echo "Prisma CLI not found (expected apps/backend/node_modules or monorepo root node_modules)" >&2
+  exit 1
+fi
 i=0
-for d in $(ls -1 "$BACKEND/prisma/migrations" | sort); do
-  [ -f "$BACKEND/prisma/migrations/$d/migration.sql" ] || continue
+for d in $(ls -1 prisma/migrations | sort); do
+  [ -f "prisma/migrations/$d/migration.sql" ] || continue
   i=$((i + 1))
   [ "$i" -le "$N" ] || break
   echo "migrate resolve --applied $d"
-  npm exec --workspace=@biscrm/backend -- prisma migrate resolve --applied "$d"
+  node "$PRISMA_CLI" migrate resolve --applied "$d"
 done
 echo "migrate deploy"
-npm exec --workspace=@biscrm/backend -- prisma migrate deploy
+node "$PRISMA_CLI" migrate deploy

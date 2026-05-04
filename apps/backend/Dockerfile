@@ -14,8 +14,18 @@ COPY apps/backend ./apps/backend
 WORKDIR /app
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 
-# Только Prisma из lockfile (6.x). Голый `npx prisma` качает Prisma 7 — другой формат schema (P1012).
-RUN npm exec --workspace=@biscrm/backend -- prisma generate
+# Локальный CLI из node_modules (6.x). npm exec/npx без пути на Docker часто качают prisma@7.
+RUN set -e; \
+  if [ -f node_modules/prisma/build/index.js ]; then \
+    node node_modules/prisma/build/index.js generate --schema apps/backend/prisma/schema.prisma; \
+  elif [ -f apps/backend/node_modules/prisma/build/index.js ]; then \
+    node apps/backend/node_modules/prisma/build/index.js generate --schema apps/backend/prisma/schema.prisma; \
+  else \
+    echo "Prisma CLI not found after npm ci" >&2; \
+    ls -la node_modules/prisma 2>/dev/null || true; \
+    ls -la apps/backend/node_modules/prisma 2>/dev/null || true; \
+    exit 1; \
+  fi
 
 # Build Nest
 RUN npm run build -w @biscrm/backend
