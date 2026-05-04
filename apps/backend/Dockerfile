@@ -14,16 +14,17 @@ COPY apps/backend ./apps/backend
 WORKDIR /app
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 
-# ��������� Prisma Client (�� ������� �� prisma � PATH)
-RUN npx --yes prisma@6.19.3 generate --schema /app/apps/backend/prisma/schema.prisma
+# Prisma Client (workspace script — avoids npx/prisma path issues on Alpine)
+RUN npm run db:generate -w @biscrm/backend
 
-# ������ Nest
+# Build Nest
 RUN npm run build -w @biscrm/backend
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/backend/node_modules ./apps/backend/node_modules
 COPY --from=build /app/apps/backend/package.json ./apps/backend/package.json
 COPY --from=build /app/apps/backend/dist ./apps/backend/dist
 COPY --from=build /app/apps/backend/prisma ./apps/backend/prisma
