@@ -438,6 +438,7 @@ export default function AppPage() {
   const [newClientCustom, setNewClientCustom] = useState<Record<string, string>>({});
   const [clientPasteImport, setClientPasteImport] = useState("");
   const [clientCreateModalOpen, setClientCreateModalOpen] = useState(false);
+  const [clientViewOpen, setClientViewOpen] = useState<Client | null>(null);
   const [clientEditOpen, setClientEditOpen] = useState(false);
   const [clientEditing, setClientEditing] = useState<Client | null>(null);
   const [clientEditForm, setClientEditForm] = useState<ClientFormState>(emptyClientForm);
@@ -2036,6 +2037,7 @@ export default function AppPage() {
     if (!confirm("Удалить клиента?")) return;
     const res = await fetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) return alert("Не удалось удалить клиента");
+    setClientViewOpen((v) => (v?.id === id ? null : v));
     await loadClients();
   }
 
@@ -3756,7 +3758,7 @@ export default function AppPage() {
               <div className="page-header" style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
                 <div className="page-header-left" style={{ flex: "1 1 260px", minWidth: 0 }}>
                   <div className="page-header-title">Клиенты</div>
-                  <div className="page-header-sub">Список сгруппирован по статусам воронки. Добавление — кнопкой ниже или через AI ассистента (одно подтверждение). Воронку и поля настраивают в «Настройки».</div>
+                  <div className="page-header-sub">Компактные строки по статусам — клик по строке открывает полную карточку. Добавление — кнопкой или через AI ассистента. Воронку настраивают в «Настройки».</div>
                 </div>
                 <button type="button" className="btn btn-primary" style={{ flexShrink: 0 }} onClick={() => openClientCreateModal()}>+ Добавить клиента</button>
               </div>
@@ -3791,72 +3793,76 @@ export default function AppPage() {
                       <div className="empty-state-desc">Измените фильтр или нажмите «Добавить клиента» / создайте карточку через AI ассистента</div>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "32px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 22px",
+                        gap: 10,
+                        padding: "2px 12px 6px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        color: "var(--text-tertiary)",
+                        borderBottom: "1px solid var(--border-light)",
+                      }}>
+                        <span />
+                        <span>Имя · телефон</span>
+                        <span>Банк</span>
+                        <span>Ассистент</span>
+                        <span />
+                      </div>
                       {clientsGroupedByStatus.map((sec) => {
                         const accent = sec.color || "var(--accent)";
-                        const tint = sec.color ? `${sec.color}14` : "var(--bg-metric)";
+                        const tint = sec.color ? `${sec.color}0d` : "var(--bg-metric)";
                         return (
-                          <div key={sec.key} style={{ borderRadius: 14, border: "1px solid var(--border-light)", overflow: "hidden", background: "var(--bg-card)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                          <div key={sec.key} style={{ borderRadius: 10, border: "1px solid var(--border-light)", overflow: "hidden", background: "var(--bg-card)" }}>
                             <div style={{
-                              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-                              padding: "12px 16px", background: tint, borderLeft: `4px solid ${accent}`,
+                              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap",
+                              padding: "6px 12px", background: tint, borderLeft: `3px solid ${accent}`,
                             }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                                <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)" }}>{sec.label}</span>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", background: "var(--bg-card)", padding: "3px 10px", borderRadius: 999, border: "1px solid var(--border-light)" }}>{sec.clients.length}</span>
-                              </div>
+                              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>{sec.label}</span>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)" }}>{sec.clients.length}</span>
                             </div>
-                            <div style={{ padding: "16px 14px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+                            <div role="list" style={{ padding: 0 }}>
                               {sec.clients.map((c) => {
-                                const st = c.status;
-                                const badgeBg = st?.color ? `${st.color}22` : "var(--accent-light)";
-                                const badgeFg = st?.color ?? "var(--accent)";
+                                const bankShort = c.bank ? (c.bank.length > 22 ? `${c.bank.slice(0, 21)}…` : c.bank) : null;
                                 return (
-                                  <div key={c.id} className="card" style={{
-                                    border: "1px solid var(--border-light)",
-                                    margin: 0,
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 0,
-                                    overflow: "hidden",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-                                  }}>
-                                    <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, background: "var(--bg-card)" }}>
-                                      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
-                                        <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 700, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                          {(c.name || "?")[0].toUpperCase()}
-                                        </div>
-                                        <div style={{ minWidth: 0 }}>
-                                          <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.25 }}>{c.name}</div>
-                                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{c.phone}</div>
-                                        </div>
-                                      </div>
-                                      {st ? (
-                                        <span className="badge" style={{ background: badgeBg, color: badgeFg, flexShrink: 0, fontSize: 11 }}>{st.label}</span>
-                                      ) : null}
+                                  <div
+                                    key={c.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setClientViewOpen(c)}
+                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setClientViewOpen(c); } }}
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "32px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 22px",
+                                      gap: 10,
+                                      alignItems: "center",
+                                      padding: "6px 12px",
+                                      cursor: "pointer",
+                                      borderTop: "1px solid var(--border-light)",
+                                      fontSize: 13,
+                                      transition: "background 0.12s ease",
+                                    }}
+                                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)"; }}
+                                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                                  >
+                                    <div style={{
+                                      width: 32, height: 32, borderRadius: 9, background: "var(--green-bg)", color: "var(--green-text)",
+                                      fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                                    }}>{(c.name || "?")[0].toUpperCase()}</div>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontWeight: 600, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.phone}</div>
                                     </div>
-                                    <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-secondary)", display: "grid", gap: 8, background: "var(--bg-metric)", borderTop: "1px solid var(--border-light)" }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Звонок</div>
-                                      {c.bank ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Банк</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.bank}</div> : <div style={{ color: "var(--text-tertiary)" }}>Банк не указан</div>}
-                                      {c.assistantName ? <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Ассистент</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>{c.assistantName}</div> : null}
-                                      {c.callStartedAt ? (
-                                        <div><span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Время</span><span style={{ margin: "0 6px", color: "var(--border-color)" }}>·</span>
-                                          {new Date(c.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                        </div>
-                                      ) : null}
+                                    <div style={{ minWidth: 0, fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.bank ?? undefined}>
+                                      {bankShort ?? "—"}
                                     </div>
-                                    {c.callSummary ? (
-                                      <div style={{ padding: "12px 16px 14px" }}>
-                                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 8 }}>Итог разговора</div>
-                                        <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, maxHeight: 130, overflow: "auto" }}>
-                                          {c.callSummary}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    <div style={{ display: "flex", gap: 8, padding: "12px 16px", marginTop: "auto", borderTop: "1px solid var(--border-light)", background: "var(--bg-card)" }}>
-                                      <button type="button" className="btn btn-secondary" style={{ flex: 1, fontSize: 13 }} onClick={() => openClientEdit(c)}>Редактировать</button>
-                                      <button type="button" className="btn btn-ghost" style={{ fontSize: 13, color: "var(--red-text)" }} onClick={() => deleteClient(c.id)}>Удалить</button>
+                                    <div style={{ minWidth: 0, fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.assistantName ?? undefined}>
+                                      {c.assistantName ?? "—"}
                                     </div>
+                                    <span style={{ color: "var(--text-tertiary)", fontSize: 16, lineHeight: 1, textAlign: "center" }} aria-hidden>›</span>
                                   </div>
                                 );
                               })}
@@ -3868,6 +3874,84 @@ export default function AppPage() {
                   )}
                 </div>
               </div>
+
+              {clientViewOpen ? (
+                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 56 }}
+                  onMouseDown={(e) => { if (e.target === e.currentTarget) setClientViewOpen(null); }}>
+                  <div className="card" style={{ width: 520, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", margin: 0 }}>
+                    <div className="card-header" style={{ alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Клиент</div>
+                        <div className="card-title" style={{ marginTop: 4, lineHeight: 1.25 }}>{clientViewOpen.name}</div>
+                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>{clientViewOpen.phone}</div>
+                        {clientViewOpen.status ? (
+                          <span className="badge" style={{
+                            marginTop: 8,
+                            display: "inline-block",
+                            background: clientViewOpen.status.color ? `${clientViewOpen.status.color}22` : "var(--accent-light)",
+                            color: clientViewOpen.status.color ?? "var(--accent)",
+                            fontSize: 11,
+                          }}>{clientViewOpen.status.label}</span>
+                        ) : null}
+                      </div>
+                      <button type="button" className="btn btn-secondary" onClick={() => setClientViewOpen(null)}>Закрыть</button>
+                    </div>
+                    <div className="card-body" style={{ display: "grid", gap: 14, fontSize: 13 }}>
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
+                          <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>Банк</span>
+                          <span>{clientViewOpen.bank?.trim() || "—"}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
+                          <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>Ассистент</span>
+                          <span>{clientViewOpen.assistantName?.trim() || "—"}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
+                          <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>Начало звонка</span>
+                          <span>{clientViewOpen.callStartedAt
+                            ? new Date(clientViewOpen.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                            : "—"}</span>
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-tertiary)", fontSize: 12, marginBottom: 6 }}>Итог разговора</div>
+                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "var(--text-primary)", padding: "10px 12px", background: "var(--bg-metric)", borderRadius: 8, border: "1px solid var(--border-light)", maxHeight: 200, overflow: "auto" }}>
+                            {clientViewOpen.callSummary?.trim() || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-tertiary)", fontSize: 12, marginBottom: 6 }}>Внутренняя заметка</div>
+                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{clientViewOpen.note?.trim() || "—"}</div>
+                        </div>
+                        {clientFieldDefs.length > 0 ? (
+                          <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 12, display: "grid", gap: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Доп. поля</div>
+                            {clientFieldDefs.map((def) => {
+                              const raw = clientViewOpen.customData && typeof clientViewOpen.customData === "object"
+                                ? (clientViewOpen.customData as Record<string, unknown>)[def.key]
+                                : undefined;
+                              const val = raw != null && raw !== "" ? String(raw) : "—";
+                              return (
+                                <div key={def.id} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
+                                  <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>{def.label}</span>
+                                  <span style={{ wordBreak: "break-word" }}>{val}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
+                        <button type="button" className="btn btn-secondary" onClick={() => void deleteClient(clientViewOpen.id)}>Удалить</button>
+                        <button type="button" className="btn btn-primary" onClick={() => {
+                          const row = clientViewOpen;
+                          setClientViewOpen(null);
+                          openClientEdit(row);
+                        }}>Редактировать</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {clientCreateModalOpen ? (
                 <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 55 }}
