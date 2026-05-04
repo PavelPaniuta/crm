@@ -3,6 +3,13 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientOrgSettingsService } from './client-org-settings.service';
 
+function normalizeClientPhone(phone: string): string {
+  const t = phone.trim();
+  if (!t) return '';
+  // Одинаковый номер в разном формате (+48 503 … vs +48503…) не должен давать дубликат в БД
+  return t.replace(/\s+/g, '');
+}
+
 type CustomData = Record<string, unknown>;
 
 @Injectable()
@@ -50,6 +57,12 @@ export class ClientsService {
       customData?: CustomData | null;
     },
   ) {
+    if (!organizationId?.trim()) {
+      throw new BadRequestException('Не выбран офис. Обновите страницу или войдите снова.');
+    }
+    const phone = normalizeClientPhone(data.phone);
+    if (!phone) throw new BadRequestException('Укажите номер телефона');
+
     await this.orgSettings.ensureDefaults(organizationId);
     let statusId = data.statusId ?? undefined;
     if (statusId) {
@@ -62,21 +75,30 @@ export class ClientsService {
       statusId = first?.id;
     }
     const customData = this.sanitizeCustomData(data.customData) ?? {};
-    return this.prisma.client.create({
-      data: {
-        organizationId,
-        name: data.name.trim(),
-        phone: data.phone.trim(),
-        note: data.note?.trim() || null,
-        statusId: statusId ?? null,
-        bank: data.bank?.trim() || null,
-        assistantName: data.assistantName?.trim() || null,
-        callSummary: data.callSummary?.trim() || null,
-        callStartedAt: this.parseDate(data.callStartedAt),
-        customData: customData as Prisma.InputJsonValue,
-      },
-      include: this.clientInclude,
-    });
+    try {
+      return await this.prisma.client.create({
+        data: {
+          organizationId,
+          name: data.name.trim(),
+          phone,
+          note: data.note?.trim() || null,
+          statusId: statusId ?? null,
+          bank: data.bank?.trim() || null,
+          assistantName: data.assistantName?.trim() || null,
+          callSummary: data.callSummary?.trim() || null,
+          callStartedAt: this.parseDate(data.callStartedAt),
+          customData: customData as Prisma.InputJsonValue,
+        },
+        include: this.clientInclude,
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BadRequestException(
+          'В этом офисе уже есть клиент с таким номером телефона. Откройте список клиентов или измените номер.',
+        );
+      }
+      throw e;
+    }
   }
 
   async update(
@@ -103,7 +125,11 @@ export class ClientsService {
     }
     const patch: Prisma.ClientUpdateInput = {};
     if (data.name !== undefined) patch.name = data.name.trim();
-    if (data.phone !== undefined) patch.phone = data.phone.trim();
+    if (data.phone !== undefined) {
+      const phone = normalizeClientPhone(data.phone);
+      if (!phone) throw new BadRequestException('Укажите номер телефона');
+      patch.phone = phone;
+    }
     if (data.note !== undefined) patch.note = data.note?.trim() || null;
     if (data.statusId !== undefined) {
       patch.status = data.statusId
@@ -118,11 +144,20 @@ export class ClientsService {
       const merged = { ...((existing.customData as object) ?? {}), ...(data.customData ?? {}) };
       patch.customData = this.sanitizeCustomData(merged) as Prisma.InputJsonValue;
     }
-    return this.prisma.client.update({
-      where: { id },
-      data: patch,
-      include: this.clientInclude,
-    });
+    try {
+      return await this.prisma.client.update({
+        where: { id },
+        data: patch,
+        include: this.clientInclude,
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BadRequestException(
+          'В этом офисе уже есть другой клиент с таким номером телефона.',
+        );
+      }
+      throw e;
+    }
   }
 
   private parseDate(v: string | Date | null | undefined): Date | null | undefined {

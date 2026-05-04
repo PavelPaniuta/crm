@@ -766,6 +766,7 @@ export default function AppPage() {
     if (tab === "staff") loadStaff();
     if (tab === "salary") loadSalary();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
+    if (tab === "assistant") void loadClientStatuses();
     if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
       fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
     }
@@ -1392,6 +1393,38 @@ export default function AppPage() {
         } else {
           const err = await res.json().catch(() => ({}));
           setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка записи расхода: ${err.message ?? res.status}` }]);
+        }
+      } else if (agentPending.type === "create_client") {
+        const p = agentPending.params;
+        const slug = typeof p.statusSlug === "string" ? p.statusSlug.trim().toLowerCase() : "";
+        const status = slug ? clientStatuses.find((x) => x.slug.toLowerCase() === slug) : undefined;
+        const res = await fetch("/api/clients", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: String(p.name ?? "").trim(),
+            phone: String(p.phone ?? "").trim(),
+            bank: p.bank != null && String(p.bank).trim() ? String(p.bank).trim() : null,
+            assistantName: p.assistantName != null && String(p.assistantName).trim() ? String(p.assistantName).trim() : null,
+            callSummary: p.callSummary != null && String(p.callSummary).trim() ? String(p.callSummary).trim() : null,
+            callStartedAt: p.callStartedAt != null && String(p.callStartedAt).trim() ? String(p.callStartedAt).trim() : null,
+            note: p.note != null && String(p.note).trim() ? String(p.note).trim() : null,
+            statusId: status?.id ?? undefined,
+          }),
+        });
+        if (res.ok) {
+          const name = String(p.name ?? "").trim();
+          setAgentHistory((h) => [
+            ...h,
+            { role: "assistant", content: `✅ Карточка клиента создана${name ? `: ${name}` : ""}.\nОткройте вкладку «Клиенты», чтобы посмотреть или отредактировать.` },
+          ]);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setAgentHistory((h) => [
+            ...h,
+            { role: "assistant", content: `❌ Не удалось создать клиента: ${err.message ?? res.status}` },
+          ]);
         }
       }
     } catch (e: any) {
@@ -2437,6 +2470,10 @@ export default function AppPage() {
             if (isWorker) {
               return (<>
                 {renderItem("dashboard")}
+                <div className="nav-divider" />
+                <div className="nav-section">Клиенты</div>
+                {renderItem("clients")}
+                {renderItem("assistant")}
                 <div className="nav-divider" />
                 <div className="nav-section">Задачи и чат</div>
                 {renderItem("tasks")}
@@ -4640,7 +4677,7 @@ export default function AppPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>AI Ассистент</div>
                   <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                    Создавайте сделки и расходы голосом или текстом — на любом языке
+                    Сделки, расходы и карточки клиентов из текста или голоса — в том числе вставка уведомления о звонке
                   </div>
                 </div>
                 {agentHistory.length > 0 && (
@@ -4657,21 +4694,31 @@ export default function AppPage() {
                     <div style={{ fontSize: 48 }}>✦</div>
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Чем могу помочь?</div>
-                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>Надиктуйте или напишите — я создам сделку, подсчитаю статистику или отвечу на вопрос</div>
+                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>Надиктуйте или напишите — или вставьте готовое уведомление о звонке: подготовлю карточку клиента на подтверждение</div>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 600 }}>
-                      {[
-                        "Запиши сделку: вчера Ди и олх взяли 6838 от eurocom 75/25, закрыл Ант",
-                        "Сколько заработал каждый воркер за этот месяц?",
-                        "Запиши расход: аренда офиса 500$",
-                        "Покажи статистику за неделю",
-                        "Какой доход за апрель?",
-                      ].map(q => (
-                        <button key={q} className="btn btn-secondary" style={{ fontSize: 12, padding: "8px 14px", textAlign: "left", lineHeight: 1.4 }}
-                          onClick={() => sendAgentMessage(q)} disabled={agentLoading}>
-                          {q}
+                      {(
+                        [
+                          "Запиши сделку: вчера Ди и олх взяли 6838 от eurocom 75/25, закрыл Ант",
+                          "Сколько заработал каждый воркер за этот месяц?",
+                          "Запиши расход: аренда офиса 500$",
+                          "Покажи статистику за неделю",
+                          "Какой доход за апрель?",
+                          {
+                            label: "✅ Клиент из уведомления о звонке (пример)",
+                            text: "✅ Новый звонок\n\n👤Ассистент: Robert Nowak PKO BP\n\n🏦Банк: PKO BP\n\n🧍‍♀️Клиент: Marta Rusowicz\n\n☎️Телефон: +48503703469\n\n📝 Summary: клиентка заявила, что не имеет счёта в PKO BP.\n⏰ Время начала звонка: 04.05.2026, 11:31",
+                          },
+                        ] as const
+                      ).map((q) => {
+                        const label = typeof q === "string" ? q : q.label;
+                        const message = typeof q === "string" ? q : q.text;
+                        return (
+                        <button key={label} className="btn btn-secondary" style={{ fontSize: 12, padding: "8px 14px", textAlign: "left", lineHeight: 1.4 }}
+                          onClick={() => sendAgentMessage(message)} disabled={agentLoading}>
+                          {label}
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -4772,7 +4819,7 @@ export default function AppPage() {
                   </div>
                 )}
                 <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-tertiary)" }}>
-                  Можно вставить несколько строк из таблицы — AI создаст все сделки сразу
+                  Можно вставить уведомление о звонке (клиент, телефон, банк, summary) — после подтверждения появится карточка в «Клиентах»
                 </div>
               </div>
 

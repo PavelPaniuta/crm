@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
+import { ClientOrgSettingsService } from '../clients/client-org-settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AiService {
   private openai: OpenAI | null = null;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    private clientOrgSettings: ClientOrgSettingsService,
+  ) {
     const key = process.env.OPENAI_API_KEY;
     if (key) {
       this.openai = new OpenAI({
@@ -190,8 +194,10 @@ ${recentSummary}
   ): Promise<{ text: string; pendingAction?: Record<string, unknown> }> {
     if (!this.openai) throw new Error('AI не настроен');
 
+    await this.clientOrgSettings.ensureDefaults(orgId);
+
     // Load context: workers + templates for this org
-    const [workers, templates, recentDeals] = await Promise.all([
+    const [workers, templates, recentDeals, clientStatuses] = await Promise.all([
       this.prisma.user.findMany({
         where: role === 'SUPER_ADMIN' ? {} : { organizationId: orgId },
         select: { id: true, name: true, email: true, position: true, organizationId: true,
@@ -211,6 +217,11 @@ ${recentSummary}
         orderBy: { dealDate: 'desc' },
         take: 30,
       }),
+      this.prisma.clientStatus.findMany({
+        where: { organizationId: orgId },
+        orderBy: { sortOrder: 'asc' },
+        select: { slug: true, label: true },
+      }),
     ]);
 
     const workersCtx = workers.map(w =>
@@ -227,6 +238,8 @@ ${recentSummary}
       return `ID:${d.id.slice(-6)} | ${d.status} | ${income || '—'}${d.amounts[0]?.currencyOut || ''} | ${parts || 'нет'} | ${d.dealDate ? new Date(d.dealDate).toLocaleDateString('ru-RU') : '—'}`;
     }).join('\n');
 
+    const statusesCtx = clientStatuses.map(s => `- slug: "${s.slug}" — ${s.label}`).join('\n');
+
     const systemPrompt = `Ты — AI ассистент CRM системы. Отвечай на русском языке.
 
 ВОРКЕРЫ (сотрудники):
@@ -238,13 +251,18 @@ ${templatesCtx || 'нет шаблонов'}
 ПОСЛЕДНИЕ СДЕЛКИ:
 ${dealsCtx || 'нет сделок'}
 
+СТАТУСЫ КАРТОЧКИ КЛИЕНТА (для поля statusSlug; по умолчанию new — «Новый»):
+${statusesCtx || 'нет статусов'}
+
 ПРАВИЛА:
 1. При создании сделки — используй точные ID из списка воркеров выше
 2. Если имя неоднозначно — уточни у пользователя
 3. Перед созданием — покажи summary и используй tool confirm_create_deal
 4. Дату "вчера" = ${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}, "сегодня" = ${new Date().toISOString().slice(0, 10)}
 5. Если чего-то не знаешь (ID, шаблон) — спроси
-6. Для статистики — используй get_stats tool`;
+6. Для статистики — используй get_stats tool
+7. Если пользователь вставил уведомление о новом звонке (Telegram/бот: «Новый звонок», строки с банком, клиентом, телефоном, summary, временем) — извлеки имя клиента, телефон, банк, имя ассистента, краткое содержание звонка, время начала. Обязательные поля для карточки: name (клиент), phone (нормализуй в международный формат с + если возможно). Вызови confirm_create_client. statusSlug обычно "new", если не указано иное.
+8. Время начала из текста вида «04.05.2026, 11:31» переводи в callStartedAt как ISO 8601 (например 2026-05-04T11:31:00) в локальной интерпретации как указано в сообщении.`;
 
     const tools: ChatCompletionTool[] = [
       {
@@ -294,6 +312,34 @@ ${dealsCtx || 'нет сделок'}
               payMethod: { type: 'string', description: 'Способ оплаты (Наличные, Карта, Криптo...) — по умолчанию Наличные' },
             },
             required: ['title', 'amount'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'confirm_create_client',
+          description:
+            'Подготовить карточку клиента из текста уведомления о звонке или явного запроса пользователя. Вызывай когда есть имя и телефон.',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Имя клиента' },
+              phone: { type: 'string', description: 'Телефон клиента' },
+              bank: { type: 'string', description: 'Банк или null' },
+              assistantName: { type: 'string', description: 'Ассистент (кто вёл звонок) или null' },
+              callSummary: { type: 'string', description: 'Краткое содержание / summary звонка или null' },
+              callStartedAt: {
+                type: 'string',
+                description: 'Время начала звонка ISO 8601 или null',
+              },
+              note: { type: 'string', description: 'Доп. заметка или null' },
+              statusSlug: {
+                type: 'string',
+                description: 'Slug статуса из списка СТАТУСЫ КАРТОЧКИ КЛИЕНТА (часто new)',
+              },
+            },
+            required: ['name', 'phone'],
           },
         },
       },
@@ -363,6 +409,24 @@ ${dealsCtx || 'нет сделок'}
         return {
           text: `Записываю расход:\n\n💸 ${args.title}\n💰 ${args.amount} ${args.currency || 'USD'}\n💳 ${args.payMethod || 'Наличные'}\n\nПодтвердить?`,
           pendingAction: { type: 'create_expense', params: args },
+        };
+      }
+
+      if (call.function.name === 'confirm_create_client') {
+        const sum = args.callSummary ? String(args.callSummary) : '';
+        const sumShort = sum.length > 400 ? `${sum.slice(0, 400)}…` : sum;
+        const preview = [
+          `👤 ${args.name || '—'}`,
+          `☎️ ${args.phone || '—'}`,
+          args.bank ? `🏦 ${args.bank}` : '',
+          args.assistantName ? `Ассистент: ${args.assistantName}` : '',
+          sumShort ? `📝 ${sumShort}` : '',
+          args.callStartedAt ? `⏰ ${args.callStartedAt}` : '',
+          args.statusSlug ? `Статус: ${args.statusSlug}` : '',
+        ].filter(Boolean).join('\n');
+        return {
+          text: `Создаю карточку клиента:\n\n${preview}\n\nПодтвердить?`,
+          pendingAction: { type: 'create_client', params: args },
         };
       }
 

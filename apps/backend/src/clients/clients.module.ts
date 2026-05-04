@@ -8,6 +8,7 @@ import { ClientsService } from './clients.service';
 @Module({
   controllers: [ClientsController, ClientStatusesController, ClientFieldDefinitionsController],
   providers: [ClientsService, ClientOrgSettingsService],
+  exports: [ClientOrgSettingsService],
 })
 export class ClientsModule {}
 
