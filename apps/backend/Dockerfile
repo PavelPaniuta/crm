@@ -14,8 +14,8 @@ COPY apps/backend ./apps/backend
 WORKDIR /app
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db?schema=public"
 
-# Prisma Client (workspace script — avoids npx/prisma path issues on Alpine)
-RUN npm run db:generate -w @biscrm/backend
+# Prisma CLI лежит в apps/backend/node_modules (workspace), не в корне .bin
+RUN node apps/backend/node_modules/prisma/build/index.js generate --schema apps/backend/prisma/schema.prisma
 
 # Build Nest
 RUN npm run build -w @biscrm/backend
