@@ -185,7 +185,7 @@ export class AuthController {
       throw new NotFoundException('Ссылка недействительна или истекла');
     }
 
-    const passwordHash = await bcrypt.hash(body.password, 10);
+    const passwordHash = await bcrypt.hash(body.password.trim(), 10);
     await this.prisma.user.update({
       where: { id: record.userId },
       data: { passwordHash },

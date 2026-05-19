@@ -9,14 +9,24 @@ export class AuthService {
 
   async login(email: string, password: string, ip?: string, userAgent?: string) {
     const normalized = email?.trim().toLowerCase();
-    const user = await this.prisma.user.findFirst({
+    const pwd = password?.trim() ?? '';
+    if (!normalized || !pwd) throw new BadRequestException('Invalid credentials');
+
+    // Same login can exist in multiple offices — check password against each match
+    const candidates = await this.prisma.user.findMany({
       where: { email: { equals: normalized, mode: 'insensitive' } },
     });
-    if (!user) throw new BadRequestException('Invalid credentials');
-    if (user.role === 'AI_PARTNER') throw new BadRequestException('Invalid credentials');
+    if (candidates.length === 0) throw new BadRequestException('Invalid credentials');
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) throw new BadRequestException('Invalid credentials');
+    let user: (typeof candidates)[number] | null = null;
+    for (const u of candidates) {
+      if (u.role === 'AI_PARTNER') continue;
+      if (await bcrypt.compare(pwd, u.passwordHash)) {
+        user = u;
+        break;
+      }
+    }
+    if (!user) throw new BadRequestException('Invalid credentials');
 
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);

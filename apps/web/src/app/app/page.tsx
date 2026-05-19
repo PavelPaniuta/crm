@@ -1821,7 +1821,7 @@ export default function AppPage() {
     await loadUsers();
   }
 
-  async function changeUserRole(userId: string, role: "ADMIN" | "MANAGER") {
+  async function changeUserRole(userId: string, role: Role) {
     const res = await fetch("/api/users/role", {
       method: "PATCH", credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -1832,13 +1832,19 @@ export default function AppPage() {
   }
 
   async function resetUserPassword(userId: string) {
-    if (!userPwdValue.trim()) return alert("Введите пароль");
+    const pwd = userPwdValue.trim();
+    if (!pwd) return alert("Введите пароль");
+    if (pwd.length < 6) return alert("Пароль должен быть минимум 6 символов");
     const res = await fetch("/api/users/password", {
       method: "PATCH", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, password: userPwdValue }),
+      body: JSON.stringify({ userId, password: pwd }),
     });
-    if (!res.ok) return alert("Не удалось сбросить пароль");
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      const msg = j?.message;
+      return alert(Array.isArray(msg) ? msg.join("\n") : (msg ?? "Не удалось сбросить пароль"));
+    }
     setUserPwdId(null); setUserPwdValue("");
     alert("Пароль обновлён");
   }
@@ -4085,7 +4091,7 @@ export default function AppPage() {
                           <div>
                             <div className="form-label">Доступ</div>
                             <select className="form-input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
-                              <option value="NEW">Работник</option>
+                              <option value="WORKER">Работник</option>
                               <option value="MANAGER">Менеджер</option>
                               <option value="ADMIN">Админ офиса</option>
                               {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
@@ -4160,7 +4166,7 @@ export default function AppPage() {
                                         style={{ width: 120 }}
                                         onChange={(e) => changeUserRole(u.id, e.target.value as any)}
                                       >
-                                        <option value="NEW">Работник</option>
+                                        <option value="WORKER">Работник</option>
                                         <option value="MANAGER">Менеджер</option>
                                         <option value="ADMIN">Админ офиса</option>
                                         {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}

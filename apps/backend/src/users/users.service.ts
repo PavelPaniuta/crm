@@ -61,8 +61,10 @@ export class UsersService {
     requesterRole?: string,
   ) {
     if (!data.email?.trim()) throw new BadRequestException('login required');
-    if (!data.password || data.password.length < 6)
+    const password = data.password?.trim() ?? '';
+    if (!password || password.length < 6)
       throw new BadRequestException('password too short');
+    const email = data.email.trim().toLowerCase();
 
     // SUPER_ADMIN can create in any org via targetOrgId
     // ADMIN can only create in their own org
@@ -74,17 +76,17 @@ export class UsersService {
     }
 
     const duplicate = await this.prisma.user.findFirst({
-      where: { organizationId: orgId, email: data.email.trim() },
+      where: { organizationId: orgId, email: { equals: email, mode: 'insensitive' } },
     });
     if (duplicate) {
-      throw new ConflictException(`Пользователь с логином «${data.email.trim()}» уже существует в этом офисе`);
+      throw new ConflictException(`Пользователь с логином «${email}» уже существует в этом офисе`);
     }
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
     return this.prisma.user.create({
       data: {
         organizationId: orgId,
-        email: data.email.trim(),
+        email,
         passwordHash,
         role: data.role ?? Role.MANAGER,
         name: data.name?.trim() || null,
@@ -110,11 +112,12 @@ export class UsersService {
   }
 
   async resetPassword(organizationId: string, userId: string, password: string, requesterRole?: string) {
-    if (!password || password.length < 6) throw new BadRequestException('password too short');
+    const pwd = password?.trim() ?? '';
+    if (!pwd || pwd.length < 6) throw new BadRequestException('password too short');
     const where = isSuperAdmin(requesterRole) ? { id: userId } : { id: userId, organizationId };
     const existing = await this.prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException();
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(pwd, 10);
     return this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash },
