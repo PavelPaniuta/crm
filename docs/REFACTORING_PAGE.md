@@ -22,11 +22,12 @@
 | Расходы (вкладка) | `components/expenses/ExpensesTab.tsx`, `lib/expenses.ts` |
 | Клиенты (вкладка + модалки) | `ClientsTab`, `ClientViewModal`, `ClientCreateModal`, `ClientEditModal`, `lib/clients.ts` |
 | Дашборд | `DashboardTab`, `DashboardCurrentView`, `DashboardGlobalView`, `WorkerDashboard`, `lib/dashboard.ts` |
+| Сделки (вкладка) | `DealsTab`, `DealFormModal`, `lib/deals.ts` |
 
 ## Дальше (по одному PR/коммиту)
 
-1. **Deals** — таблица + модалка сделки (самый крупный блок)
-2. Шаблон сделок (wizard) — отдельно
+1. Шаблон сделок (wizard в настройках) — вынести из `page.tsx`
+2. Задачи / чат / ассистент — по мере необходимости
 
 ## VPS
 

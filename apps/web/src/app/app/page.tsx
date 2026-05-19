@@ -40,6 +40,16 @@ import { ReportsTab } from "@/components/reports/ReportsTab";
 import { downloadAccountingExport, fetchWorkersReport, importAccountingXlsx, type WorkersReport } from "@/lib/reports";
 import { OlxFormModal } from "@/components/olx/OlxFormModal";
 import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
+import { DealFormModal } from "@/components/deals/DealFormModal";
+import { DealsTab } from "@/components/deals/DealsTab";
+import {
+  mediatorPctFieldKey,
+  type Deal,
+  type DealAmtRow,
+  type DealParticipantRow,
+  type DealStatus,
+  type DealWorker,
+} from "@/lib/deals";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
 import { SALARY_PAYMENT_TYPES } from "@/lib/salary-constants";
 
@@ -66,16 +76,6 @@ type Org = {
   id: string;
   name: string;
   _count: { users: number; deals: number };
-};
-
-type DealWorker = {
-  id: string;
-  email: string;
-  name?: string | null;
-  role: Role;
-  position?: string | null;
-  organizationId: string;
-  organization?: { name: string };
 };
 
 type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "CANCELLED";
@@ -123,7 +123,6 @@ type ChatConversation = {
 };
 
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "mediators" | "olx" | "tasks" | "assistant" | "chat" | "salary";
-type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
 
@@ -174,49 +173,6 @@ type DealDataRow = {
   order: number;
 };
 
-type Deal = {
-  id: string;
-  title: string;
-  status: DealStatus;
-  dealDate: string;
-  comment?: string | null;
-  clientId?: string | null;
-  templateId?: string | null;
-  template?: DealTemplate | null;
-  client?: { id: string; name: string; phone: string; status?: ClientPipelineStatus | null } | null;
-  amounts: Array<{
-    id: string;
-    amountIn: string;
-    currencyIn: string;
-    amountOut: string;
-    currencyOut: string;
-    bank: string;
-    operationType: OperationType;
-    shopName?: string | null;
-  }>;
-  dataRows?: DealDataRow[];
-  mediatorLink?: { mediatorId: string; pct: string | number; mediator: { id: string; name: string } } | null;
-  olxLink?: { olxId: string; pct: string | number; olx: { id: string; name: string } } | null;
-  infoPct?: number | string | null;
-  participants: Array<{
-    id: string;
-    pct: number;
-    user: { id: string; email: string; name?: string | null; role: "ADMIN" | "MANAGER" };
-  }>;
-};
-
-type DealAmtRow = {
-  id: string;
-  bank: string;
-  operationType: OperationType;
-  amountIn: string;
-  currencyIn: string;
-  amountOut: string;
-  currencyOut: string;
-  shopName: string;
-};
-
-type DealParticipantRow = { id: string; userId: string; pct: string };
 
 const OP_LABELS: Record<OperationType, string> = {
   PURCHASE: "Покупка",
@@ -1906,30 +1862,6 @@ export default function AppPage() {
     };
   }
 
-  /** Ключ поля «% посредника» в данных шаблона (для расчёта). */
-  function mediatorPctFieldKey(tpl: DealTemplate | null | undefined): string | null {
-    if (!tpl) return null;
-    if (tpl.calcMediatorPctKey) return tpl.calcMediatorPctKey;
-    if (tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL) {
-      const f = tpl.fields.find(
-        (field) =>
-          field.type === "PERCENT" &&
-          (field.key.includes("посредник") || field.label.toLowerCase().includes("посредник")),
-      );
-      return f?.key ?? null;
-    }
-    const steps = tpl.calcSteps as CalcStep[] | null | undefined;
-    if (steps?.length) {
-      const step = steps.find(
-        (s) =>
-          s.label.toLowerCase().includes("посредник") ||
-          (s.deductFieldKey && s.deductFieldKey.includes("посредник")),
-      );
-      return step?.deductFieldKey ?? null;
-    }
-    return null;
-  }
-
   /** Синхронизирует % посредника в блоке выбора и в данных строки шаблона (от этого считается выплата). */
   function applyDealMediatorPct(pct: string, tplId?: string | null) {
     setDealMediatorPct(pct);
@@ -2064,54 +1996,6 @@ export default function AppPage() {
   }
 
   function closeDealModal() { setDealModalOpen(false); }
-
-  // totals
-  const dealTotals = useMemo(() => {
-    let tAmountIn = 0;
-    let tAmountOut = 0;
-    dealAmounts.forEach((r) => {
-      tAmountIn += Number(r.amountIn) || 0;
-      tAmountOut += Number(r.amountOut) || 0;
-    });
-    return { tAmountIn, tAmountOut };
-  }, [dealAmounts]);
-
-  const pctStatus = useMemo(() => {
-    const total = dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0);
-    if (total === 100) return { ok: true, text: "✓ Итого: 100%", color: "var(--green)" };
-    if (total > 100) return { ok: false, text: `⚠ Итого: ${total}% — превышает 100%`, color: "var(--red)" };
-    return { ok: false, text: `⚠ Итого: ${total}% — не хватает ${100 - total}%`, color: "var(--amber)" };
-  }, [dealParticipants]);
-
-  const participantIncomeInfo = useMemo(() => {
-    const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
-    if (!activeTpl) {
-      return { base: dealTotals.tAmountOut, label: "сумма «получили»" };
-    }
-    // New: universal calc chain
-    if (activeTpl.calcSteps && activeTpl.calcSteps.length > 0 && dealDataRows[0]) {
-      const chain = computeChain(dealDataRows[0].data, activeTpl.calcSteps);
-      const payrollStep = chain.find((c) => c.step.isPayrollPool);
-      const base = payrollStep
-        ? Math.max(0, payrollStep.deductAmt)
-        : chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
-      const label = payrollStep
-        ? `Зарплатный фонд (${payrollStep.step.label})`
-        : chain.length > 0 ? chain[chain.length - 1].step.resultLabel : "Результат расчёта";
-      return { base, label };
-    }
-    // Legacy: MEDIATOR_AI_PAYROLL
-    if (activeTpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0]) {
-      const c = computeMediatorAiPayroll(dealDataRows[0].data, activeTpl);
-      if (c) return { base: c.F, label: "зарплатный фонд (F), после AI/автоматики" };
-    }
-    if (activeTpl.incomeFieldKey) {
-      const sum = dealDataRows.reduce((s, row) => s + (Number(row.data[activeTpl.incomeFieldKey!]) || 0), 0);
-      const incField = activeTpl.fields.find((f) => f.key === activeTpl.incomeFieldKey);
-      return { base: sum, label: incField?.label || activeTpl.incomeFieldKey || "" };
-    }
-    return { base: 0, label: "" };
-  }, [dealTemplateId, templates, dealDataRows, dealTotals.tAmountOut]);
 
   async function saveDeal() {
     const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
@@ -2510,782 +2394,71 @@ export default function AppPage() {
             />
           ) : null}
 
-          {/* ===== DEALS ===== */}          {/* ===== DEALS ===== */}
+          {/* ===== DEALS ===== */}
           {tab === "deals" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              {/* Page header */}
-              <div className="page-header">
-                <div className="page-header-left">
-                  <div className="page-header-title">Сделки</div>
-                  <div className="page-header-sub">Управляйте сделками, участниками и выплатами</div>
-                </div>
-                <div className="page-header-actions">
-                  <div className="filter-tabs">
-                    {([{ id: "ALL", label: "Все" }, { id: "NEW", label: "Новые" }, { id: "IN_PROGRESS", label: "В работе" }, { id: "CLOSED", label: "Закрытые" }] as const).map((f) => (
-                      <button key={f.id} className={`filter-tab ${dealFilter === f.id ? "active" : ""}`} onClick={() => setDealFilter(f.id as any)}>{f.label}</button>
-                    ))}
-                  </div>
-                  <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
-                  {isManager && (
-                    <>
-                      <input
-                        className="form-input"
-                        style={{ width: 72 }}
-                        title="Год для дат «23.04» (без года в ячейке)"
-                        value={legacyImportYear}
-                        onChange={(e) => setLegacyImportYear(e.target.value)}
-                      />
-                      <input
-                        ref={legacyImportInputRef}
-                        type="file"
-                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void importLegacyDeals(f);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={legacyImporting}
-                        onClick={() => legacyImportInputRef.current?.click()}
-                      >
-                        {legacyImporting ? "Импорт…" : "Импорт Excel"}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-body table-scroll" style={{ padding: 0 }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Дата</th><th>Клиент</th><th>Воркеры</th><th>Статус</th>
-                        <th style={{ textAlign: "right" }}>Выход</th>
-                        {isAdmin && <th style={{ width: 40 }}></th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dealsLoading ? (
-                        <tr><td colSpan={6} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
-                      ) : deals.filter((d) => dealFilter === "ALL" || d.status === dealFilter).length === 0 ? (
-                        <tr><td colSpan={6}>
-                          <div className="empty-state">
-                            <div className="empty-state-icon">
-                              <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-                            </div>
-                            <div className="empty-state-title">Нет сделок</div>
-                            <div className="empty-state-desc">Создайте первую сделку чтобы начать вести учёт</div>
-                            <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
-                          </div>
-                        </td></tr>
-                      ) : (
-                        deals
-                          .filter((d) => dealFilter === "ALL" || d.status === dealFilter)
-                          .map((d) => {
-                            let totalOut = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-                            let dealCurrencyLabel = d.amounts[0]?.currencyOut ?? "";
-                            if (totalOut === 0 && d.template && d.dataRows && d.dataRows.length > 0) {
-                              const rowData = (d.dataRows[0] as any).data as Record<string, string>;
-                              const tpl = d.template as DealTemplate;
-                              // find currency field
-                              const currField = tpl.fields?.find((f: any) => f.type === "CURRENCY");
-                              if (currField) dealCurrencyLabel = rowData[currField.key] ?? "";
-                              if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
-                                const chain = computeChain(rowData, tpl.calcSteps as CalcStep[]);
-                                if (chain.length > 0) totalOut = chain[0].source;
-                              } else if (tpl.incomeFieldKey) {
-                                totalOut = Number(rowData[tpl.incomeFieldKey]) || 0;
-                              } else if (tpl.calcGrossFieldKey) {
-                                totalOut = Number(rowData[tpl.calcGrossFieldKey]) || 0;
-                              }
-                            }
-                            const workerParts = d.participants.map((p) => {
-                              const label = p.user.name || p.user.email.split("@")[0];
-                              return `${label} ${p.pct}%`;
-                            }).join(" · ");
-                            return (
-                              <tr key={d.id} style={{ cursor: "pointer" }}>
-                                <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} onClick={() => openDealEditModal(d)}>
-                                  {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}
-                                </td>
-                                <td onClick={() => openDealEditModal(d)}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
-                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }} onClick={() => openDealEditModal(d)}>{workerParts || "—"}</td>
-                                <td onClick={() => openDealEditModal(d)}>
-                                  <span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>
-                                    {d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} onClick={() => openDealEditModal(d)}>
-                                  {totalOut > 0 ? `${totalOut.toLocaleString("ru-RU")}${dealCurrencyLabel ? " " + dealCurrencyLabel : ""}` : "—"}
-                                </td>
-                                {isAdmin && (
-                                  <td style={{ width: 40, padding: "0 8px 0 0" }}>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); deleteDeal(d.id); }}
-                                      className="btn btn-ghost"
-                                      style={{ width: 28, height: 28, padding: 0, color: "var(--text-tertiary)" }}
-                                      title="Удалить сделку"
-                                    >
-                                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
-                                    </button>
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Deal modal */}
-              {dealModalOpen ? (
-                <div
-                  className="modal-backdrop"
-                  style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) closeDealModal(); }}
-                >
-                  <div className="card" style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
-                    <div className="card-header">
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="card-title">{dealEditingId ? "Редактировать сделку" : "Новая сделка"}</span>
-                        {dealTemplateStep === "form" && dealTemplateId && (
-                          <span style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>
-                            {templates.find(t => t.id === dealTemplateId)?.name}
-                          </span>
-                        )}
-                      </div>
-                      <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
-                    </div>
-
-                    {/* Template picker step */}
-                    {!dealEditingId && dealTemplateStep === "pick" ? (
-                      <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Выберите шаблон сделки:</div>
-                        <div style={{ display: "grid", gap: 8 }}>
-                          {templates.map((t) => (
-                            <label key={t.id} style={{
-                              display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                              border: `2px solid ${dealTemplateId === t.id ? "var(--accent)" : "var(--border)"}`,
-                              borderRadius: "var(--radius)", cursor: "pointer",
-                              background: dealTemplateId === t.id ? "var(--accent-light)" : "var(--bg-card)",
-                            }}>
-                              <input type="radio" name="tpl" value={t.id} checked={dealTemplateId === t.id}
-                                onChange={() => setDealTemplateId(t.id)} style={{ accentColor: "var(--accent)" }} />
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{t.name}</div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                                  {t.fields.length} полей · {t.hasWorkers ? "с воркерами" : "без воркеров"}
-                                  {t.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? " · расчёт посредник/ИИ/фонд" : ""}
-                                </div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => {
-                              if (!dealTemplateId) {
-                                alert("Выберите шаблон");
-                                return;
-                              }
-                              setDealTemplateStep("form");
-                            }}
-                          >
-                            Продолжить →
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-
-                    <div className="card-body" style={{ display: "grid", gap: 18 }}>
-
-                      {/* Date + Client */}
-                      <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 14 }}>
-                        <div>
-                          <div className="form-label">Дата *</div>
-                          <input className="form-input" type="date" value={dealDate} onChange={(e) => setDealDate(e.target.value)} />
-                        </div>
-                        <div>
-                          <div className="form-label">Клиент</div>
-                          {!dealClientSkip && !dealClientId ? (
-                            <div style={{ display: "grid", gap: 6 }}>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <input className="form-input" placeholder="Поиск..." value={dealClientSearch} onChange={(e) => setDealClientSearch(e.target.value)} />
-                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>Без клиента</button>
-                              </div>
-                              <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-card)", maxHeight: 130, overflow: "auto" }}>
-                                {dealClients.filter((c) => (c.name + " " + c.phone).toLowerCase().includes(dealClientSearch.toLowerCase())).slice(0, 20).map((c) => (
-                                  <div key={c.id} style={{ padding: "8px 14px", borderBottom: "1px solid var(--border-light)", cursor: "pointer", display: "flex", gap: 10 }} onClick={() => setDealClientId(c.id)}>
-                                    <span style={{ flex: 1 }}>{c.name}</span>
-                                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)" }}>{c.phone}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : dealClientId ? (
-                            <div style={{ background: "var(--green-bg)", borderRadius: 10, padding: "8px 12px", display: "flex", gap: 10, alignItems: "center" }}>
-                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>{dealClients.find((c) => c.id === dealClientId)?.name ?? "Клиент"}</span>
-                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>×</button>
-                            </div>
-                          ) : (
-                            <div style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 12px", color: "var(--text-secondary)", fontStyle: "italic" }}>
-                              Без клиента{" "}
-                              <span style={{ color: "var(--accent)", cursor: "pointer", fontStyle: "normal", marginLeft: 8 }} onClick={() => setDealClientSkip(false)}>Изменить</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Status */}
-                      <div style={{ width: 240 }}>
-                        <div className="form-label">Статус</div>
-                        <select className="form-input" value={dealStatus} onChange={(e) => setDealStatus(e.target.value as DealStatus)}>
-                          <option value="NEW">Новая</option>
-                          <option value="IN_PROGRESS">В работе</option>
-                          <option value="CLOSED">Закрыта</option>
-                        </select>
-                      </div>
-
-                      {dealTemplateId && (() => {
-                        const tplM = templates.find((t) => t.id === dealTemplateId);
-                        const showMediator = tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL || (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
-                        if (!showMediator) return null;
-                        const mediatorFieldKey = mediatorPctFieldKey(tplM);
-                        return (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
-                            <div>
-                              <div className="form-label">Посредник</div>
-                              <select className="form-input" value={dealMediatorId} onChange={(e) => setDealMediatorSelection(e.target.value)}>
-                                <option value="">— не выбран —</option>
-                                {mediators.filter((m: any) => m.isActive !== false).map((m: any) => (
-                                  <option key={m.id} value={m.id}>{m.name}{m.defaultPct != null ? ` (${m.defaultPct}%)` : ""}</option>
-                                ))}
-                              </select>
-                              {mediatorFieldKey && (
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>
-                                  % из справочника подставляется в расчёт{dealMediatorPct ? ` (сейчас ${dealMediatorPct}%)` : ""}
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <div className="form-label">% по сделке</div>
-                              <input
-                                className="form-input"
-                                type="number"
-                                min={0}
-                                max={100}
-                                step="0.01"
-                                placeholder="%"
-                                value={dealMediatorPct}
-                                onChange={(e) => applyDealMediatorPct(e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {dealTemplateId && (() => {
-                        const tplM = templates.find((t) => t.id === dealTemplateId);
-                        const show = tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL || (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
-                        if (!show) return null;
-                        return (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
-                            <div>
-                              <div className="form-label">ОЛХ</div>
-                              <select className="form-input" value={dealOlxId} onChange={(e) => setDealOlxSelection(e.target.value)}>
-                                <option value="">— не выбран —</option>
-                                {olxList.filter((o: any) => o.isActive !== false).map((o: any) => (
-                                  <option key={o.id} value={o.id}>{o.name}{o.defaultPct != null ? ` (${o.defaultPct}%)` : ""}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="form-label">% по сделке</div>
-                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealOlxPct} onChange={(e) => setDealOlxPct(e.target.value)} />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {dealTemplateId && (() => {
-                        const tplM = templates.find((t) => t.id === dealTemplateId);
-                        const showPartner =
-                          tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL ||
-                          (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
-                        if (!showPartner) return null;
-                        return (
-                          <div
-                            style={{
-                              padding: "12px 14px",
-                              background: "rgba(100,116,139,0.08)",
-                              borderRadius: 10,
-                              border: "1px solid var(--border-light)",
-                            }}
-                          >
-                            <div className="form-label" style={{ fontWeight: 600 }}>Инфо</div>
-                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
-                              Процент от <b>зарплатного фонда</b> этой сделки (после посредника, ОЛХ и ИИ). У каждой сделки свой %.
-                            </div>
-                            <div style={{ maxWidth: 200 }}>
-                              <div className="form-label">% Инфо</div>
-                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="например 5" value={dealInfoPct} onChange={(e) => setDealInfoPct(e.target.value)} />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Template-based fields OR classic amounts */}
-                      {dealTemplateId && templates.find(t => t.id === dealTemplateId) ? (() => {
-                        const tpl = templates.find(t => t.id === dealTemplateId)!;
-                        return (
-                          <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                              <div className="form-label" style={{ margin: 0 }}>Данные [{tpl.name}]</div>
-                              {tpl.calcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
-                                <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Добавить строку</button>
-                              )}
-                            </div>
-                            {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (
-                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>Одна строка на сделку. Расчёт по полям: сумма завода, % посредника, % ИИ (от остатка после посредника), затем {parsePayrollPoolPct(tpl)}% в зарплатный фонд.</div>
-                            )}
-                            {dealDataRows.map((row, ri) => (
-                              <div key={row._id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Строка {ri + 1}</span>
-                                  {dealDataRows.length > 1 && (
-                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16 }} onClick={() => setDealDataRows(p => p.filter(x => x._id !== row._id))}>×</span>
-                                  )}
-                                </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
-                                  {tpl.fields.map((f) => {
-                                    if (
-                                      (tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL ||
-                                        (tpl.calcSteps && (tpl.calcSteps as CalcStep[]).length > 0)) &&
-                                      mediatorPctFieldKey(tpl) === f.key
-                                    ) {
-                                      return null;
-                                    }
-                                    const isGross = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcGrossFieldKey;
-                                    const isMediator = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcMediatorPctKey;
-                                    const isAi = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcAiPctKey;
-                                    const calcBadge = isGross ? { icon: "💰", color: "var(--accent)", tip: "База расчёта" }
-                                      : isMediator ? { icon: "🏦", color: "var(--amber)", tip: "% посредника" }
-                                      : isAi ? { icon: "🤖", color: "var(--text-secondary)", tip: "% AI" }
-                                      : null;
-                                    return (
-                                    <div key={f.key} style={calcBadge ? { background: `${calcBadge.color}0d`, borderRadius: 8, padding: "6px 8px", border: `1.5px solid ${calcBadge.color}44` } : {}}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
-                                        {calcBadge && <span title={calcBadge.tip} style={{ fontSize: 13 }}>{calcBadge.icon}</span>}
-                                        <span className="form-label" style={{ margin: 0 }}>{f.label}{f.required ? " *" : ""}</span>
-                                      </div>
-                                      {f.type === "CURRENCY" ? (
-                                        <select className="form-input" value={row.data[f.key] ?? ""}
-                                          onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
-                                          style={{ borderColor: calcBadge ? `${calcBadge.color}66` : undefined }}>
-                                          <option value="">— валюта —</option>
-                                          {CURRENCIES.map(c => (
-                                            <option key={c} value={c}>{CURRENCY_META[c]?.symbol} {c} — {CURRENCY_META[c]?.name}</option>
-                                          ))}
-                                        </select>
-                                      ) : f.type === "SELECT" ? (
-                                        <select className="form-input" value={row.data[f.key] ?? ""}
-                                          onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}>
-                                          <option value="">— выберите —</option>
-                                          {(f.options ?? "").split(",").map(o => o.trim()).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
-                                        </select>
-                                      ) : f.type === "CHECKBOX" ? (
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38 }}>
-                                          <input type="checkbox" checked={row.data[f.key] === "true"}
-                                            onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.checked ? "true" : "false" } } : x))}
-                                            style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
-                                          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{f.label}</span>
-                                        </div>
-                                      ) : (
-                                        <input
-                                          className="form-input"
-                                          type={f.type === "NUMBER" || f.type === "PERCENT" ? "number" : f.type === "DATE" ? "date" : "text"}
-                                          min={f.type === "PERCENT" ? 0 : undefined}
-                                          max={f.type === "PERCENT" ? 100 : undefined}
-                                          value={row.data[f.key] ?? ""}
-                                          onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
-                                          style={{ fontFamily: f.type === "NUMBER" || f.type === "PERCENT" ? "'JetBrains Mono', monospace" : undefined, borderColor: calcBadge ? `${calcBadge.color}66` : undefined }}
-                                        />
-                                      )}
-                                    </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-                            {/* === Universal Calc Chain block === */}
-                            {(tpl.calcSteps && tpl.calcSteps.length > 0) && (() => {
-                              const data = dealDataRows[0]?.data ?? {};
-                              const chain = computeChain(data, tpl.calcSteps!);
-                              const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
-                              const hasValues = chain.some(c => c.source > 0);
-                              return (
-                                <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
-                                  <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                                    📊 Расчёт распределения
-                                    {!hasValues && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)" }}>— заполните числовые поля выше</span>}
-                                  </div>
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "3px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-                                    {chain.map((cr, ci) => {
-                                      const isPayroll = cr.step.isPayrollPool;
-                                      const isLast = ci === chain.length - 1;
-                                      const deductField = tpl.fields.find(f => f.key === cr.step.deductFieldKey);
-                                      const deductLabel = deductField?.label ?? cr.step.deductFieldKey;
-                                      return (
-                                        <React.Fragment key={cr.step.id}>
-                                          {ci === 0 && (
-                                            <>
-                                              <span style={{ color: "var(--text-secondary)" }}>
-                                                {cr.step.sourceType === "field"
-                                                  ? (tpl.fields.find(f => f.key === cr.step.sourceId)?.label ?? cr.step.sourceId)
-                                                  : cr.step.sourceId}
-                                              </span>
-                                              <span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(cr.source)}</span>
-                                            </>
-                                          )}
-                                          <span style={{ color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", paddingLeft: 8 }}>
-                                            {isPayroll ? "👥" : "−"} {cr.step.label} ({deductLabel})
-                                          </span>
-                                          <span style={{ textAlign: "right", color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", fontWeight: isPayroll ? 700 : 400 }}>
-                                            − {fmt(cr.deductAmt)}
-                                          </span>
-                                          <span style={{
-                                            color: isLast ? "var(--green)" : "var(--text-secondary)",
-                                            fontWeight: isLast ? 700 : 400,
-                                            borderTop: "1px dashed var(--border)", paddingTop: 3,
-                                          }}>
-                                            {isLast ? "🏢 " : ""}{cr.step.resultLabel}
-                                          </span>
-                                          <span style={{
-                                            textAlign: "right", fontWeight: isLast ? 700 : 400,
-                                            color: isLast ? "var(--green)" : undefined,
-                                            borderTop: "1px dashed var(--border)", paddingTop: 3,
-                                          }}>
-                                            {fmt(cr.result)}
-                                          </span>
-                                        </React.Fragment>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                            {/* === Legacy MEDIATOR_AI_PAYROLL block (for old templates) === */}
-                            {(!tpl.calcSteps || tpl.calcSteps.length === 0) && tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (() => {
-                              const c = dealDataRows[0] ? computeMediatorAiPayroll(dealDataRows[0].data, tpl) : null;
-                              const fmt = (n: number) => n > 0 ? n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : "0";
-                              const grossField = tpl.fields.find(f => f.key === tpl.calcGrossFieldKey);
-                              return (
-                                <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
-                                  <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                                    📊 Расчёт распределения
-                                    {(!c || c.G === 0) && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>— заполните {grossField?.label ?? "Сумма завода"} 💰 выше</span>}
-                                  </div>
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-                                    <span style={{ color: "var(--text-secondary)" }}>💰 Сумма завода</span><span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>🏦 Посредник</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.M ?? 0)}</span>
-                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R1</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R1 ?? 0)}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>🤖 AI</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.A ?? 0)}</span>
-                                    <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R2</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R2 ?? 0)}</span>
-                                    <span style={{ color: "var(--amber)" }}>👥 ЗП фонд ({parsePayrollPoolPct(tpl)}%)</span><span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>− {fmt(c?.F ?? 0)}</span>
-                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>🏢 Прибыль офиса</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>{fmt(c?.P ?? 0)}</span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        );
-                      })() : (
-                      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div className="form-label" style={{ margin: 0 }}>Операции (классика, без шаблона) *</div>
-                          <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Добавить строку</button>
-                        </div>
-
-                        <div style={{ display: "grid", gap: 10 }}>
-                          {dealAmounts.map((r) => (
-                            <div key={r.id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14 }}>
-                              {/* row 1: bank, type, shopName */}
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 1fr 28px", gap: 8, marginBottom: 8, alignItems: "end" }}>
-                                <div>
-                                  <div className="form-label" style={{ marginBottom: 3 }}>Банк</div>
-                                  <input
-                                    className="form-input"
-                                    value={r.bank}
-                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, bank: e.target.value } : x))}
-                                    placeholder="ING, PKO BP..."
-                                  />
-                                </div>
-                                <div>
-                                  <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
-                                  <select
-                                    className="form-input"
-                                    value={r.operationType}
-                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, operationType: e.target.value as OperationType } : x))}
-                                  >
-                                    <option value="ATM">Банкомат</option>
-                                    <option value="PURCHASE">Покупка</option>
-                                    <option value="TRANSFER">Перевод</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  {r.operationType === "PURCHASE" ? (
-                                    <>
-                                      <div className="form-label" style={{ marginBottom: 3 }}>Магазин</div>
-                                      <input
-                                        className="form-input"
-                                        value={r.shopName}
-                                        onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, shopName: e.target.value } : x))}
-                                        placeholder="Название магазина"
-                                      />
-                                    </>
-                                  ) : <div />}
-                                </div>
-                                <div
-                                  style={{ width: 28, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
-                                  onClick={() => setDealAmounts((p) => p.filter((x) => x.id !== r.id))}
-                                >×</div>
-                              </div>
-
-                              {/* row 2: amountIn + currencyIn → amountOut + currencyOut */}
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 24px 1fr 90px", gap: 8, alignItems: "end" }}>
-                                <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Взяли</div>
-                                  <input
-                                    className="form-input"
-                                    value={r.amountIn}
-                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, amountIn: e.target.value } : x))}
-                                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                                    placeholder="0"
-                                  />
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
-                                  <select
-                                    className="form-input"
-                                    value={r.currencyIn}
-                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, currencyIn: e.target.value } : x))}
-                                  >
-                                    {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-                                  </select>
-                                </div>
-                                <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingBottom: 8 }}>→</div>
-                                <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Получили</div>
-                                  <input
-                                    className="form-input"
-                                    value={r.amountOut}
-                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, amountOut: e.target.value } : x))}
-                                    style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}
-                                    placeholder="0"
-                                  />
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
-                                  <select
-                                    className="form-input"
-                                    value={r.currencyOut}
-                                    onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, currencyOut: e.target.value } : x))}
-                                  >
-                                    {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* totals row */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, paddingTop: 12, marginTop: 12, borderTop: "2px solid var(--border)" }}>
-                          <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Итого взяли</div>
-                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15 }}>{dealTotals.tAmountIn.toLocaleString()}</div>
-                          </div>
-                          <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Итого получили</div>
-                            <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: "var(--green)" }}>{dealTotals.tAmountOut.toLocaleString()}</div>
-                          </div>
-                        </div>
-                      </div>
-                      )}
-
-                      {/* Participants */}
-                      {(() => {
-                        const incomeBase = participantIncomeInfo.base;
-                        const activeTplForParts = dealTemplateId ? templates.find(t => t.id === dealTemplateId) : null;
-                        const isMediator = activeTplForParts?.calcPreset === CALC_MEDIATOR_AI_PAYROLL;
-                        const filledParticipants = dealParticipants.filter(p => p.userId);
-                        const totalPct = dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0);
-                        const remaining = 100 - totalPct;
-
-                        function splitEvenly() {
-                          const filled = dealParticipants.filter(p => p.userId);
-                          if (filled.length === 0) return;
-                          const base = Math.floor(100 / filled.length);
-                          const rem = 100 - base * filled.length;
-                          setDealParticipants(prev => {
-                            let extra = rem;
-                            return prev.map(p => {
-                              if (!p.userId) return p;
-                              const add = extra > 0 ? 1 : 0;
-                              extra -= add;
-                              return { ...p, pct: String(base + add) };
-                            });
-                          });
-                        }
-
-                        return (
-                          <div style={{ border: `2px solid ${isMediator ? "var(--accent)44" : "var(--border)"}`, borderRadius: 14, overflow: "hidden" }}>
-                            {/* Header */}
-                            <div style={{ padding: "12px 16px", background: isMediator ? "var(--accent)08" : "var(--bg-metric)", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                                  👥 Зарплата сотрудников
-                                  {totalPct === 100 && filledParticipants.length > 0 && (
-                                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 600 }}>✓ распределено</span>
-                                  )}
-                                </div>
-                                {isMediator && incomeBase > 0 ? (
-                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-                                    Фонд для распределения:&nbsp;
-                                    <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontSize: 14 }}>{incomeBase.toLocaleString()}</strong>
-                                    &nbsp;— это {parsePayrollPoolPct(activeTplForParts!)}% от суммы после всех вычетов. Раздели 100% этой суммы между сотрудниками.
-                                  </div>
-                                ) : incomeBase > 0 ? (
-                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-                                    База: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong> · укажи % каждому сотруднику, в сумме 100%
-                                  </div>
-                                ) : (
-                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-tertiary)" }}>Укажи суммы в полях выше — сразу увидишь сколько получит каждый</div>
-                                )}
-                              </div>
-                              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                                {filledParticipants.length > 1 && (
-                                  <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={splitEvenly} title="Разделить поровну">⚖️ Поровну</button>
-                                )}
-                                <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: remaining > 0 ? String(remaining) : "0" }])}>
-                                  + Сотрудник
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Rows */}
-                            <div style={{ padding: dealParticipants.length ? "8px 12px" : 0, display: "grid", gap: 6 }}>
-                              {dealParticipants.map((p, idx) => {
-                                const pct = Number(p.pct) || 0;
-                                const earn = incomeBase > 0 ? Math.round(incomeBase * pct / 100 * 100) / 100 : 0;
-                                const worker = dealWorkers.find(w => w.id === p.userId);
-                                const initials = worker?.name
-                                  ? worker.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
-                                  : (worker?.email?.[0] ?? "?").toUpperCase();
-                                return (
-                                  <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr 80px auto 32px", gap: 8, alignItems: "center", padding: "8px 4px", borderRadius: 10, background: p.userId ? "var(--bg-metric)" : "transparent" }}>
-                                    {/* Avatar */}
-                                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: p.userId ? "var(--accent)" : "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: p.userId ? "#fff" : "var(--text-tertiary)", flexShrink: 0 }}>
-                                      {p.userId ? initials : idx + 1}
-                                    </div>
-                                    {/* Employee select */}
-                                    <select
-                                      className="form-input"
-                                      value={p.userId}
-                                      onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
-                                    >
-                                      <option value="">— выбрать сотрудника —</option>
-                                      {dealWorkers.map((w) => (
-                                        <option key={w.id} value={w.id}>
-                                          {w.name || w.email}{w.position ? ` · ${w.position}` : ""}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    {/* Pct + earn */}
-                                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                      <input
-                                        className="form-input"
-                                        value={p.pct}
-                                        onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, pct: e.target.value } : x))}
-                                        style={{ width: 52, textAlign: "center", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}
-                                        placeholder="0"
-                                      />
-                                      <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>%</span>
-                                    </div>
-                                    {/* Amount */}
-                                    <div style={{ minWidth: 80, textAlign: "right" }}>
-                                      {incomeBase > 0 && p.userId ? (
-                                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)", fontSize: 13 }}>
-                                          {earn.toLocaleString()}
-                                        </div>
-                                      ) : <span style={{ color: "var(--border)" }}>—</span>}
-                                    </div>
-                                    {/* Remove */}
-                                    <button
-                                      style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}
-                                      onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}
-                                    >×</button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            {/* Footer: progress bar + total */}
-                            {dealParticipants.length > 0 && (
-                              <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-light)", background: "var(--bg-metric)" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Распределено: <strong style={{ color: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--amber)" }}>{totalPct}%</strong></span>
-                                  {incomeBase > 0 && (
-                                    <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
-                                      {dealParticipants.filter(p => p.userId).reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()} из {incomeBase.toLocaleString()}
-                                    </span>
-                                  )}
-                                </div>
-                                <div style={{ height: 6, borderRadius: 6, background: "var(--border)", overflow: "hidden" }}>
-                                  <div style={{ height: "100%", borderRadius: 6, background: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--accent)", width: `${Math.min(totalPct, 100)}%`, transition: "width 0.2s" }} />
-                                </div>
-                                {totalPct !== 100 && (
-                                  <div style={{ marginTop: 6, fontSize: 12, color: totalPct > 100 ? "var(--red)" : "var(--amber)" }}>
-                                    {totalPct > 100 ? `⚠ Превышение на ${totalPct - 100}% — уменьши проценты` : `Осталось распределить: ${100 - totalPct}%${incomeBase > 0 ? ` (${Math.round(incomeBase * (100 - totalPct) / 100 * 100) / 100} в сумме)` : ""}`}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {/* Comment */}
-                      <div>
-                        <div className="form-label">Комментарий</div>
-                        <textarea className="form-input" value={dealComment} onChange={(e) => setDealComment(e.target.value)} style={{ height: 72, paddingTop: 10 }} />
-                      </div>
-
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                        {!dealEditingId && templates.length > 0 && (
-                          <button className="btn btn-secondary" onClick={() => setDealTemplateStep("pick")}>← Шаблон</button>
-                        )}
-                        <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
-                        <button className="btn btn-primary" onClick={saveDeal}>
-                          {dealEditingId ? "Сохранить" : "Создать сделку"}
-                        </button>
-                      </div>
-                    </div>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            <DealsTab
+              isAdmin={isAdmin}
+              isManager={isManager}
+              deals={deals}
+              loading={dealsLoading}
+              filter={dealFilter}
+              onFilterChange={setDealFilter}
+              legacyImportYear={legacyImportYear}
+              onLegacyImportYearChange={setLegacyImportYear}
+              legacyImporting={legacyImporting}
+              onLegacyImport={(f) => void importLegacyDeals(f)}
+              onOpenNew={() => void openDealModal()}
+              onOpenEdit={openDealEditModal}
+              onDelete={(id) => void deleteDeal(id)}
+              modal={
+                <DealFormModal
+                  open={dealModalOpen}
+                  editingId={dealEditingId}
+                  templates={templates}
+                  templateId={dealTemplateId}
+                  templateStep={dealTemplateStep}
+                  onTemplateIdChange={setDealTemplateId}
+                  onTemplateStepChange={setDealTemplateStep}
+                  dealDate={dealDate}
+                  onDealDateChange={setDealDate}
+                  dealStatus={dealStatus}
+                  onDealStatusChange={setDealStatus}
+                  dealClientSearch={dealClientSearch}
+                  onDealClientSearchChange={setDealClientSearch}
+                  dealClientId={dealClientId}
+                  onDealClientIdChange={setDealClientId}
+                  dealClientSkip={dealClientSkip}
+                  onDealClientSkipChange={setDealClientSkip}
+                  dealClients={dealClients}
+                  dealComment={dealComment}
+                  onDealCommentChange={setDealComment}
+                  dealDataRows={dealDataRows}
+                  onDealDataRowsChange={setDealDataRows}
+                  dealAmounts={dealAmounts}
+                  onDealAmountsChange={setDealAmounts}
+                  dealParticipants={dealParticipants}
+                  onDealParticipantsChange={setDealParticipants}
+                  dealWorkers={dealWorkers}
+                  dealMediatorId={dealMediatorId}
+                  dealMediatorPct={dealMediatorPct}
+                  dealOlxId={dealOlxId}
+                  dealOlxPct={dealOlxPct}
+                  onDealOlxPctChange={setDealOlxPct}
+                  dealInfoPct={dealInfoPct}
+                  onDealInfoPctChange={setDealInfoPct}
+                  mediators={mediators}
+                  olxList={olxList}
+                  onClose={closeDealModal}
+                  onSave={() => void saveDeal()}
+                  onMediatorSelect={setDealMediatorSelection}
+                  onMediatorPctChange={applyDealMediatorPct}
+                  onOlxSelect={setDealOlxSelection}
+                  newAmtRow={newAmtRow}
+                />
+              }
+            />
           ) : null}
 
-          {/* ===== CLIENTS ===== */}
           {tab === "clients" ? (
             <ClientsTab
               clients={clients}
