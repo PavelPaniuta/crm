@@ -373,6 +373,13 @@ const OP_LABELS: Record<OperationType, string> = {
 };
 
 const CURRENCIES = ["USD", "EUR", "UAH", "PLN", "CHF"];
+const SALARY_PAYMENT_TYPES: Record<string, string> = {
+  BASE: "Ставка",
+  DEAL_BONUS: "Бонус по сделкам",
+  ADVANCE: "Аванс",
+  MANUAL: "Ручная",
+};
+const SALARY_PAY_DAY_PRESETS = [1, 5, 10, 15, 25, 31] as const;
 const CURRENCY_META: Record<string, { symbol: string; name: string }> = {
   USD: { symbol: "$",  name: "US Dollar" },
   EUR: { symbol: "€",  name: "Euro" },
@@ -628,7 +635,9 @@ export default function AppPage() {
   const [salaryConfigModal, setSalaryConfigModal] = useState<{ userId: string; name: string; config: any } | null>(null);
   const [salaryPaymentModal, setSalaryPaymentModal] = useState<{ userId: string; name: string; orgId: string } | null>(null);
   const [salaryConfigForm, setSalaryConfigForm] = useState({ baseAmount: "", currency: "USD", payDay: "1", note: "" });
+  const [salaryConfigSaving, setSalaryConfigSaving] = useState(false);
   const [salaryPaymentForm, setSalaryPaymentForm] = useState({ amount: "", currency: "USD", type: "BASE", note: "", isPaid: false });
+  const [salaryPaymentSaving, setSalaryPaymentSaving] = useState(false);
 
   // --- Tasks ---
   const [tasks, setTasks] = useState<CrmTask[]>([]);
@@ -1033,40 +1042,94 @@ export default function AppPage() {
     } finally { setSalaryLoading(false); }
   }
 
+  function openSalaryConfigModal(
+    userId: string,
+    name: string,
+    config?: { baseAmount?: unknown; currency?: string; payDay?: number; note?: string | null } | null,
+  ) {
+    setSalaryConfigModal({ userId, name, config: config ?? null });
+    setSalaryConfigForm({
+      baseAmount: config?.baseAmount != null && config.baseAmount !== "" ? String(config.baseAmount) : "",
+      currency: config?.currency ?? "USD",
+      payDay: config?.payDay != null ? String(config.payDay) : "1",
+      note: config?.note ?? "",
+    });
+  }
+
+  function openSalaryPaymentModal(userId: string, name: string, orgId: string, currency = "USD") {
+    setSalaryPaymentModal({ userId, name, orgId });
+    setSalaryPaymentForm({ amount: "", currency, type: "BASE", note: "", isPaid: false });
+  }
+
   async function saveSalaryConfig() {
     if (!salaryConfigModal) return;
-    const res = await fetch(`/api/salary/config/${salaryConfigModal.userId}`, {
-      method: "PUT", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        baseAmount: Number(salaryConfigForm.baseAmount) || 0,
-        currency: salaryConfigForm.currency,
-        payDay: Number(salaryConfigForm.payDay) || 1,
-        note: salaryConfigForm.note || undefined,
-      }),
-    });
-    if (res.ok) { setSalaryConfigModal(null); loadSalary(); }
-    else { const j = await res.json(); alert(j.message || "Ошибка сохранения"); }
+    const baseAmount = Number(salaryConfigForm.baseAmount);
+    const payDay = Number(salaryConfigForm.payDay);
+    if (!Number.isFinite(baseAmount) || baseAmount < 0) {
+      alert("Укажите корректную базовую ставку");
+      return;
+    }
+    if (!Number.isFinite(payDay) || payDay < 1 || payDay > 31) {
+      alert("День выплаты должен быть от 1 до 31");
+      return;
+    }
+    setSalaryConfigSaving(true);
+    try {
+      const res = await fetch(`/api/salary/config/${salaryConfigModal.userId}`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseAmount,
+          currency: salaryConfigForm.currency,
+          payDay,
+          note: salaryConfigForm.note.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        setSalaryConfigModal(null);
+        await loadSalary();
+      } else {
+        const j = await res.json().catch(() => null);
+        alert(j?.message || "Ошибка сохранения");
+      }
+    } finally {
+      setSalaryConfigSaving(false);
+    }
   }
 
   async function addSalaryPayment() {
     if (!salaryPaymentModal) return;
-    const res = await fetch("/api/salary/payments", {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: salaryPaymentModal.userId,
-        organizationId: salaryPaymentModal.orgId,
-        amount: Number(salaryPaymentForm.amount) || 0,
-        currency: salaryPaymentForm.currency,
-        period: salaryPeriod,
-        type: salaryPaymentForm.type,
-        note: salaryPaymentForm.note || undefined,
-        isPaid: salaryPaymentForm.isPaid,
-      }),
-    });
-    if (res.ok) { setSalaryPaymentModal(null); loadSalary(); }
-    else { const j = await res.json(); alert(j.message || "Ошибка"); }
+    const amount = Number(salaryPaymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Укажите сумму выплаты");
+      return;
+    }
+    setSalaryPaymentSaving(true);
+    try {
+      const res = await fetch("/api/salary/payments", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: salaryPaymentModal.userId,
+          organizationId: salaryPaymentModal.orgId,
+          amount,
+          currency: salaryPaymentForm.currency,
+          period: salaryPeriod,
+          type: salaryPaymentForm.type,
+          note: salaryPaymentForm.note.trim() || undefined,
+          isPaid: salaryPaymentForm.isPaid,
+        }),
+      });
+      if (res.ok) {
+        setSalaryPaymentModal(null);
+        await loadSalary();
+      } else {
+        const j = await res.json().catch(() => null);
+        alert(j?.message || "Ошибка");
+      }
+    } finally {
+      setSalaryPaymentSaving(false);
+    }
   }
 
   async function togglePaymentPaid(paymentId: string, isPaid: boolean) {
@@ -1095,7 +1158,7 @@ export default function AppPage() {
         const member = await memberRes.json();
         const memberships = membershipsRes.ok ? await membershipsRes.json() : [];
         setStaffMember({ ...member, extraMemberships: memberships });
-        if (salaryData.length === 0) loadSalary();
+        if (isAdmin) void loadSalary();
         if (tasks.length === 0) loadTasks();
       }
     } finally { setStaffMemberLoading(false); }
@@ -5214,17 +5277,17 @@ export default function AppPage() {
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                                 <div style={{ fontSize: 14, fontWeight: 600 }}>Зарплата ({salaryPeriod})</div>
                                 {isAdmin && (
-                                  <button className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}
-                                    onClick={() => {
-                                      setSalaryConfigModal({ userId: staffMember.id, name: staffMember.name || staffMember.email, config: empSalary?.salaryConfig ?? null });
-                                      setSalaryConfigForm({
-                                        baseAmount: String(empSalary?.salaryConfig?.baseAmount ?? ""),
-                                        currency: empSalary?.salaryConfig?.currency ?? "USD",
-                                        payDay: String(empSalary?.salaryConfig?.payDay ?? "1"),
-                                        note: empSalary?.salaryConfig?.note ?? "",
-                                      });
-                                    }}>
-                                    {empSalary?.salaryConfig ? "Изменить" : "Настроить"}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: 12, padding: "4px 12px" }}
+                                    onClick={() => openSalaryConfigModal(
+                                      staffMember.id,
+                                      staffMember.name || staffMember.email,
+                                      empSalary?.salaryConfig ?? null,
+                                    )}
+                                  >
+                                    {empSalary?.salaryConfig ? "Изменить ставку" : "Настроить"}
                                   </button>
                                 )}
                               </div>
@@ -5371,8 +5434,6 @@ export default function AppPage() {
 
           {/* ===== SALARY ===== */}
           {tab === "salary" ? (() => {
-            const CURRENCIES = ["USD", "EUR", "UAH", "PLN", "CHF"];
-            const PAYMENT_TYPES: Record<string, string> = { BASE: "Ставка", DEAL_BONUS: "Бонус по сделкам", ADVANCE: "Аванс", MANUAL: "Ручная" };
             const ROLE_LABELS_S: Record<string, string> = { ADMIN: "Администратор", MANAGER: "Менеджер", WORKER: "Воркер", SUPER_ADMIN: "Супер-админ" };
             const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
             const fmtDec = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
@@ -5380,91 +5441,6 @@ export default function AppPage() {
             const totalFund = salaryData.reduce((s, e) => s + (e.totalAccrued ?? 0), 0);
             const totalDebt = salaryData.reduce((s, e) => s + Math.max(0, e.balance ?? 0), 0);
             const totalPaid = salaryData.reduce((s, e) => s + (e.paidUsd ?? 0), 0);
-
-            // Shared modals (usable from both list and cabinet)
-            const configModal = salaryConfigModal && (
-              <div className="modal-overlay" onClick={() => setSalaryConfigModal(null)}>
-                <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                  <div className="modal-header">
-                    <div className="modal-title">Настройка ставки — {salaryConfigModal.name}</div>
-                    <button className="modal-close" onClick={() => setSalaryConfigModal(null)}>✕</button>
-                  </div>
-                  <div className="modal-body" style={{ display: "grid", gap: 14 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-                      <div>
-                        <label className="form-label">Базовая ставка (в месяц)</label>
-                        <input className="form-control" type="number" min="0" placeholder="0" value={salaryConfigForm.baseAmount} onChange={e => setSalaryConfigForm(f => ({ ...f, baseAmount: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="form-label">Валюта</label>
-                        <select className="form-control" value={salaryConfigForm.currency} onChange={e => setSalaryConfigForm(f => ({ ...f, currency: e.target.value }))}>
-                          {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="form-label">День выплаты зарплаты (число месяца, 1–31)</label>
-                      <input className="form-control" type="number" min="1" max="31" value={salaryConfigForm.payDay} onChange={e => setSalaryConfigForm(f => ({ ...f, payDay: e.target.value }))} />
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Например, 15 — значит 15-го числа каждого месяца</div>
-                    </div>
-                    <div>
-                      <label className="form-label">Примечание</label>
-                      <input className="form-control" type="text" placeholder="Необязательно" value={salaryConfigForm.note} onChange={e => setSalaryConfigForm(f => ({ ...f, note: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className="modal-footer">
-                    <button className="btn btn-ghost" onClick={() => setSalaryConfigModal(null)}>Отмена</button>
-                    <button className="btn btn-primary" onClick={saveSalaryConfig}>Сохранить</button>
-                  </div>
-                </div>
-              </div>
-            );
-
-            const paymentModal = salaryPaymentModal && (
-              <div className="modal-overlay" onClick={() => setSalaryPaymentModal(null)}>
-                <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-                  <div className="modal-header">
-                    <div className="modal-title">Добавить выплату — {salaryPaymentModal.name}</div>
-                    <button className="modal-close" onClick={() => setSalaryPaymentModal(null)}>✕</button>
-                  </div>
-                  <div className="modal-body" style={{ display: "grid", gap: 14 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-                      <div>
-                        <label className="form-label">Сумма</label>
-                        <input className="form-control" type="number" min="0" placeholder="0" value={salaryPaymentForm.amount} onChange={e => setSalaryPaymentForm(f => ({ ...f, amount: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="form-label">Валюта</label>
-                        <select className="form-control" value={salaryPaymentForm.currency} onChange={e => setSalaryPaymentForm(f => ({ ...f, currency: e.target.value }))}>
-                          {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="form-label">Тип выплаты</label>
-                      <select className="form-control" value={salaryPaymentForm.type} onChange={e => setSalaryPaymentForm(f => ({ ...f, type: e.target.value }))}>
-                        {Object.entries(PAYMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="form-label">Примечание</label>
-                      <input className="form-control" type="text" placeholder="Необязательно" value={salaryPaymentForm.note} onChange={e => setSalaryPaymentForm(f => ({ ...f, note: e.target.value }))} />
-                    </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 12px", borderRadius: 8, background: "var(--bg-input)", border: "1px solid var(--border)" }}>
-                      <input type="checkbox" checked={salaryPaymentForm.isPaid} onChange={e => setSalaryPaymentForm(f => ({ ...f, isPaid: e.target.checked }))} />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>Отметить как выплачено</div>
-                        <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Если деньги уже переданы сотруднику</div>
-                      </div>
-                    </label>
-                  </div>
-                  <div className="modal-footer">
-                    <button className="btn btn-ghost" onClick={() => setSalaryPaymentModal(null)}>Отмена</button>
-                    <button className="btn btn-primary" onClick={addSalaryPayment}>Добавить</button>
-                  </div>
-                </div>
-              </div>
-            );
 
             // ── CABINET VIEW ──────────────────────────────────────────────
             if (selectedSalaryEmp) {
@@ -5518,12 +5494,9 @@ export default function AppPage() {
                     <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
                       <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>Настройки зарплаты</div>
-                        <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
-                          onClick={() => {
-                            setSalaryConfigModal({ userId: emp.userId, name: emp.name || emp.email, config: cfg });
-                            setSalaryConfigForm({ baseAmount: cfg?.baseAmount ? String(cfg.baseAmount) : "", currency: cfg?.currency ?? "USD", payDay: cfg?.payDay ? String(cfg.payDay) : "1", note: cfg?.note ?? "" });
-                          }}>
-                          {cfg ? "Изменить" : "Настроить"}
+                        <button type="button" className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
+                          onClick={() => openSalaryConfigModal(emp.userId, emp.name || emp.email, cfg)}>
+                          {cfg ? "Изменить ставку" : "Настроить"}
                         </button>
                       </div>
                       <div style={{ padding: "16px 18px", display: "grid", gap: 14 }}>
@@ -5554,11 +5527,8 @@ export default function AppPage() {
                           <div style={{ padding: "24px 0", textAlign: "center" }}>
                             <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
                             <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 14 }}>Ставка не настроена</div>
-                            <button className="btn btn-primary" style={{ fontSize: 12 }}
-                              onClick={() => {
-                                setSalaryConfigModal({ userId: emp.userId, name: emp.name || emp.email, config: null });
-                                setSalaryConfigForm({ baseAmount: "", currency: "USD", payDay: "1", note: "" });
-                              }}>
+                            <button type="button" className="btn btn-primary" style={{ fontSize: 12 }}
+                              onClick={() => openSalaryConfigModal(emp.userId, emp.name || emp.email, null)}>
                               Установить ставку
                             </button>
                           </div>
@@ -5583,11 +5553,8 @@ export default function AppPage() {
                     <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
                       <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>История выплат — {salaryPeriod}</div>
-                        <button className="btn btn-primary" style={{ fontSize: 12 }}
-                          onClick={() => {
-                            setSalaryPaymentModal({ userId: emp.userId, name: emp.name || emp.email, orgId: user?.activeOrganizationId ?? "" });
-                            setSalaryPaymentForm({ amount: "", currency: cfg?.currency ?? "USD", type: "BASE", note: "", isPaid: false });
-                          }}>
+                        <button type="button" className="btn btn-primary" style={{ fontSize: 12 }}
+                          onClick={() => openSalaryPaymentModal(emp.userId, emp.name || emp.email, user?.activeOrganizationId ?? "", cfg?.currency ?? "USD")}>
                           + Добавить выплату
                         </button>
                       </div>
@@ -5614,7 +5581,7 @@ export default function AppPage() {
                                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                     <span style={{ fontWeight: 700, fontSize: 15 }}>{p.amount.toLocaleString()} {p.currency}</span>
                                     {p.currency !== "USD" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>≈ ${fmt(p.amountUsd)}</span>}
-                                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "var(--accent-light)", color: "var(--accent)", fontWeight: 500 }}>{PAYMENT_TYPES[p.type] ?? p.type}</span>
+                                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "var(--accent-light)", color: "var(--accent)", fontWeight: 500 }}>{SALARY_PAYMENT_TYPES[p.type] ?? p.type}</span>
                                     {p.isPaid && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(5,150,105,0.12)", color: "#059669", fontWeight: 600 }}>✓ Выплачено</span>}
                                   </div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
@@ -5643,8 +5610,6 @@ export default function AppPage() {
                     </div>
                   </div>
 
-                  {configModal}
-                  {paymentModal}
                 </div>
               );
             }
@@ -5778,8 +5743,6 @@ export default function AppPage() {
                   )}
                 </div>
 
-                {configModal}
-                {paymentModal}
               </div>
             );
           })() : null}
@@ -6554,6 +6517,165 @@ export default function AppPage() {
 
         </div>
       </div>
+
+      {/* ===== SALARY CONFIG MODAL ===== */}
+      {salaryConfigModal && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !salaryConfigSaving) setSalaryConfigModal(null); }}>
+          <div className="card" style={{ width: 500, maxWidth: "100%", maxHeight: "min(92vh, 720px)", overflow: "auto" }}
+            onMouseDown={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ alignItems: "flex-start" }}>
+              <div>
+                <div className="card-title">Настройка зарплаты</div>
+                <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 4, fontWeight: 500 }}>{salaryConfigModal.name}</div>
+              </div>
+              <button type="button" className="btn btn-ghost" disabled={salaryConfigSaving} onClick={() => setSalaryConfigModal(null)} aria-label="Закрыть">✕</button>
+            </div>
+            <div className="card-body" style={{ display: "grid", gap: 20 }}>
+              <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--bg-metric)", border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                Укажите фиксированную ставку в месяц и день выплаты. Бонусы по сделкам начисляются отдельно в разделе «Зарплата».
+              </div>
+
+              <div>
+                <div className="form-label">Базовая ставка в месяц *</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="Например, 1500"
+                    value={salaryConfigForm.baseAmount}
+                    onChange={(e) => setSalaryConfigForm((f) => ({ ...f, baseAmount: e.target.value }))}
+                    style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 16, fontWeight: 600 }}
+                    autoFocus
+                  />
+                  <select className="form-input" value={salaryConfigForm.currency} onChange={(e) => setSalaryConfigForm((f) => ({ ...f, currency: e.target.value }))}>
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c} {CURRENCY_META[c]?.symbol ? `(${CURRENCY_META[c].symbol})` : ""}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="form-label">День выплаты зарплаты *</div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={salaryConfigForm.payDay}
+                    onChange={(e) => setSalaryConfigForm((f) => ({ ...f, payDay: e.target.value }))}
+                    style={{ width: 88, textAlign: "center", fontWeight: 700 }}
+                  />
+                  <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>число месяца (1–31)</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                  {SALARY_PAY_DAY_PRESETS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{
+                        padding: "4px 12px",
+                        fontSize: 12,
+                        borderColor: String(salaryConfigForm.payDay) === String(d) ? "var(--accent)" : undefined,
+                        background: String(salaryConfigForm.payDay) === String(d) ? "var(--accent-light)" : undefined,
+                        color: String(salaryConfigForm.payDay) === String(d) ? "var(--accent)" : undefined,
+                      }}
+                      onClick={() => setSalaryConfigForm((f) => ({ ...f, payDay: String(d) }))}
+                    >
+                      {d === 31 ? "31 (конец)" : `${d}-е`}
+                    </button>
+                  ))}
+                </div>
+                {Number(salaryConfigForm.payDay) >= 1 && Number(salaryConfigForm.payDay) <= 31 && (
+                  <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 8, fontWeight: 500 }}>
+                    Выплата каждый месяц {salaryConfigForm.payDay}-го числа
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="form-label">Примечание</div>
+                <textarea
+                  className="form-input"
+                  rows={2}
+                  placeholder="Необязательно: условия, график, комментарий для бухгалтерии"
+                  value={salaryConfigForm.note}
+                  onChange={(e) => setSalaryConfigForm((f) => ({ ...f, note: e.target.value }))}
+                  style={{ resize: "vertical", minHeight: 64 }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
+                <button type="button" className="btn btn-secondary" disabled={salaryConfigSaving} onClick={() => setSalaryConfigModal(null)}>Отмена</button>
+                <button type="button" className="btn btn-primary" disabled={salaryConfigSaving} onClick={() => void saveSalaryConfig()}>
+                  {salaryConfigSaving ? "Сохранение…" : "Сохранить ставку"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== SALARY PAYMENT MODAL ===== */}
+      {salaryPaymentModal && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !salaryPaymentSaving) setSalaryPaymentModal(null); }}>
+          <div className="card" style={{ width: 460, maxWidth: "100%" }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ alignItems: "flex-start" }}>
+              <div>
+                <div className="card-title">Добавить выплату</div>
+                <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 4 }}>{salaryPaymentModal.name} · {salaryPeriod}</div>
+              </div>
+              <button type="button" className="btn btn-ghost" disabled={salaryPaymentSaving} onClick={() => setSalaryPaymentModal(null)}>✕</button>
+            </div>
+            <div className="card-body" style={{ display: "grid", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 10 }}>
+                <div>
+                  <div className="form-label">Сумма *</div>
+                  <input className="form-input" type="number" min="0" step="any" placeholder="0" value={salaryPaymentForm.amount}
+                    onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                    style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} autoFocus />
+                </div>
+                <div>
+                  <div className="form-label">Валюта</div>
+                  <select className="form-input" value={salaryPaymentForm.currency} onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, currency: e.target.value }))}>
+                    {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div className="form-label">Тип выплаты</div>
+                <select className="form-input" value={salaryPaymentForm.type} onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, type: e.target.value }))}>
+                  {Object.entries(SALARY_PAYMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="form-label">Примечание</div>
+                <input className="form-input" type="text" placeholder="Необязательно" value={salaryPaymentForm.note}
+                  onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, note: e.target.value }))} />
+              </div>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: "12px 14px", borderRadius: 10, background: salaryPaymentForm.isPaid ? "rgba(5,150,105,0.08)" : "var(--bg-metric)", border: `1px solid ${salaryPaymentForm.isPaid ? "rgba(5,150,105,0.25)" : "var(--border-light)"}` }}>
+                <input type="checkbox" style={{ marginTop: 3 }} checked={salaryPaymentForm.isPaid} onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, isPaid: e.target.checked }))} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Уже выплачено</div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>Отметьте, если деньги уже переданы сотруднику</div>
+                </div>
+              </label>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn btn-secondary" disabled={salaryPaymentSaving} onClick={() => setSalaryPaymentModal(null)}>Отмена</button>
+                <button type="button" className="btn btn-primary" disabled={salaryPaymentSaving} onClick={() => void addSalaryPayment()}>
+                  {salaryPaymentSaving ? "Добавление…" : "Добавить выплату"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== EXCHANGE RATES MODAL ===== */}
       {ratesModalOpen && (
