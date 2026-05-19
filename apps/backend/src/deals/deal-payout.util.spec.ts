@@ -115,6 +115,23 @@ describe('getDealPayoutBreakdown', () => {
     expect(b.payrollPool).toBe(500);
   });
 
+  it('treats missing amounts/dataRows as empty (partial Prisma select)', () => {
+    const b = getDealPayoutBreakdown({
+      dataRows: [{ data: { gross: 1000, pctM: 10, pctAi: 5 } }],
+      template: {
+        calcPreset: MEDIATOR_AI_PAYROLL,
+        payrollPoolPct: 20,
+        calcGrossFieldKey: 'gross',
+        calcMediatorPctKey: 'pctM',
+        calcAiPctKey: 'pctAi',
+        incomeFieldKey: null,
+        calcSteps: null,
+      },
+    } as Parameters<typeof getDealPayoutBreakdown>[0]);
+    expect(b.mode).toBe('mediatorAiPayroll');
+    expect(b.gross).toBe(1000);
+  });
+
   it('uses mediatorAiPayroll preset', () => {
     const b = getDealPayoutBreakdown({
       amounts: [],

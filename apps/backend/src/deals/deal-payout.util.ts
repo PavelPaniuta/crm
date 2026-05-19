@@ -83,9 +83,17 @@ export type DealPayoutBreakdown = {
   mode: 'classic' | 'incomeField' | 'mediatorAiPayroll' | 'calcChain' | 'none';
 };
 
+function dealAmounts(deal: { amounts?: { amountOut: unknown }[] | null }) {
+  return deal.amounts ?? [];
+}
+
+function dealDataRows(deal: { dataRows?: { data: unknown }[] | null }) {
+  return deal.dataRows ?? [];
+}
+
 export type DealForPayout = {
-  amounts: { amountOut: unknown }[];
-  dataRows: { data: unknown }[];
+  amounts?: { amountOut: unknown }[] | null;
+  dataRows?: { data: unknown }[] | null;
   template:
     | (MediatorAiPayrollKeys & {
         incomeFieldKey: string | null;
@@ -106,13 +114,15 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
     office: 0,
     mode: 'none',
   };
-  if (deal.amounts.length > 0) {
-    const gross = deal.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+  const amounts = dealAmounts(deal);
+  const dataRows = dealDataRows(deal);
+  if (amounts.length > 0) {
+    const gross = amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
     return { gross, mediator: 0, ai: 0, payrollPool: gross, office: 0, mode: 'classic' };
   }
   const t = deal.template;
-  if (!t || deal.dataRows.length === 0) return empty;
-  const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
+  if (!t || dataRows.length === 0) return empty;
+  const first = dataRows[0]?.data as Record<string, unknown> | undefined;
   if (!first) return empty;
 
   const steps = parseCalcSteps(t.calcSteps);
@@ -143,7 +153,7 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
   }
 
   if (t.incomeFieldKey) {
-    const gross = deal.dataRows.reduce((s, r) => {
+    const gross = dataRows.reduce((s, r) => {
       const d = r.data as Record<string, unknown>;
       return s + (Number(d[t.incomeFieldKey!]) || 0);
     }, 0);
@@ -242,8 +252,8 @@ export function getEffectiveRates(
 
 export function getPayrollBaseForTemplateDeal(
   deal: {
-    amounts: { amountOut: Prisma.Decimal | unknown }[];
-    dataRows: { data: unknown }[];
+    amounts?: { amountOut: Prisma.Decimal | unknown }[] | null;
+    dataRows?: { data: unknown }[] | null;
     template:
       | (MediatorAiPayrollKeys & {
           incomeFieldKey: string | null;
@@ -252,13 +262,15 @@ export function getPayrollBaseForTemplateDeal(
       | null;
   },
 ): { base: number; mode: 'classic' | 'incomeField' | 'mediatorAiPayroll' | 'calcChain' } {
-  if (deal.amounts.length > 0) {
-    const totalOut = deal.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+  const amounts = dealAmounts(deal);
+  const dataRows = dealDataRows(deal);
+  if (amounts.length > 0) {
+    const totalOut = amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
     return { base: totalOut, mode: 'classic' };
   }
   const t = deal.template;
-  if (!t || deal.dataRows.length === 0) return { base: 0, mode: 'incomeField' };
-  const first = deal.dataRows[0]?.data as Record<string, unknown>;
+  if (!t || dataRows.length === 0) return { base: 0, mode: 'incomeField' };
+  const first = dataRows[0]?.data as Record<string, unknown>;
   if (!first) return { base: 0, mode: 'incomeField' };
 
   // New: universal calcSteps chain takes priority
@@ -274,7 +286,7 @@ export function getPayrollBaseForTemplateDeal(
 
   if (t.incomeFieldKey) {
     const key = t.incomeFieldKey;
-    const rowSum = deal.dataRows.reduce((s, r) => {
+    const rowSum = dataRows.reduce((s, r) => {
       const d = r.data as Record<string, unknown>;
       return s + (Number(d[key]) || 0);
     }, 0);
