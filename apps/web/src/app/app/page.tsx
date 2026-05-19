@@ -15,18 +15,27 @@ import {
 import { MediatorFormModal } from "@/components/mediators/MediatorFormModal";
 import { MediatorsTab, type MediatorListItem } from "@/components/mediators/MediatorsTab";
 import { ExchangeRatesModal } from "@/components/modals/ExchangeRatesModal";
-import { ExpenseDetailModal } from "@/components/expenses/ExpenseDetailModal";
+import { ExpensesTab } from "@/components/expenses/ExpensesTab";
+import { fetchExpenses, type ExpenseRow } from "@/lib/expenses";
 import { SalaryConfigModal } from "@/components/salary/SalaryConfigModal";
 import { SalaryPaymentModal } from "@/components/salary/SalaryPaymentModal";
 import { StaffTable } from "@/components/staff/StaffTable";
 import {
-  type ClientFormState,
-  buildClientKanbanColumns,
   clientFormSectionStyle,
-  emptyClientForm,
-  parseClientLeadPaste,
+  fetchClients,
+  type ClientFieldDef,
+  type ClientListItem,
+  type ClientPipelineStatus,
 } from "@/lib/clients";
-import { ClientsKanbanBoard } from "@/components/clients/ClientsKanbanBoard";
+import { ClientsTab } from "@/components/clients/ClientsTab";
+import { DashboardTab } from "@/components/dashboard/DashboardTab";
+import { WorkerDashboard } from "@/components/dashboard/WorkerDashboard";
+import {
+  fetchDashboard,
+  fetchGlobalDashboard,
+  filterDealsByPeriod,
+  type DashboardDealRow,
+} from "@/lib/dashboard";
 import { ReportsTab } from "@/components/reports/ReportsTab";
 import { downloadAccountingExport, fetchWorkersReport, importAccountingXlsx, type WorkersReport } from "@/lib/reports";
 import { OlxFormModal } from "@/components/olx/OlxFormModal";
@@ -34,9 +43,6 @@ import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
 import { SALARY_PAYMENT_TYPES } from "@/lib/salary-constants";
 
-const AreaChart = dynamic(() => import("../../components/charts/AreaChart"), { ssr: false });
-const DonutChart = dynamic(() => import("../../components/charts/DonutChart"), { ssr: false });
-const BarChart = dynamic(() => import("../../components/charts/BarChart"), { ssr: false });
 
 type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "WORKER";
 
@@ -45,45 +51,6 @@ type User = {
   email: string;
   role: Role;
   activeOrganizationId: string;
-};
-
-type ClientPipelineStatus = {
-  id: string;
-  slug: string;
-  label: string;
-  sortOrder: number;
-  color: string | null;
-  isTerminal: boolean;
-};
-
-type Client = {
-  id: string;
-  name: string;
-  phone: string;
-  note?: string | null;
-  statusId?: string | null;
-  status?: ClientPipelineStatus | null;
-  bank?: string | null;
-  assistantName?: string | null;
-  callSummary?: string | null;
-  callStartedAt?: string | null;
-  customData?: Record<string, unknown>;
-};
-
-type ClientCommentEntry = {
-  id: string;
-  body: string;
-  createdAt: string;
-  user: { id: string; name: string | null; email: string };
-};
-
-type Expense = {
-  id: string;
-  title: string;
-  amount: string | number;
-  currency: string;
-  payMethod: string;
-  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 };
 
 type AppUser = {
@@ -161,26 +128,16 @@ type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
 
 const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  TEXT: "Текст",
-  NUMBER: "Число",
-  SELECT: "Список",
-  DATE: "Дата",
-  PERCENT: "Процент",
-  CHECKBOX: "Да / нет",
-  CURRENCY: "Сумма",
+  TEXT: "РўРµРєСЃС‚",
+  NUMBER: "Р§РёСЃР»Рѕ",
+  SELECT: "РЎРїРёСЃРѕРє",
+  DATE: "Р”Р°С‚Р°",
+  PERCENT: "РџСЂРѕС†РµРЅС‚",
+  CHECKBOX: "Р”Р° / РЅРµС‚",
+  CURRENCY: "РЎСѓРјРјР°",
 };
 
 const FIELD_TYPES_ALL: FieldType[] = ["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"];
-
-type ClientFieldDef = {
-  id: string;
-  key: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-  order: number;
-  options?: string | null;
-};
 
 type TemplateField = {
   id: string;
@@ -193,10 +150,10 @@ type TemplateField = {
 };
 
 function slugifyFieldKey(label: string, i: number): string {
-  return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`;
+  return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_Р°-СЏС‘]/gi, "") || `field_${i}`;
 }
 
-// ─── Template type ────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Template type в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 type DealTemplate = {
   id: string;
   name: string;
@@ -262,9 +219,9 @@ type DealAmtRow = {
 type DealParticipantRow = { id: string; userId: string; pct: string };
 
 const OP_LABELS: Record<OperationType, string> = {
-  PURCHASE: "Покупка",
-  ATM: "Банкомат",
-  TRANSFER: "Перевод",
+  PURCHASE: "РџРѕРєСѓРїРєР°",
+  ATM: "Р‘Р°РЅРєРѕРјР°С‚",
+  TRANSFER: "РџРµСЂРµРІРѕРґ",
 };
 
 export default function AppPage() {
@@ -273,25 +230,13 @@ export default function AppPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
 
   // --- Clients ---
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ClientListItem[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientStatuses, setClientStatuses] = useState<ClientPipelineStatus[]>([]);
   const [clientFieldDefs, setClientFieldDefs] = useState<ClientFieldDef[]>([]);
   const [clientStatusFilter, setClientStatusFilter] = useState<string>("all");
   const [clientSearchQ, setClientSearchQ] = useState("");
-  const [newClientForm, setNewClientForm] = useState<ClientFormState>(emptyClientForm);
-  const [newClientCustom, setNewClientCustom] = useState<Record<string, string>>({});
-  const [clientPasteImport, setClientPasteImport] = useState("");
-  const [clientCreateModalOpen, setClientCreateModalOpen] = useState(false);
-  const [clientViewOpen, setClientViewOpen] = useState<Client | null>(null);
-  const [clientDetailComments, setClientDetailComments] = useState<ClientCommentEntry[]>([]);
-  const [clientDetailCommentText, setClientDetailCommentText] = useState("");
-  const [clientDetailCommentsLoading, setClientDetailCommentsLoading] = useState(false);
-  const [clientCommentPosting, setClientCommentPosting] = useState(false);
-  const [clientEditOpen, setClientEditOpen] = useState(false);
-  const [clientEditing, setClientEditing] = useState<Client | null>(null);
-  const [clientEditForm, setClientEditForm] = useState<ClientFormState>(emptyClientForm);
-  const [clientEditCustom, setClientEditCustom] = useState<Record<string, string>>({});
+  const [pendingClientCreate, setPendingClientCreate] = useState(false);
   const [newClientStatusSlug, setNewClientStatusSlug] = useState("");
   const [newClientStatusLabel, setNewClientStatusLabel] = useState("");
   const [newClientFieldKey, setNewClientFieldKey] = useState("");
@@ -301,14 +246,8 @@ export default function AppPage() {
   const [clientFieldDrafts, setClientFieldDrafts] = useState<Record<string, { label: string; order: string; options: string; type: FieldType; required: boolean }>>({});
 
   // --- Expenses ---
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
-  const [newExpenseTitle, setNewExpenseTitle] = useState("");
-  const [newExpenseAmount, setNewExpenseAmount] = useState("");
-  const [newExpenseCurrency, setNewExpenseCurrency] = useState("PLN");
-  const [newExpensePayMethod, setNewExpensePayMethod] = useState("bank");
-  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
-  const [expenseEditing, setExpenseEditing] = useState<Expense | null>(null);
 
   // --- Users ---
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -370,7 +309,7 @@ export default function AppPage() {
   const [dealClientSearch, setDealClientSearch] = useState("");
   const [dealClientId, setDealClientId] = useState<string | null>(null);
   const [dealClientSkip, setDealClientSkip] = useState(false);
-  const [dealClients, setDealClients] = useState<Client[]>([]);
+  const [dealClients, setDealClients] = useState<ClientListItem[]>([]);
   const [dealWorkers, setDealWorkers] = useState<DealWorker[]>([]);
   const [dealAmounts, setDealAmounts] = useState<DealAmtRow[]>([]);
   const [dealParticipants, setDealParticipants] = useState<DealParticipantRow[]>([]);
@@ -451,9 +390,6 @@ export default function AppPage() {
 
   // --- AI ---
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
-  const [aiChatHistory, setAiChatHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
-  const [aiChatInput, setAiChatInput] = useState("");
-  const [aiChatLoading, setAiChatLoading] = useState(false);
   // AI template parser (inside template modal)
   const [aiParseOpen, setAiParseOpen] = useState(false);
   const [aiParseSample, setAiParseSample] = useState("");
@@ -525,7 +461,7 @@ export default function AppPage() {
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   // Ref keeps the latest chatActiveUser for the polling interval (avoids stale closure)
   const chatActiveUserRef = useRef<ChatContact | null>(null);
-  // AbortController for task comment loading — cancels previous request on rapid clicks
+  // AbortController for task comment loading вЂ” cancels previous request on rapid clicks
   const taskCommentAbortRef = useRef<AbortController | null>(null);
 
   // --- Sessions & Audit ---
@@ -563,27 +499,27 @@ export default function AppPage() {
   const isWorker = user?.role === "WORKER";
 
   const ROLE_LABELS: Record<Role, string> = {
-    SUPER_ADMIN: "Супер Админ",
-    ADMIN: "Админ офиса",
-    MANAGER: "Менеджер",
-    WORKER: "Работник",
+    SUPER_ADMIN: "РЎСѓРїРµСЂ РђРґРјРёРЅ",
+    ADMIN: "РђРґРјРёРЅ РѕС„РёСЃР°",
+    MANAGER: "РњРµРЅРµРґР¶РµСЂ",
+    WORKER: "Р Р°Р±РѕС‚РЅРёРє",
   };
 
   const title = useMemo(() => {
-    if (tab === "dashboard") return isWorker ? "Мой кабинет" : "Дашборд";
-    if (tab === "deals") return "Сделки";
-    if (tab === "clients") return "Клиенты";
-    if (tab === "expenses") return "Расходы";
-    if (tab === "reports") return "Отчёты";
-    if (tab === "settings") return "Настройки";
-    if (tab === "profile") return "Мой профиль";
-    if (tab === "staff") return "Сотрудники";
-    if (tab === "mediators") return "Посредники";
-    if (tab === "olx") return "ОЛХ";
-    if (tab === "tasks") return "Задачи";
-    if (tab === "chat") return "Чат";
-    if (tab === "assistant") return "AI Ассистент";
-    if (tab === "salary") return "Зарплата";
+    if (tab === "dashboard") return isWorker ? "РњРѕР№ РєР°Р±РёРЅРµС‚" : "Р”Р°С€Р±РѕСЂРґ";
+    if (tab === "deals") return "РЎРґРµР»РєРё";
+    if (tab === "clients") return "РљР»РёРµРЅС‚С‹";
+    if (tab === "expenses") return "Р Р°СЃС…РѕРґС‹";
+    if (tab === "reports") return "РћС‚С‡С‘С‚С‹";
+    if (tab === "settings") return "РќР°СЃС‚СЂРѕР№РєРё";
+    if (tab === "profile") return "РњРѕР№ РїСЂРѕС„РёР»СЊ";
+    if (tab === "staff") return "РЎРѕС‚СЂСѓРґРЅРёРєРё";
+    if (tab === "mediators") return "РџРѕСЃСЂРµРґРЅРёРєРё";
+    if (tab === "olx") return "РћР›РҐ";
+    if (tab === "tasks") return "Р—Р°РґР°С‡Рё";
+    if (tab === "chat") return "Р§Р°С‚";
+    if (tab === "assistant") return "AI РђСЃСЃРёСЃС‚РµРЅС‚";
+    if (tab === "salary") return "Р—Р°СЂРїР»Р°С‚Р°";
     return "MyCRM";
   }, [tab, isWorker]);
 
@@ -665,14 +601,13 @@ export default function AppPage() {
   async function loadClients() {
     setClientsLoading(true);
     try {
-      const q = clientSearchQ.trim();
-      const url = q ? `/api/clients?q=${encodeURIComponent(q)}` : "/api/clients";
-      const res = await fetch(url, { credentials: "include" });
-      if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) return;
-      const j = await res.json();
-      setClients(Array.isArray(j) ? j : []);
-    } finally { setClientsLoading(false); }
+      const list = await fetchClients(clientSearchQ);
+      setClients(list);
+    } catch (e) {
+      if (e instanceof Error && e.message === "unauthorized") router.replace("/login");
+    } finally {
+      setClientsLoading(false);
+    }
   }
 
   async function loadClientStatuses() {
@@ -687,49 +622,10 @@ export default function AppPage() {
     if (res.ok) setClientFieldDefs(await res.json());
   }
 
-  const dashDealsInPeriod = useMemo(() => {
-    const fromTs = dashFrom ? new Date(dashFrom).getTime() : 0;
-    const toTs = dashTo ? new Date(dashTo + "T23:59:59").getTime() : Infinity;
-    return deals.filter((d) => {
-      if (!d.dealDate) return false;
-      const ts = new Date(d.dealDate).getTime();
-      return ts >= fromTs && ts <= toTs;
-    });
-  }, [deals, dashFrom, dashTo]);
-
-  const clientsFiltered = useMemo(() => {
-    if (clientStatusFilter === "all") return clients;
-    return clients.filter((c) => (c.status?.id ?? c.statusId) === clientStatusFilter);
-  }, [clients, clientStatusFilter]);
-
-  const clientKanbanColumns = useMemo(
-    () => buildClientKanbanColumns(clientsFiltered, clientStatuses, clientStatusFilter),
-    [clientsFiltered, clientStatuses, clientStatusFilter],
+  const dashDealsInPeriod = useMemo(
+    () => filterDealsByPeriod(deals as DashboardDealRow[], dashFrom, dashTo),
+    [deals, dashFrom, dashTo],
   );
-
-  useEffect(() => {
-    if (!clientViewOpen) {
-      setClientDetailComments([]);
-      setClientDetailCommentText("");
-      setClientDetailCommentsLoading(false);
-      return;
-    }
-    const id = clientViewOpen.id;
-    let cancelled = false;
-    setClientDetailCommentsLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch(`/api/clients/${id}/comments`, { credentials: "include" });
-        const j = res.ok ? await res.json() : [];
-        if (!cancelled) setClientDetailComments(Array.isArray(j) ? j : []);
-      } catch {
-        if (!cancelled) setClientDetailComments([]);
-      } finally {
-        if (!cancelled) setClientDetailCommentsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [clientViewOpen?.id]);
 
   useEffect(() => {
     setClientStatusDrafts(
@@ -756,12 +652,13 @@ export default function AppPage() {
   async function loadExpenses() {
     setExpensesLoading(true);
     try {
-      const res = await fetch("/api/expenses", { credentials: "include" });
-      if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) return;
-      const j = await res.json();
-      setExpenses(Array.isArray(j) ? j : []);
-    } finally { setExpensesLoading(false); }
+      const list = await fetchExpenses();
+      setExpenses(list);
+    } catch (e) {
+      if (e instanceof Error && e.message === "unauthorized") router.replace("/login");
+    } finally {
+      setExpensesLoading(false);
+    }
   }
 
   async function loadExchangeRates() {
@@ -792,7 +689,7 @@ export default function AppPage() {
         await loadExchangeRates();
       } else {
         const j = await res.json().catch(() => ({}));
-        alert(j.message || "Не удалось обновить курсы");
+        alert(j.message || "РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РєСѓСЂСЃС‹");
       }
     } finally { setRatesSyncing(false); }
   }
@@ -816,12 +713,12 @@ export default function AppPage() {
   }
 
   async function deleteDeal(id: string) {
-    if (!confirm("Удалить сделку? Это действие нельзя отменить.")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ СЃРґРµР»РєСѓ? Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.")) return;
     const res = await fetch(`/api/deals/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok || res.status === 204) {
       setDeals(ds => ds.filter(d => d.id !== id));
     } else {
-      alert("Не удалось удалить сделку");
+      alert("РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ СЃРґРµР»РєСѓ");
     }
   }
 
@@ -838,7 +735,7 @@ export default function AppPage() {
 
   async function importLegacyDeals(file: File) {
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
-      alert("Нужен файл .xlsx");
+      alert("РќСѓР¶РµРЅ С„Р°Р№Р» .xlsx");
       return;
     }
     setLegacyImporting(true);
@@ -853,13 +750,13 @@ export default function AppPage() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(j.message || "Ошибка импорта");
+        alert(j.message || "РћС€РёР±РєР° РёРјРїРѕСЂС‚Р°");
         return;
       }
       const withParts = Array.isArray(j.deals) ? j.deals.filter((d: { participantsAssigned?: boolean }) => d.participantsAssigned).length : 0;
-      const msg = [`Создано сделок: ${j.created ?? 0}`, withParts ? `С воркерами (%): ${withParts}` : ""].filter(Boolean);
-      if (j.errors?.length) msg.push(`Строки с замечаниями:\n${j.errors.slice(0, 8).join("\n")}`);
-      if (j.templateId) msg.push(`Шаблон: «Легаси (импорт)»`);
+      const msg = [`РЎРѕР·РґР°РЅРѕ СЃРґРµР»РѕРє: ${j.created ?? 0}`, withParts ? `РЎ РІРѕСЂРєРµСЂР°РјРё (%): ${withParts}` : ""].filter(Boolean);
+      if (j.errors?.length) msg.push(`РЎС‚СЂРѕРєРё СЃ Р·Р°РјРµС‡Р°РЅРёСЏРјРё:\n${j.errors.slice(0, 8).join("\n")}`);
+      if (j.templateId) msg.push(`РЁР°Р±Р»РѕРЅ: В«Р›РµРіР°СЃРё (РёРјРїРѕСЂС‚)В»`);
       alert(msg.join("\n\n"));
       await loadDeals();
     } finally {
@@ -886,7 +783,7 @@ export default function AppPage() {
   }
 
   async function saveMediator() {
-    if (!mediatorForm.name.trim()) return alert("Укажите имя");
+    if (!mediatorForm.name.trim()) return alert("РЈРєР°Р¶РёС‚Рµ РёРјСЏ");
     const body = {
       name: mediatorForm.name.trim(),
       phone: mediatorForm.phone.trim() || undefined,
@@ -899,7 +796,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return alert("Не удалось сохранить");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ");
     setMediatorFormOpen(false);
     setMediatorEditingId(null);
     await loadMediators();
@@ -923,9 +820,9 @@ export default function AppPage() {
   }
 
   async function deleteMediator(id: string) {
-    if (!confirm("Удалить посредника? Если есть сделки — будет деактивирован.")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ РїРѕСЃСЂРµРґРЅРёРєР°? Р•СЃР»Рё РµСЃС‚СЊ СЃРґРµР»РєРё вЂ” Р±СѓРґРµС‚ РґРµР°РєС‚РёРІРёСЂРѕРІР°РЅ.")) return;
     const res = await fetch(`/api/mediators/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("Не удалось удалить");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ");
     if (selectedMediator?.id === id) { setSelectedMediator(null); setMediatorDetail(null); }
     await loadMediators();
   }
@@ -948,7 +845,7 @@ export default function AppPage() {
   }
 
   async function saveOlx() {
-    if (!olxForm.name.trim()) return alert("Укажите имя");
+    if (!olxForm.name.trim()) return alert("РЈРєР°Р¶РёС‚Рµ РёРјСЏ");
     const body = {
       name: olxForm.name.trim(),
       phone: olxForm.phone.trim() || undefined,
@@ -961,7 +858,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return alert("Не удалось сохранить");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ");
     setOlxFormOpen(false);
     setOlxEditingId(null);
     await loadOlxList();
@@ -985,9 +882,9 @@ export default function AppPage() {
   }
 
   async function deleteOlx(id: string) {
-    if (!confirm("Удалить ОЛХ? Если есть сделки — будет деактивирован.")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ РћР›РҐ? Р•СЃР»Рё РµСЃС‚СЊ СЃРґРµР»РєРё вЂ” Р±СѓРґРµС‚ РґРµР°РєС‚РёРІРёСЂРѕРІР°РЅ.")) return;
     const res = await fetch(`/api/olx/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("Не удалось удалить");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ");
     if (selectedOlx?.id === id) { setSelectedOlx(null); setOlxDetail(null); }
     await loadOlxList();
   }
@@ -1041,7 +938,7 @@ export default function AppPage() {
   }
 
   async function deleteSalaryPayment(paymentId: string) {
-    if (!confirm("Удалить запись о выплате?")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ Р·Р°РїРёСЃСЊ Рѕ РІС‹РїР»Р°С‚Рµ?")) return;
     await fetch(`/api/salary/payments/${paymentId}`, { method: "DELETE", credentials: "include" });
     loadSalary();
   }
@@ -1089,7 +986,7 @@ export default function AppPage() {
 
   async function loadTaskUserOptions() {
     if (!isManager) return;
-    // MANAGER нет доступа к GET /api/users — используем public (тот же org, что в activeOrganization)
+    // MANAGER РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє GET /api/users вЂ” РёСЃРїРѕР»СЊР·СѓРµРј public (С‚РѕС‚ Р¶Рµ org, С‡С‚Рѕ РІ activeOrganization)
     const res = await fetch("/api/users/public", { credentials: "include" });
     if (res.ok) {
       const j = await res.json();
@@ -1113,7 +1010,7 @@ export default function AppPage() {
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      return alert((e as { message?: string }).message ?? "Ошибка");
+      return alert((e as { message?: string }).message ?? "РћС€РёР±РєР°");
     }
     setTaskModalOpen(false);
     setTaskFormTitle(""); setTaskFormDesc(""); setTaskFormAssigneeId("");
@@ -1137,12 +1034,12 @@ export default function AppPage() {
       return true;
     }
     const e = await res.json().catch(() => ({}));
-    alert((e as { message?: string }).message ?? "Ошибка");
+    alert((e as { message?: string }).message ?? "РћС€РёР±РєР°");
     return false;
   }
 
   async function deleteTaskById(id: string) {
-    if (!confirm("Удалить задачу?")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ Р·Р°РґР°С‡Сѓ?")) return;
     const res = await fetch(`/api/tasks/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) { if (taskDetail?.id === id) setTaskDetail(null); await loadTasks(); }
   }
@@ -1232,7 +1129,7 @@ export default function AppPage() {
   }
 
   async function pollChatMessages() {
-    // Read from ref — always current even inside a stale setInterval closure
+    // Read from ref вЂ” always current even inside a stale setInterval closure
     const active = chatActiveUserRef.current;
     if (!active) return;
     try {
@@ -1290,30 +1187,12 @@ export default function AppPage() {
       body: JSON.stringify({ userId, organizationId }),
     });
     if (res.ok) loadStaffMember(userId);
-    else { const e = await res.json().catch(() => ({})); alert(e.message ?? "Ошибка"); }
+    else { const e = await res.json().catch(() => ({})); alert(e.message ?? "РћС€РёР±РєР°"); }
   }
 
   async function removeMembership(userId: string, orgId: string) {
     const res = await fetch(`/api/memberships/${userId}/${orgId}`, { method: "DELETE", credentials: "include" });
     if (res.ok) loadStaffMember(userId);
-  }
-
-  async function sendAiMessage(msg?: string) {
-    const question = (msg ?? aiChatInput).trim();
-    if (!question) return;
-    const newHistory = [...aiChatHistory, { role: "user" as const, content: question }];
-    setAiChatHistory(newHistory);
-    setAiChatInput("");
-    setAiChatLoading(true);
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history: aiChatHistory }),
-      });
-      const j = await res.json();
-      setAiChatHistory(h => [...h, { role: "assistant", content: j.answer }]);
-    } finally { setAiChatLoading(false); }
   }
 
   async function sendAgentMessage(msg?: string) {
@@ -1335,16 +1214,16 @@ export default function AppPage() {
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => `HTTP ${res.status}`);
-        setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сервера (${res.status}): ${errText.slice(0, 200)}` }]);
+        setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° СЃРµСЂРІРµСЂР° (${res.status}): ${errText.slice(0, 200)}` }]);
         return;
       }
       const j = await res.json();
-      const content = j.text || j.answer || j.message || j.error || "Нет ответа от AI";
+      const content = j.text || j.answer || j.message || j.error || "РќРµС‚ РѕС‚РІРµС‚Р° РѕС‚ AI";
       const assistantMsg = { role: "assistant" as const, content, pendingAction: j.pendingAction };
       setAgentHistory(h => [...h, assistantMsg]);
       if (j.pendingAction) setAgentPending(j.pendingAction);
     } catch (e: any) {
-      setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сети: ${e.message}` }]);
+      setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° СЃРµС‚Рё: ${e.message}` }]);
     } finally { setAgentLoading(false); }
   }
 
@@ -1369,7 +1248,7 @@ export default function AppPage() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка создания сделки: ${err.message ?? res.status}` }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ СЃРґРµР»РєРё: ${err.message ?? res.status}` }]);
           return;
         }
         const deal = await res.json();
@@ -1397,24 +1276,24 @@ export default function AppPage() {
         }
         const wMap = agentPending.workersMap ?? {};
         const partsText = parts.map((x: any) => `${wMap[x.userId] ?? x.userId} (${x.pct}%)`).join(" + ");
-        setAgentHistory(h => [...h, { role: "assistant", content: `✅ Сделка создана!\n${partsText ? `👥 ${partsText}` : ""}\nОткройте вкладку «Сделки» чтобы посмотреть.` }]);
+        setAgentHistory(h => [...h, { role: "assistant", content: `вњ… РЎРґРµР»РєР° СЃРѕР·РґР°РЅР°!\n${partsText ? `рџ‘Ґ ${partsText}` : ""}\nРћС‚РєСЂРѕР№С‚Рµ РІРєР»Р°РґРєСѓ В«РЎРґРµР»РєРёВ» С‡С‚РѕР±С‹ РїРѕСЃРјРѕС‚СЂРµС‚СЊ.` }]);
       } else if (agentPending.type === "create_expense") {
         const p = agentPending.params;
         const res = await fetch("/api/expenses", {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: p.title || p.description || "Расход",
+            title: p.title || p.description || "Р Р°СЃС…РѕРґ",
             amount: p.amount,
             currency: p.currency ?? "USD",
-            payMethod: p.payMethod ?? "Наличные",
+            payMethod: p.payMethod ?? "РќР°Р»РёС‡РЅС‹Рµ",
           }),
         });
         if (res.ok) {
-          setAgentHistory(h => [...h, { role: "assistant", content: "✅ Расход записан!" }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: "вњ… Р Р°СЃС…РѕРґ Р·Р°РїРёСЃР°РЅ!" }]);
         } else {
           const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка записи расхода: ${err.message ?? res.status}` }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° Р·Р°РїРёСЃРё СЂР°СЃС…РѕРґР°: ${err.message ?? res.status}` }]);
         }
       } else if (agentPending.type === "create_client") {
         const p = agentPending.params;
@@ -1440,25 +1319,25 @@ export default function AppPage() {
           void loadClients();
           setAgentHistory((h) => [
             ...h,
-            { role: "assistant", content: `✅ Карточка клиента создана${name ? `: ${name}` : ""}.\nСписок во вкладке «Клиенты» обновлён; при необходимости откройте её или «Редактировать» в карточке.` },
+            { role: "assistant", content: `вњ… РљР°СЂС‚РѕС‡РєР° РєР»РёРµРЅС‚Р° СЃРѕР·РґР°РЅР°${name ? `: ${name}` : ""}.\nРЎРїРёСЃРѕРє РІРѕ РІРєР»Р°РґРєРµ В«РљР»РёРµРЅС‚С‹В» РѕР±РЅРѕРІР»С‘РЅ; РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕС‚РєСЂРѕР№С‚Рµ РµС‘ РёР»Рё В«Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊВ» РІ РєР°СЂС‚РѕС‡РєРµ.` },
           ]);
         } else {
           const err = await res.json().catch(() => ({}));
           setAgentHistory((h) => [
             ...h,
-            { role: "assistant", content: `❌ Не удалось создать клиента: ${err.message ?? res.status}` },
+            { role: "assistant", content: `вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РєР»РёРµРЅС‚Р°: ${err.message ?? res.status}` },
           ]);
         }
       }
     } catch (e: any) {
-      setAgentHistory(h => [...h, { role: "assistant", content: `❌ ${e.message}` }]);
+      setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ ${e.message}` }]);
     }
   }
 
   function startVoice() {
     if (typeof window === "undefined") return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("Браузер не поддерживает голосовой ввод. Используйте Chrome или Edge."); return; }
+    if (!SR) { alert("Р‘СЂР°СѓР·РµСЂ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РіРѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ. РСЃРїРѕР»СЊР·СѓР№С‚Рµ Chrome РёР»Рё Edge."); return; }
     const rec = new SR();
     rec.lang = "ru-RU";
     rec.interimResults = false;
@@ -1490,7 +1369,7 @@ export default function AppPage() {
       setTplIncomeFieldKey(j.incomeFieldKey ?? "");
       setTplFields((j.fields ?? []).map((f: any, i: number) => ({
         _id: crypto.randomUUID(),
-        label: f.label ?? `Поле ${i + 1}`,
+        label: f.label ?? `РџРѕР»Рµ ${i + 1}`,
         type: (f.type as FieldType) ?? "TEXT",
         required: f.required ?? false,
         options: f.options ?? "",
@@ -1535,19 +1414,19 @@ export default function AppPage() {
         }),
       });
       const j = await res.json();
-      if (!res.ok) { setProfileError(j?.message ?? "Ошибка сохранения"); return; }
+      if (!res.ok) { setProfileError(j?.message ?? "РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ"); return; }
       setProfile(j);
-      setProfileSuccess("Профиль сохранён");
+      setProfileSuccess("РџСЂРѕС„РёР»СЊ СЃРѕС…СЂР°РЅС‘РЅ");
       setTimeout(() => setProfileSuccess(null), 3000);
     } finally { setProfileSaving(false); }
   }
 
   async function changePassword() {
     setPwdError(null); setPwdSuccess(null);
-    if (!pwdOld) return setPwdError("Введите текущий пароль");
-    if (!pwdNew) return setPwdError("Введите новый пароль");
-    if (pwdNew.length < 6) return setPwdError("Новый пароль минимум 6 символов");
-    if (pwdNew !== pwdConfirm) return setPwdError("Пароли не совпадают");
+    if (!pwdOld) return setPwdError("Р’РІРµРґРёС‚Рµ С‚РµРєСѓС‰РёР№ РїР°СЂРѕР»СЊ");
+    if (!pwdNew) return setPwdError("Р’РІРµРґРёС‚Рµ РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ");
+    if (pwdNew.length < 6) return setPwdError("РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ РјРёРЅРёРјСѓРј 6 СЃРёРјРІРѕР»РѕРІ");
+    if (pwdNew !== pwdConfirm) return setPwdError("РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚");
     setPwdSaving(true);
     try {
       const res = await fetch("/api/profile/password", {
@@ -1556,8 +1435,8 @@ export default function AppPage() {
         body: JSON.stringify({ oldPassword: pwdOld, newPassword: pwdNew }),
       });
       const j = await res.json();
-      if (!res.ok) { setPwdError(j?.message ?? "Ошибка"); return; }
-      setPwdSuccess("Пароль изменён");
+      if (!res.ok) { setPwdError(j?.message ?? "РћС€РёР±РєР°"); return; }
+      setPwdSuccess("РџР°СЂРѕР»СЊ РёР·РјРµРЅС‘РЅ");
       setPwdOld(""); setPwdNew(""); setPwdConfirm("");
       setTimeout(() => setPwdSuccess(null), 3000);
     } finally { setPwdSaving(false); }
@@ -1582,7 +1461,7 @@ export default function AppPage() {
   }
 
   async function revokeAllSessions() {
-    if (!confirm("Завершить все другие сессии?")) return;
+    if (!confirm("Р—Р°РІРµСЂС€РёС‚СЊ РІСЃРµ РґСЂСѓРіРёРµ СЃРµСЃСЃРёРё?")) return;
     await fetch("/api/sessions/revoke-all", { method: "POST", credentials: "include" });
     await loadSessions();
   }
@@ -1630,55 +1509,55 @@ export default function AppPage() {
     setTemplateModalOpen(true);
   }
 
-  /** Инициализирует поля и цепочку для схемы посредник → AI → ЗП фонд */
+  /** РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РїРѕР»СЏ Рё С†РµРїРѕС‡РєСѓ РґР»СЏ СЃС…РµРјС‹ РїРѕСЃСЂРµРґРЅРёРє в†’ AI в†’ Р—Рџ С„РѕРЅРґ */
   function applyMediatorAiPresetFields() {
     const fixed: Array<{ _id: string; key: string; label: string; type: FieldType; required: boolean; options: string }> = [
-      { _id: "fixed_gross",    key: "сумма_завода",       label: "Сумма завода",          type: "NUMBER",  required: true,  options: "" },
-      { _id: "fixed_mediator", key: "процент_посредника", label: "% посредника",          type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_ai",       key: "процент_аи",         label: "% AI",                  type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_payroll",  key: "процент_зп_фонда",   label: "% зарплатного фонда",   type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_gross",    key: "СЃСѓРјРјР°_Р·Р°РІРѕРґР°",       label: "РЎСѓРјРјР° Р·Р°РІРѕРґР°",          type: "NUMBER",  required: true,  options: "" },
+      { _id: "fixed_mediator", key: "РїСЂРѕС†РµРЅС‚_РїРѕСЃСЂРµРґРЅРёРєР°", label: "% РїРѕСЃСЂРµРґРЅРёРєР°",          type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_ai",       key: "РїСЂРѕС†РµРЅС‚_Р°Рё",         label: "% AI",                  type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_payroll",  key: "РїСЂРѕС†РµРЅС‚_Р·Рї_С„РѕРЅРґР°",   label: "% Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°",   type: "PERCENT", required: true,  options: "" },
     ];
     const presetSteps: CalcStep[] = [
       {
         id: "step_mediator",
-        label: "Выплата посредника",
+        label: "Р’С‹РїР»Р°С‚Р° РїРѕСЃСЂРµРґРЅРёРєР°",
         sourceType: "field",
-        sourceId: "сумма_завода",
+        sourceId: "СЃСѓРјРјР°_Р·Р°РІРѕРґР°",
         deductType: "percent",
-        deductFieldKey: "процент_посредника",
-        resultLabel: "После посредника (R1)",
+        deductFieldKey: "РїСЂРѕС†РµРЅС‚_РїРѕСЃСЂРµРґРЅРёРєР°",
+        resultLabel: "РџРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР° (R1)",
         isMediatorShare: true,
         isPayrollPool: false,
       },
       {
         id: "step_ai",
-        label: "Доля AI",
+        label: "Р”РѕР»СЏ AI",
         sourceType: "step",
         sourceId: "step_mediator",
         deductType: "percent",
-        deductFieldKey: "процент_аи",
-        resultLabel: "После AI (R2)",
+        deductFieldKey: "РїСЂРѕС†РµРЅС‚_Р°Рё",
+        resultLabel: "РџРѕСЃР»Рµ AI (R2)",
         isAiShare: true,
         isPayrollPool: false,
       },
       {
         id: "step_payroll",
-        label: "Зарплатный фонд",
+        label: "Р—Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ",
         sourceType: "step",
         sourceId: "step_ai",
         deductType: "percent",
-        deductFieldKey: "процент_зп_фонда",
-        resultLabel: "Прибыль офиса",
+        deductFieldKey: "РїСЂРѕС†РµРЅС‚_Р·Рї_С„РѕРЅРґР°",
+        resultLabel: "РџСЂРёР±С‹Р»СЊ РѕС„РёСЃР°",
         isPayrollPool: true,
       },
     ];
     setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
     setTplCalcSteps(presetSteps);
     setTplHasWorkers(true);
-    setTplCalcGrossKey("сумма_завода");
-    setTplCalcMediatorKey("процент_посредника");
-    setTplCalcAiKey("процент_аи");
-    setTplIncomeFieldKey("сумма_завода");
+    setTplCalcGrossKey("СЃСѓРјРјР°_Р·Р°РІРѕРґР°");
+    setTplCalcMediatorKey("РїСЂРѕС†РµРЅС‚_РїРѕСЃСЂРµРґРЅРёРєР°");
+    setTplCalcAiKey("РїСЂРѕС†РµРЅС‚_Р°Рё");
+    setTplIncomeFieldKey("СЃСѓРјРјР°_Р·Р°РІРѕРґР°");
     setTplFields((prev) => {
       const existing = prev.filter((f) => !["fixed_gross","fixed_mediator","fixed_ai","fixed_payroll"].includes(f._id));
       return [...fixed, ...existing];
@@ -1690,10 +1569,10 @@ export default function AppPage() {
   }
 
   async function saveTemplate() {
-    if (!tplName.trim()) return alert("Введите название шаблона");
-    if (tplFields.length === 0) return alert("Добавьте хотя бы одно поле");
+    if (!tplName.trim()) return alert("Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ С€Р°Р±Р»РѕРЅР°");
+    if (tplFields.length === 0) return alert("Р”РѕР±Р°РІСЊС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРЅРѕ РїРѕР»Рµ");
     for (const f of tplFields) {
-      if (!f.label.trim()) return alert("У всех полей должно быть название");
+      if (!f.label.trim()) return alert("РЈ РІСЃРµС… РїРѕР»РµР№ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РЅР°Р·РІР°РЅРёРµ");
     }
 
     // Validate calc chain if configured
@@ -1701,18 +1580,18 @@ export default function AppPage() {
       const fields2 = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
       const fieldKeys = new Set(fields2.map(x => x.key));
       for (const step of tplCalcSteps) {
-        if (!step.label.trim()) return alert("У каждого шага цепочки должно быть название");
-        if (!step.deductFieldKey) return alert(`Шаг «${step.label}»: укажите поле для вычитания`);
-        if (!fieldKeys.has(step.deductFieldKey)) return alert(`Шаг «${step.label}»: поле «${step.deductFieldKey}» не найдено в полях шаблона`);
+        if (!step.label.trim()) return alert("РЈ РєР°Р¶РґРѕРіРѕ С€Р°РіР° С†РµРїРѕС‡РєРё РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РЅР°Р·РІР°РЅРёРµ");
+        if (!step.deductFieldKey) return alert(`РЁР°Рі В«${step.label}В»: СѓРєР°Р¶РёС‚Рµ РїРѕР»Рµ РґР»СЏ РІС‹С‡РёС‚Р°РЅРёСЏ`);
+        if (!fieldKeys.has(step.deductFieldKey)) return alert(`РЁР°Рі В«${step.label}В»: РїРѕР»Рµ В«${step.deductFieldKey}В» РЅРµ РЅР°Р№РґРµРЅРѕ РІ РїРѕР»СЏС… С€Р°Р±Р»РѕРЅР°`);
         if (step.sourceType === "field" && step.sourceId && !fieldKeys.has(step.sourceId))
-          return alert(`Шаг «${step.label}»: поле-источник «${step.sourceId}» не найдено`);
+          return alert(`РЁР°Рі В«${step.label}В»: РїРѕР»Рµ-РёСЃС‚РѕС‡РЅРёРє В«${step.sourceId}В» РЅРµ РЅР°Р№РґРµРЅРѕ`);
       }
     }
 
     // Legacy validation for old preset (when no calcSteps)
     if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0) {
       if (!tplCalcGrossKey || !tplCalcMediatorKey || !tplCalcAiKey) {
-        return alert("Для цепочки «Посредник → ИИ → фонд» укажите поля: сумма завода, % посредника, % ИИ");
+        return alert("Р”Р»СЏ С†РµРїРѕС‡РєРё В«РџРѕСЃСЂРµРґРЅРёРє в†’ РР в†’ С„РѕРЅРґВ» СѓРєР°Р¶РёС‚Рµ РїРѕР»СЏ: СЃСѓРјРјР° Р·Р°РІРѕРґР°, % РїРѕСЃСЂРµРґРЅРёРєР°, % РР");
       }
     }
 
@@ -1751,7 +1630,7 @@ export default function AppPage() {
       if (!res.ok) {
         const j = await res.json().catch(() => null);
         const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
-        return alert(`Ошибка сохранения шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
+        return alert(`РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ С€Р°Р±Р»РѕРЅР°:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
       }
     } else {
       const res = await fetch("/api/deal-templates", {
@@ -1761,7 +1640,7 @@ export default function AppPage() {
       if (!res.ok) {
         const j = await res.json().catch(() => null);
         const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
-        return alert(`Ошибка создания шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
+        return alert(`РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ С€Р°Р±Р»РѕРЅР°:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
       }
     }
     setTemplateModalOpen(false);
@@ -1769,7 +1648,7 @@ export default function AppPage() {
   }
 
   async function deleteTemplate(id: string, name: string) {
-    if (!confirm(`Удалить шаблон "${name}"? Существующие сделки не будут затронуты.`)) return;
+    if (!confirm(`РЈРґР°Р»РёС‚СЊ С€Р°Р±Р»РѕРЅ "${name}"? РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ СЃРґРµР»РєРё РЅРµ Р±СѓРґСѓС‚ Р·Р°С‚СЂРѕРЅСѓС‚С‹.`)) return;
     await fetch(`/api/deal-templates/${id}`, { method: "DELETE", credentials: "include" });
     loadTemplates();
   }
@@ -1780,19 +1659,17 @@ export default function AppPage() {
     const f = from ?? dashFrom;
     const t = to ?? dashTo;
     try {
-      const res = await fetch(`/api/dashboard?from=${f}&to=${t}`, { credentials: "include" });
-      if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setDash(null);
-        setDashError((j as { message?: string }).message ?? "Не удалось загрузить дашборд");
+      setDash(await fetchDashboard(f, t));
+    } catch (e) {
+      setDash(null);
+      if (e instanceof Error && e.message === "unauthorized") {
+        router.replace("/login");
         return;
       }
-      setDash(await res.json());
-    } catch {
-      setDash(null);
-      setDashError("Ошибка сети при загрузке дашборда");
-    } finally { setDashLoading(false); }
+      setDashError(e instanceof Error ? e.message : "Ошибка сети при загрузке дашборда");
+    } finally {
+      setDashLoading(false);
+    }
   }
 
   async function loadReportsWorkers() {
@@ -1818,7 +1695,7 @@ export default function AppPage() {
   }
 
   async function handleAccountingImport(file: File) {
-    if (!confirm("Импортировать сделки из Excel? Существующие строки не удаляются.")) return;
+    if (!confirm("РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ СЃРґРµР»РєРё РёР· Excel? РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ СЃС‚СЂРѕРєРё РЅРµ СѓРґР°Р»СЏСЋС‚СЃСЏ.")) return;
     setAccountingImporting(true);
     try {
       const result = await importAccountingXlsx(file);
@@ -1828,8 +1705,8 @@ export default function AppPage() {
         return;
       }
       const { created, skipped, errors } = result.result;
-      const errText = errors.length ? `\n\nОшибки:\n${errors.slice(0, 8).join("\n")}` : "";
-      alert(`Импорт завершён.\nСоздано: ${created}\nПропущено: ${skipped}${errText}`);
+      const errText = errors.length ? `\n\nРћС€РёР±РєРё:\n${errors.slice(0, 8).join("\n")}` : "";
+      alert(`РРјРїРѕСЂС‚ Р·Р°РІРµСЂС€С‘РЅ.\nРЎРѕР·РґР°РЅРѕ: ${created}\nРџСЂРѕРїСѓС‰РµРЅРѕ: ${skipped}${errText}`);
       if (created > 0) { void loadDeals(); void loadDashboard(); }
     } finally {
       setAccountingImporting(false);
@@ -1849,7 +1726,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newOrgName.trim() }),
     });
-    if (!res.ok) return alert("Не удалось создать офис");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РѕС„РёСЃ");
     setNewOrgName("");
     await loadOrgs();
   }
@@ -1860,7 +1737,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ organizationId: orgId }),
     });
-    if (!res.ok) return alert("Не удалось переключиться");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРєР»СЋС‡РёС‚СЊСЃСЏ");
     setOrgSwitchOpen(false);
     // Reload user to get new activeOrganizationId, then reload current tab
     const meRes = await fetch("/api/auth/me", { credentials: "include" });
@@ -1869,11 +1746,11 @@ export default function AppPage() {
   }
 
   async function deleteOrg(orgId: string, orgName: string) {
-    if (!confirm(`Удалить офис "${orgName}"?\n\nВНИМАНИЕ: удалятся все сделки, клиенты, расходы и пользователи этого офиса!`)) return;
+    if (!confirm(`РЈРґР°Р»РёС‚СЊ РѕС„РёСЃ "${orgName}"?\n\nР’РќРРњРђРќРР•: СѓРґР°Р»СЏС‚СЃСЏ РІСЃРµ СЃРґРµР»РєРё, РєР»РёРµРЅС‚С‹, СЂР°СЃС…РѕРґС‹ Рё РїРѕР»СЊР·РѕРІР°С‚РµР»Рё СЌС‚РѕРіРѕ РѕС„РёСЃР°!`)) return;
     const res = await fetch(`/api/orgs/${orgId}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      alert(j.message ?? "Не удалось удалить офис");
+      alert(j.message ?? "РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РѕС„РёСЃ");
       return;
     }
     await loadOrgs();
@@ -1884,118 +1761,21 @@ export default function AppPage() {
     const f = from ?? dashFrom;
     const t = to ?? dashTo;
     try {
-      const res = await fetch(`/api/dashboard/global?from=${f}&to=${t}`, { credentials: "include" });
-      if (res.ok) setGlobalDash(await res.json());
-    } finally { setGlobalDashLoading(false); }
+      setGlobalDash(await fetchGlobalDashboard(f, t));
+    } catch (e) {
+      if (e instanceof Error && e.message === "unauthorized") router.replace("/login");
+    } finally {
+      setGlobalDashLoading(false);
+    }
   }
 
   // ---- clients ----
-  function applyClientPasteToNewForm() {
-    const p = parseClientLeadPaste(clientPasteImport);
-    setNewClientForm((f) => ({ ...f, ...p }));
-  }
-
-  async function createClient() {
-    const { name, phone, note, statusId, bank, assistantName, callSummary, callStartedAt } = newClientForm;
-    if (!name.trim() || !phone.trim()) return alert("Укажите имя и телефон");
-    const customData: Record<string, string> = {};
-    for (const def of clientFieldDefs) {
-      const v = newClientCustom[def.key]?.trim() ?? "";
-      if (v) customData[def.key] = v;
-    }
-    const res = await fetch("/api/clients", {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(),
-        phone: phone.trim(),
-        note: note.trim() || undefined,
-        statusId: statusId || undefined,
-        bank: bank.trim() || null,
-        assistantName: assistantName.trim() || null,
-        callSummary: callSummary.trim() || null,
-        callStartedAt: callStartedAt || null,
-        customData: Object.keys(customData).length ? customData : undefined,
-      }),
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "Не удалось создать клиента");
-    }
-    setNewClientForm(emptyClientForm());
-    setNewClientCustom({});
-    setClientPasteImport("");
-    setClientCreateModalOpen(false);
-    await loadClients();
-  }
-
-  function openClientCreateModal() {
-    setNewClientForm(emptyClientForm());
-    setNewClientCustom({});
-    setClientPasteImport("");
-    setClientCreateModalOpen(true);
-  }
-
-  function openClientEdit(c: Client) {
-    setClientEditing(c);
-    setClientEditForm({
-      name: c.name,
-      phone: c.phone,
-      note: c.note ?? "",
-      statusId: c.status?.id ?? c.statusId ?? "",
-      bank: c.bank ?? "",
-      assistantName: c.assistantName ?? "",
-      callSummary: c.callSummary ?? "",
-      callStartedAt: c.callStartedAt
-        ? new Date(c.callStartedAt).toISOString().slice(0, 16)
-        : "",
-    });
-    const cd = c.customData && typeof c.customData === "object" ? (c.customData as Record<string, unknown>) : {};
-    const next: Record<string, string> = {};
-    for (const def of clientFieldDefs) {
-      next[def.key] = cd[def.key] != null ? String(cd[def.key]) : "";
-    }
-    setClientEditCustom(next);
-    setClientEditOpen(true);
-  }
-
-  async function saveClientEdit() {
-    if (!clientEditing) return;
-    const { name, phone, note, statusId, bank, assistantName, callSummary, callStartedAt } = clientEditForm;
-    if (!name.trim() || !phone.trim()) return alert("Укажите имя и телефон");
-    const customData: Record<string, string> = {};
-    for (const def of clientFieldDefs) {
-      customData[def.key] = clientEditCustom[def.key]?.trim() ?? "";
-    }
-    const res = await fetch(`/api/clients/${clientEditing.id}`, {
-      method: "PATCH", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(),
-        phone: phone.trim(),
-        note: note.trim() || null,
-        statusId: statusId || null,
-        bank: bank.trim() || null,
-        assistantName: assistantName.trim() || null,
-        callSummary: callSummary.trim() || null,
-        callStartedAt: callStartedAt || null,
-        customData,
-      }),
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "Не удалось обновить клиента");
-    }
-    setClientEditOpen(false);
-    await loadClients();
-  }
-
   async function deleteClientStatusRow(id: string) {
-    if (!confirm("Удалить статус?")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ СЃС‚Р°С‚СѓСЃ?")) return;
     const res = await fetch(`/api/client-statuses/${id}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "Нельзя удалить");
+      return alert(j.message ?? "РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ");
     }
     await loadClientStatuses();
   }
@@ -2003,7 +1783,7 @@ export default function AppPage() {
   async function addClientStatusRow() {
     const slug = newClientStatusSlug.trim().toLowerCase();
     const label = newClientStatusLabel.trim();
-    if (!slug || !label) return alert("Slug и название обязательны (slug: латиница, например follow_up)");
+    if (!slug || !label) return alert("Slug Рё РЅР°Р·РІР°РЅРёРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹ (slug: Р»Р°С‚РёРЅРёС†Р°, РЅР°РїСЂРёРјРµСЂ follow_up)");
     const res = await fetch("/api/client-statuses", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -2011,23 +1791,23 @@ export default function AppPage() {
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "Ошибка");
+      return alert(j.message ?? "РћС€РёР±РєР°");
     }
     setNewClientStatusSlug(""); setNewClientStatusLabel("");
     await loadClientStatuses();
   }
 
   async function deleteClientFieldRow(id: string) {
-    if (!confirm("Удалить поле? Значения в карточках останутся в JSON, но поле скроется.")) return;
+    if (!confirm("РЈРґР°Р»РёС‚СЊ РїРѕР»Рµ? Р—РЅР°С‡РµРЅРёСЏ РІ РєР°СЂС‚РѕС‡РєР°С… РѕСЃС‚Р°РЅСѓС‚СЃСЏ РІ JSON, РЅРѕ РїРѕР»Рµ СЃРєСЂРѕРµС‚СЃСЏ.")) return;
     const res = await fetch(`/api/client-field-definitions/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("Ошибка");
+    if (!res.ok) return alert("РћС€РёР±РєР°");
     await loadClientFieldDefinitions();
   }
 
   async function addClientFieldRow() {
     const key = newClientFieldKey.trim().toLowerCase();
     const label = newClientFieldLabel.trim();
-    if (!key || !label) return alert("Ключ и подпись обязательны");
+    if (!key || !label) return alert("РљР»СЋС‡ Рё РїРѕРґРїРёСЃСЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹");
     const res = await fetch("/api/client-field-definitions", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -2035,64 +1815,10 @@ export default function AppPage() {
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "Ошибка");
+      return alert(j.message ?? "РћС€РёР±РєР°");
     }
     setNewClientFieldKey(""); setNewClientFieldLabel(""); setNewClientFieldType("TEXT");
     await loadClientFieldDefinitions();
-  }
-
-  async function deleteClient(id: string) {
-    if (!confirm("Удалить клиента?")) return;
-    const res = await fetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("Не удалось удалить клиента");
-    setClientViewOpen((v) => (v?.id === id ? null : v));
-    await loadClients();
-  }
-
-  async function postClientComment() {
-    if (!clientViewOpen || !clientDetailCommentText.trim()) return;
-    setClientCommentPosting(true);
-    try {
-      const res = await fetch(`/api/clients/${clientViewOpen.id}/comments`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: clientDetailCommentText.trim() }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        alert(j.message ?? "Не удалось добавить комментарий");
-        return;
-      }
-      const created = (await res.json()) as ClientCommentEntry;
-      setClientDetailComments((prev) => [...prev, created]);
-      setClientDetailCommentText("");
-    } finally {
-      setClientCommentPosting(false);
-    }
-  }
-
-  // ---- expenses ----
-  async function createExpense() {
-    const amount = Number(newExpenseAmount);
-    if (!Number.isFinite(amount)) return alert("Некорректная сумма");
-    const res = await fetch("/api/expenses", {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newExpenseTitle, amount, currency: newExpenseCurrency, payMethod: newExpensePayMethod }),
-    });
-    if (!res.ok) return alert("Не удалось создать расход");
-    setNewExpenseTitle(""); setNewExpenseAmount("");
-    await loadExpenses();
-  }
-
-  async function deleteExpense(id: string) {
-    if (!confirm("Удалить расход?")) return;
-    const res = await fetch(`/api/expenses/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("Не удалось удалить расход");
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-    setExpenseModalOpen(false);
-    setExpenseEditing(null);
   }
 
   // ---- users ----
@@ -2110,7 +1836,7 @@ export default function AppPage() {
     if (!res.ok) {
       const errBody = await res.json().catch(() => null);
       const msg = errBody?.message ?? `HTTP ${res.status}`;
-      return alert(`Не удалось создать пользователя:\n${Array.isArray(msg) ? msg.join("\n") : msg}`);
+      return alert(`РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ:\n${Array.isArray(msg) ? msg.join("\n") : msg}`);
     }
     setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserPosition(""); setNewUserTargetOrgId("");
     await loadUsers();
@@ -2118,11 +1844,11 @@ export default function AppPage() {
   }
 
   async function deleteUser(userId: string, email: string) {
-    if (!confirm(`Удалить пользователя "${email}"?`)) return;
+    if (!confirm(`РЈРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ "${email}"?`)) return;
     const res = await fetch(`/api/users/${userId}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) {
       const j = await res.json().catch(() => null);
-      return alert(j?.message ?? "Не удалось удалить пользователя");
+      return alert(j?.message ?? "РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ");
     }
     await loadUsers();
     await loadOrgs();
@@ -2134,7 +1860,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, position: userPositionValue || null }),
     });
-    if (!res.ok) return alert("Не удалось обновить должность");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РґРѕР»Р¶РЅРѕСЃС‚СЊ");
     setUserPositionId(null); setUserPositionValue("");
     await loadUsers();
   }
@@ -2145,20 +1871,20 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, role }),
     });
-    if (!res.ok) return alert("Не удалось сменить роль");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРјРµРЅРёС‚СЊ СЂРѕР»СЊ");
     await loadUsers();
   }
 
   async function resetUserPassword(userId: string) {
-    if (!userPwdValue.trim()) return alert("Введите пароль");
+    if (!userPwdValue.trim()) return alert("Р’РІРµРґРёС‚Рµ РїР°СЂРѕР»СЊ");
     const res = await fetch("/api/users/password", {
       method: "PATCH", credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, password: userPwdValue }),
     });
-    if (!res.ok) return alert("Не удалось сбросить пароль");
+    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃР±СЂРѕСЃРёС‚СЊ РїР°СЂРѕР»СЊ");
     setUserPwdId(null); setUserPwdValue("");
-    alert("Пароль обновлён");
+    alert("РџР°СЂРѕР»СЊ РѕР±РЅРѕРІР»С‘РЅ");
   }
 
   async function logout() {
@@ -2180,7 +1906,7 @@ export default function AppPage() {
     };
   }
 
-  /** Ключ поля «% посредника» в данных шаблона (для расчёта). */
+  /** РљР»СЋС‡ РїРѕР»СЏ В«% РїРѕСЃСЂРµРґРЅРёРєР°В» РІ РґР°РЅРЅС‹С… С€Р°Р±Р»РѕРЅР° (РґР»СЏ СЂР°СЃС‡С‘С‚Р°). */
   function mediatorPctFieldKey(tpl: DealTemplate | null | undefined): string | null {
     if (!tpl) return null;
     if (tpl.calcMediatorPctKey) return tpl.calcMediatorPctKey;
@@ -2188,7 +1914,7 @@ export default function AppPage() {
       const f = tpl.fields.find(
         (field) =>
           field.type === "PERCENT" &&
-          (field.key.includes("посредник") || field.label.toLowerCase().includes("посредник")),
+          (field.key.includes("РїРѕСЃСЂРµРґРЅРёРє") || field.label.toLowerCase().includes("РїРѕСЃСЂРµРґРЅРёРє")),
       );
       return f?.key ?? null;
     }
@@ -2196,15 +1922,15 @@ export default function AppPage() {
     if (steps?.length) {
       const step = steps.find(
         (s) =>
-          s.label.toLowerCase().includes("посредник") ||
-          (s.deductFieldKey && s.deductFieldKey.includes("посредник")),
+          s.label.toLowerCase().includes("РїРѕСЃСЂРµРґРЅРёРє") ||
+          (s.deductFieldKey && s.deductFieldKey.includes("РїРѕСЃСЂРµРґРЅРёРє")),
       );
       return step?.deductFieldKey ?? null;
     }
     return null;
   }
 
-  /** Синхронизирует % посредника в блоке выбора и в данных строки шаблона (от этого считается выплата). */
+  /** РЎРёРЅС…СЂРѕРЅРёР·РёСЂСѓРµС‚ % РїРѕСЃСЂРµРґРЅРёРєР° РІ Р±Р»РѕРєРµ РІС‹Р±РѕСЂР° Рё РІ РґР°РЅРЅС‹С… СЃС‚СЂРѕРєРё С€Р°Р±Р»РѕРЅР° (РѕС‚ СЌС‚РѕРіРѕ СЃС‡РёС‚Р°РµС‚СЃСЏ РІС‹РїР»Р°С‚Р°). */
   function applyDealMediatorPct(pct: string, tplId?: string | null) {
     setDealMediatorPct(pct);
     const tpl = templates.find((t) => t.id === (tplId ?? dealTemplateId));
@@ -2245,13 +1971,13 @@ export default function AppPage() {
   async function openDealModal() {
     const tRes = await fetch("/api/deal-templates", { credentials: "include" });
     if (!tRes.ok) {
-      alert("Не удалось загрузить шаблоны");
+      alert("РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ С€Р°Р±Р»РѕРЅС‹");
       return;
     }
     const list: DealTemplate[] = await tRes.json();
     setTemplates(list);
     if (list.length === 0) {
-      alert("Создайте хотя бы один шаблон сделки: Настройки → блок «Шаблоны сделок».");
+      alert("РЎРѕР·РґР°Р№С‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё: РќР°СЃС‚СЂРѕР№РєРё в†’ Р±Р»РѕРє В«РЁР°Р±Р»РѕРЅС‹ СЃРґРµР»РѕРєВ».");
       return;
     }
     setDealModalOpen(true);
@@ -2352,15 +2078,15 @@ export default function AppPage() {
 
   const pctStatus = useMemo(() => {
     const total = dealParticipants.reduce((s, p) => s + (Number(p.pct) || 0), 0);
-    if (total === 100) return { ok: true, text: "✓ Итого: 100%", color: "var(--green)" };
-    if (total > 100) return { ok: false, text: `⚠ Итого: ${total}% — превышает 100%`, color: "var(--red)" };
-    return { ok: false, text: `⚠ Итого: ${total}% — не хватает ${100 - total}%`, color: "var(--amber)" };
+    if (total === 100) return { ok: true, text: "вњ“ РС‚РѕРіРѕ: 100%", color: "var(--green)" };
+    if (total > 100) return { ok: false, text: `вљ  РС‚РѕРіРѕ: ${total}% вЂ” РїСЂРµРІС‹С€Р°РµС‚ 100%`, color: "var(--red)" };
+    return { ok: false, text: `вљ  РС‚РѕРіРѕ: ${total}% вЂ” РЅРµ С…РІР°С‚Р°РµС‚ ${100 - total}%`, color: "var(--amber)" };
   }, [dealParticipants]);
 
   const participantIncomeInfo = useMemo(() => {
     const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
     if (!activeTpl) {
-      return { base: dealTotals.tAmountOut, label: "сумма «получили»" };
+      return { base: dealTotals.tAmountOut, label: "СЃСѓРјРјР° В«РїРѕР»СѓС‡РёР»РёВ»" };
     }
     // New: universal calc chain
     if (activeTpl.calcSteps && activeTpl.calcSteps.length > 0 && dealDataRows[0]) {
@@ -2370,14 +2096,14 @@ export default function AppPage() {
         ? Math.max(0, payrollStep.deductAmt)
         : chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
       const label = payrollStep
-        ? `Зарплатный фонд (${payrollStep.step.label})`
-        : chain.length > 0 ? chain[chain.length - 1].step.resultLabel : "Результат расчёта";
+        ? `Р—Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ (${payrollStep.step.label})`
+        : chain.length > 0 ? chain[chain.length - 1].step.resultLabel : "Р РµР·СѓР»СЊС‚Р°С‚ СЂР°СЃС‡С‘С‚Р°";
       return { base, label };
     }
     // Legacy: MEDIATOR_AI_PAYROLL
     if (activeTpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0]) {
       const c = computeMediatorAiPayroll(dealDataRows[0].data, activeTpl);
-      if (c) return { base: c.F, label: "зарплатный фонд (F), после AI/автоматики" };
+      if (c) return { base: c.F, label: "Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ (F), РїРѕСЃР»Рµ AI/Р°РІС‚РѕРјР°С‚РёРєРё" };
     }
     if (activeTpl.incomeFieldKey) {
       const sum = dealDataRows.reduce((s, row) => s + (Number(row.data[activeTpl.incomeFieldKey!]) || 0), 0);
@@ -2390,7 +2116,7 @@ export default function AppPage() {
   async function saveDeal() {
     const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
     if (!dealEditingId && !activeTpl) {
-      alert("Выберите шаблон сделки");
+      alert("Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё");
       return;
     }
     const needWorkers = activeTpl ? activeTpl.hasWorkers : true;
@@ -2398,12 +2124,12 @@ export default function AppPage() {
     const parts = dealParticipants.filter((p) => p.userId).map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
     if (needWorkers && parts.length > 0) {
       const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-      if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
+      if (totalPct !== 100) return alert("РџСЂРѕС†РµРЅС‚С‹ СѓС‡Р°СЃС‚РЅРёРєРѕРІ РґРѕР»Р¶РЅС‹ СЃСѓРјРјР°СЂРЅРѕ Р±С‹С‚СЊ 100%");
     }
 
     const selectedClient = dealClientId ? dealClients.find((c) => c.id === dealClientId) : null;
     const tplName2 = activeTpl ? ` [${activeTpl.name}]` : "";
-    const titleText = selectedClient ? `Сделка — ${selectedClient.name}${tplName2}` : `Сделка${tplName2}`;
+    const titleText = selectedClient ? `РЎРґРµР»РєР° вЂ” ${selectedClient.name}${tplName2}` : `РЎРґРµР»РєР°${tplName2}`;
 
     const basePayload = {
       title: titleText,
@@ -2435,7 +2161,7 @@ export default function AppPage() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
         });
-        if (!dRes.ok) return alert("Не удалось создать сделку");
+        if (!dRes.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ СЃРґРµР»РєСѓ");
         const deal = await dRes.json();
         if (needWorkers && parts.length > 0) {
           await fetch(`/api/deals/${deal.id}/participants`, {
@@ -2448,7 +2174,7 @@ export default function AppPage() {
           method: "PATCH", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
         });
-        if (!upd.ok) return alert("Не удалось обновить сделку");
+        if (!upd.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЃРґРµР»РєСѓ");
         if (needWorkers) {
           await fetch(`/api/deals/${dealEditingId}/participants`, {
             method: "POST", credentials: "include",
@@ -2460,7 +2186,7 @@ export default function AppPage() {
       // Classic deal
       if (parts.length > 0) {
         const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-        if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
+        if (totalPct !== 100) return alert("РџСЂРѕС†РµРЅС‚С‹ СѓС‡Р°СЃС‚РЅРёРєРѕРІ РґРѕР»Р¶РЅС‹ СЃСѓРјРјР°СЂРЅРѕ Р±С‹С‚СЊ 100%");
       }
       const amountsPayload = dealAmounts.map((r) => ({
         amountIn: Number(r.amountIn) || 0, currencyIn: r.currencyIn,
@@ -2474,7 +2200,7 @@ export default function AppPage() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
         });
-        if (!dRes.ok) return alert("Не удалось создать сделку");
+        if (!dRes.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ СЃРґРµР»РєСѓ");
         const deal = await dRes.json();
         for (const a of amountsPayload) {
           await fetch(`/api/deals/${deal.id}/amounts`, {
@@ -2493,7 +2219,7 @@ export default function AppPage() {
           method: "PATCH", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
         });
-        if (!upd.ok) return alert("Не удалось обновить сделку");
+        if (!upd.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЃРґРµР»РєСѓ");
         await fetch(`/api/deals/${dealEditingId}/amounts`, {
           method: "PUT", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amounts: amountsPayload }),
@@ -2540,9 +2266,9 @@ export default function AppPage() {
           >
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", flexShrink: 0, boxShadow: "0 0 6px var(--green)" }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Офис</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1, textTransform: "uppercase", letterSpacing: "0.5px" }}>РћС„РёСЃ</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
-                {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "…"}
+                {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "вЂ¦"}
               </div>
             </div>
             {isSuperAdmin && <svg width="12" height="12" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>}
@@ -2564,7 +2290,7 @@ export default function AppPage() {
                   {o.id === user?.activeOrganizationId && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />}
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{o.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>{o._count.users} польз. · {o._count.deals} сделок</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>{o._count.users} РїРѕР»СЊР·. В· {o._count.deals} СЃРґРµР»РѕРє</div>
                   </div>
                 </div>
               ))}
@@ -2575,11 +2301,11 @@ export default function AppPage() {
         <nav className="sidebar-nav">
           {(() => {
             const NAV_LABELS: Record<string, string> = {
-              dashboard: isWorker ? "Мой кабинет" : "Дашборд",
-              deals: "Сделки", clients: "Клиенты",
-              expenses: "Расходы", reports: "Отчёты",
-              staff: "Сотрудники", mediators: "Посредники", olx: "ОЛХ", salary: "Зарплата", tasks: "Задачи", chat: "Чат",
-              assistant: "AI Ассистент", settings: "Настройки", profile: "Профиль"
+              dashboard: isWorker ? "РњРѕР№ РєР°Р±РёРЅРµС‚" : "Р”Р°С€Р±РѕСЂРґ",
+              deals: "РЎРґРµР»РєРё", clients: "РљР»РёРµРЅС‚С‹",
+              expenses: "Р Р°СЃС…РѕРґС‹", reports: "РћС‚С‡С‘С‚С‹",
+              staff: "РЎРѕС‚СЂСѓРґРЅРёРєРё", mediators: "РџРѕСЃСЂРµРґРЅРёРєРё", olx: "РћР›РҐ", salary: "Р—Р°СЂРїР»Р°С‚Р°", tasks: "Р—Р°РґР°С‡Рё", chat: "Р§Р°С‚",
+              assistant: "AI РђСЃСЃРёСЃС‚РµРЅС‚", settings: "РќР°СЃС‚СЂРѕР№РєРё", profile: "РџСЂРѕС„РёР»СЊ"
             };
             const NAV_SVG: Record<string, ReactElement> = {
               dashboard: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
@@ -2617,15 +2343,15 @@ export default function AppPage() {
               return (<>
                 {renderItem("dashboard")}
                 <div className="nav-divider" />
-                <div className="nav-section">Клиенты</div>
+                <div className="nav-section">РљР»РёРµРЅС‚С‹</div>
                 {renderItem("clients")}
                 {renderItem("assistant")}
                 <div className="nav-divider" />
-                <div className="nav-section">Задачи и чат</div>
+                <div className="nav-section">Р—Р°РґР°С‡Рё Рё С‡Р°С‚</div>
                 {renderItem("tasks")}
                 {renderItem("chat")}
                 <div className="nav-divider" />
-                <div className="nav-section">Аккаунт</div>
+                <div className="nav-section">РђРєРєР°СѓРЅС‚</div>
                 {renderItem("profile")}
               </>);
             }
@@ -2633,23 +2359,23 @@ export default function AppPage() {
             return (<>
               {renderItem("dashboard")}
               <div className="nav-divider" />
-              <div className="nav-section">Продажи</div>
+              <div className="nav-section">РџСЂРѕРґР°Р¶Рё</div>
               {renderItem("deals")}
               {renderItem("clients")}
               <div className="nav-divider" />
-              <div className="nav-section">Финансы</div>
+              <div className="nav-section">Р¤РёРЅР°РЅСЃС‹</div>
               {renderItem("expenses")}
               {isAdmin && renderItem("reports")}
               {isAdmin && renderItem("salary")}
               <div className="nav-divider" />
-              <div className="nav-section">Команда</div>
+              <div className="nav-section">РљРѕРјР°РЅРґР°</div>
               {isAdmin && renderItem("staff")}
               {isManager && renderItem("mediators")}
               {isManager && renderItem("olx")}
               {renderItem("tasks")}
               {renderItem("chat")}
               <div className="nav-divider" />
-              <div className="nav-section">Система</div>
+              <div className="nav-section">РЎРёСЃС‚РµРјР°</div>
               {renderItem("assistant")}
               {isAdmin && renderItem("settings")}
               {renderItem("profile")}
@@ -2662,8 +2388,8 @@ export default function AppPage() {
           <div className="sidebar-user" onClick={() => { setTab("profile"); setSidebarOpen(false); }}>
             <div className="sidebar-user-avatar">{(user?.email ?? "?")[0].toUpperCase()}</div>
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user?.email ?? "…"}</div>
-              <div className="sidebar-user-role">{user ? (ROLE_LABELS[user.role] ?? user.role) : "…"}</div>
+              <div className="sidebar-user-name">{user?.email ?? "вЂ¦"}</div>
+              <div className="sidebar-user-role">{user ? (ROLE_LABELS[user.role] ?? user.role) : "вЂ¦"}</div>
             </div>
           </div>
           {/* Theme + logout row */}
@@ -2676,11 +2402,11 @@ export default function AppPage() {
                     : <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                   }
                 </span>
-                <span>{theme === "dark" ? "Светлая" : "Тёмная"}</span>
+                <span>{theme === "dark" ? "РЎРІРµС‚Р»Р°СЏ" : "РўС‘РјРЅР°СЏ"}</span>
               </span>
               <span className={`theme-toggle-pill${theme === "dark" ? " is-dark" : ""}`} />
             </button>
-            <a className="nav-item" style={{ padding: "7px 10px", flexShrink: 0 }} onClick={logout} title="Выйти">
+            <a className="nav-item" style={{ padding: "7px 10px", flexShrink: 0 }} onClick={logout} title="Р’С‹Р№С‚Рё">
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </a>
           </div>
@@ -2723,462 +2449,47 @@ export default function AppPage() {
           {/* ===== WORKER CABINET ===== */}
           {tab === "dashboard" && !user ? (
             <div className="card" style={{ padding: 32, textAlign: "center", color: "var(--text-secondary)" }}>
-              Загрузка…
+              Р—Р°РіСЂСѓР·РєР°вЂ¦
             </div>
           ) : null}
 
           {tab === "dashboard" && user && isWorker ? (
-            <div style={{ display: "grid", gap: 20 }}>
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Мой кабинет</span>
-                </div>
-                <div className="card-body" style={{ padding: "32px 24px", textAlign: "center" }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>🏗️</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Раздел в разработке</div>
-                  <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                    Здесь будут отображаться ваши задачи, учёт рабочего времени и расчёт зарплаты.
-                  </div>
-                </div>
-              </div>
-              <div className="g3">
-                {[
-                  { icon: "📋", title: "Мои задачи", desc: "Список задач и их статус" },
-                  { icon: "💰", title: "Моя зарплата", desc: "История выплат и начислений" },
-                  { icon: "📊", title: "Моя статистика", desc: "Сделки в которых участвовал" },
-                ].map((card) => (
-                  <div key={card.title} className="card" style={{ opacity: 0.5 }}>
-                    <div className="card-body" style={{ padding: "20px", textAlign: "center" }}>
-                      <div style={{ fontSize: 32, marginBottom: 10 }}>{card.icon}</div>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{card.title}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{card.desc}</div>
-                      <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>Скоро</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <WorkerDashboard />
           ) : null}
-
           {/* ===== DASHBOARD ===== */}
           {tab === "dashboard" && user && !isWorker ? (
-            <div style={{ display: "grid", gap: 20 }}>
-
-              {/* Period bar */}
-              <div className="dash-period-bar" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <div className="dash-period-dates" style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, flexWrap: "wrap" }}>
-                  <input className="form-input" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} style={{ maxWidth: 160 }} />
-                  <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>—</span>
-                  <input className="form-input" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} style={{ maxWidth: 160 }} />
-                  <button className="btn btn-secondary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => dashView === "global" ? loadGlobalDash() : loadDashboard()}>
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    Обновить
-                  </button>
-                  {/* Quick period shortcuts */}
-                  {([
-                    { label: "Месяц", getRange: () => { const n = new Date(); return { f: new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0,10), t: n.toISOString().slice(0,10) }; } },
-                    { label: "3 мес",  getRange: () => { const n = new Date(); return { f: new Date(n.getFullYear(), n.getMonth()-2, 1).toISOString().slice(0,10), t: n.toISOString().slice(0,10) }; } },
-                    { label: "Год",    getRange: () => { const n = new Date(); return { f: new Date(n.getFullYear(), 0, 1).toISOString().slice(0,10), t: n.toISOString().slice(0,10) }; } },
-                    { label: "Всё",    getRange: () => ({ f: "2020-01-01", t: new Date().toISOString().slice(0,10) }) },
-                  ]).map(q => (
-                    <button key={q.label} className="btn btn-ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }}
-                      onClick={() => { const { f, t } = q.getRange(); setDashFrom(f); setDashTo(t); if (dashView === "global") loadGlobalDash(f, t); else loadDashboard(f, t); }}>
-                      {q.label}
-                    </button>
-                  ))}
-                </div>
-                {isSuperAdmin ? (
-                  <div className="filter-tabs dash-view-tabs">
-                    {([{ id: "current", label: "Текущий офис" }, { id: "global", label: "Все офисы" }] as const).map((v) => (
-                      <button key={v.id} className={`filter-tab${dashView === v.id ? " active" : ""}`}
-                        onClick={() => { setDashView(v.id); if (v.id === "global") loadGlobalDash(); else loadDashboard(); }}>
-                        {v.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              {dashView === "current" ? (
-                <>
-                  {/* Metric cards */}
-                  {dashError ? (
-                    <div className="card" style={{ padding: 20 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8 }}>Не удалось показать дашборд</div>
-                      <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>{dashError}</div>
-                      <button type="button" className="btn btn-secondary" onClick={() => void loadDashboard()}>
-                        Повторить
-                      </button>
-                    </div>
-                  ) : dashLoading || !dash ? (
-                    <div className="metric-grid">
-                      {[0, 1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="metric-card" style={{ minHeight: 110, animation: "pulse 1.5s ease infinite" }}>
-                          <div style={{ height: 44, width: 44, borderRadius: 10, background: "var(--bg-metric)" }} />
-                          <div style={{ height: 20, borderRadius: 6, background: "var(--bg-metric)", marginTop: 8 }} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (() => {
-                    const amountOut = dash.deals?.totalAmountOut ?? 0;
-                    const workersTotal = dash.deals?.totalWorkersPayoutUsdt ?? 0;
-                    // officeIncome: prefer backend-computed value, fallback to gross-workers if 0
-                    const officeIncomeRaw = dash.deals?.totalOfficeIncome ?? 0;
-                    const officeIncome = officeIncomeRaw > 0 ? officeIncomeRaw : Math.max(0, amountOut - workersTotal);
-                    const expTotal = dash.expenses?.totalAmount ?? 0;
-                    const profit = officeIncome - expTotal;
-                    const metrics = [
-                      {
-                        label: "Сделки за период",
-                        value: String(dash.deals?.count ?? 0),
-                        sub: `Новых: ${dash.deals?.byStatus?.NEW ?? 0} · В работе: ${dash.deals?.byStatus?.IN_PROGRESS ?? 0}`,
-                        iconColor: "#6366F1", iconBg: "rgba(99,102,241,0.1)",
-                        trend: null,
-                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
-                      },
-                      {
-                        label: "Завод (брутто)",
-                        value: amountOut.toLocaleString(),
-                        sub: `Офису: ${officeIncome.toLocaleString()} · Воркерам: ${workersTotal.toLocaleString()}`,
-                        iconColor: "#059669", iconBg: "rgba(5,150,105,0.1)",
-                        trend: amountOut > 0 ? "up" : "neutral",
-                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>,
-                      },
-                      {
-                        label: "Расходы",
-                        value: expTotal.toLocaleString(),
-                        sub: `Записей: ${dash.expenses?.count ?? 0}`,
-                        iconColor: "#D97706", iconBg: "rgba(217,119,6,0.1)",
-                        trend: expTotal > 0 ? "down" : "neutral",
-                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
-                      },
-                      {
-                        label: "Прибыль офиса",
-                        value: profit.toLocaleString(),
-                        sub: "Заработок офиса минус расходы",
-                        iconColor: profit >= 0 ? "#059669" : "#DC2626",
-                        iconBg: profit >= 0 ? "rgba(5,150,105,0.1)" : "rgba(220,38,38,0.1)",
-                        trend: profit >= 0 ? "up" : "down",
-                        icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-                      },
-                      {
-                        label: "Посредники",
-                        value: `$${(dash.partners?.totalMediatorUsd ?? 0).toLocaleString()}`,
-                        sub: `Сделок с посредником: ${dash.partners?.dealsWithMediator ?? 0}`,
-                        iconColor: "#D97706",
-                        iconBg: "rgba(217,119,6,0.1)",
-                        trend: null,
-                        icon: <span style={{ fontSize: 18 }}>🤝</span>,
-                      },
-                      {
-                        label: "Доля ИИ (офис)",
-                        value: `$${(dash.partners?.totalAiUsd ?? 0).toLocaleString()}`,
-                        sub: "Начисляется на счёт ИИ в разделе «Зарплата»",
-                        iconColor: "#8B5CF6",
-                        iconBg: "rgba(139,92,246,0.12)",
-                        trend: null,
-                        icon: <span style={{ fontSize: 18 }}>🤖</span>,
-                      },
-                      {
-                        label: "ОЛХ",
-                        value: `$${(dash.partners?.totalOlxUsd ?? 0).toLocaleString()}`,
-                        sub: `Сделок с ОЛХ: ${dash.partners?.dealsWithOlx ?? 0}`,
-                        iconColor: "#0EA5E9",
-                        iconBg: "rgba(14,165,233,0.12)",
-                        trend: null,
-                        icon: <span style={{ fontSize: 18 }}>📋</span>,
-                      },
-                      {
-                        label: "Инфо",
-                        value: `$${(dash.partners?.totalInfoUsd ?? 0).toLocaleString()}`,
-                        sub: "% от зарплатного фонда",
-                        iconColor: "#64748B",
-                        iconBg: "rgba(100,116,139,0.12)",
-                        trend: null,
-                        icon: <span style={{ fontSize: 18 }}>ℹ️</span>,
-                      },
-                    ];
-                    return (
-                      <div className="metric-grid">
-                        {metrics.map((m) => (
-                          <div key={m.label} className="metric-card">
-                            <div className="metric-card-top">
-                              <div className="metric-icon" style={{ background: m.iconBg, color: m.iconColor }}>{m.icon}</div>
-                              {m.trend && (
-                                <div className={`metric-trend ${m.trend}`}>
-                                  {m.trend === "up" ? (
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
-                                  ) : m.trend === "down" ? (
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                                  ) : null}
-                                </div>
-                              )}
-                            </div>
-                            <div className="metric-body">
-                              <div className="metric-value">{m.value}</div>
-                              <div className="metric-label">{m.label}</div>
-                              <div className="metric-sub">{m.sub}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-
-                  {dash?.partners?.mediators?.length > 0 && (
-                    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600 }}>Посредники за период</div>
-                      {dash.partners.mediators.map((row: any) => (
-                        <div key={row.mediatorId} style={{ display: "grid", gridTemplateColumns: "1fr 80px 100px", padding: "10px 20px", gap: 8, borderTop: "1px solid var(--border-light)", fontSize: 13, cursor: "pointer" }}
-                          onClick={() => { setTab("mediators"); void loadMediators().then(() => { const m = mediators.find((x: any) => x.id === row.mediatorId); if (m) { setSelectedMediator(m); void loadMediatorDetail(m.id); } }); }}>
-                          <span style={{ fontWeight: 500 }}>{row.name}</span>
-                          <span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>{row.dealsCount}</span>
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#D97706" }}>${row.totalUsd.toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Charts row */}
-                  {dash && !dashLoading && (
-                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-                      {/* Area chart — deals by status over time (simulated from current data) */}
-                      <div className="chart-card">
-                        <div className="chart-header">
-                          <div>
-                            <div className="chart-title">Динамика сделок</div>
-                            <div className="chart-sub">по статусам за период</div>
-                          </div>
-                          <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--text-tertiary)" }}>
-                            {[
-                              { label: "Новые", color: "#6366F1" },
-                              { label: "В работе", color: "#D97706" },
-                              { label: "Закрыты", color: "#059669" },
-                            ].map(l => (
-                              <span key={l.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.color, display: "inline-block" }} />
-                                {l.label}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="chart-body">
-                          {(() => {
-                            // Filter deals by selected period and group by date
-                            const fromTs = dashFrom ? new Date(dashFrom).getTime() : 0;
-                            const toTs = dashTo ? new Date(dashTo + "T23:59:59").getTime() : Infinity;
-                            const byDay: Record<string, number> = {};
-                            for (const d of deals) {
-                              const dt = d.dealDate ? new Date(d.dealDate) : null;
-                              if (!dt) continue;
-                              const ts = dt.getTime();
-                              if (ts < fromTs || ts > toTs) continue;
-                              let value = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-                              if (value === 0 && d.template && d.dataRows && d.dataRows.length > 0) {
-                                const rowData = (d.dataRows[0] as any).data as Record<string, string>;
-                                const tpl = d.template as DealTemplate;
-                                if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
-                                  const chain = computeChain(rowData, tpl.calcSteps as CalcStep[]);
-                                  if (chain.length > 0) value = chain[0].source;
-                                } else if (tpl.incomeFieldKey) {
-                                  value = Number(rowData[tpl.incomeFieldKey]) || 0;
-                                } else if (tpl.calcGrossFieldKey) {
-                                  value = Number(rowData[tpl.calcGrossFieldKey]) || 0;
-                                }
-                              }
-                              const key = dt.toISOString().slice(0, 10);
-                              byDay[key] = (byDay[key] ?? 0) + value;
-                            }
-                            const chartData = Object.entries(byDay)
-                              .sort(([a], [b]) => a.localeCompare(b))
-                              .map(([dateStr, value]) => ({
-                                label: new Date(dateStr).toLocaleDateString("ru", { day: "numeric", month: "short" }),
-                                value: Math.round(value * 100) / 100,
-                              }));
-                            return (
-                              <AreaChart
-                                data={chartData}
-                                title="Выход"
-                                height={230}
-                                color="#6366F1"
-                              />
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Donut — deals by status */}
-                      <div className="chart-card">
-                        <div className="chart-header">
-                          <div>
-                            <div className="chart-title">Статусы сделок</div>
-                            <div className="chart-sub">распределение</div>
-                          </div>
-                        </div>
-                        <div className="chart-body">
-                          <DonutChart
-                            data={[
-                              { label: "Новые", value: dash.deals?.byStatus?.NEW ?? 0, color: "#6366F1" },
-                              { label: "В работе", value: dash.deals?.byStatus?.IN_PROGRESS ?? 0, color: "#D97706" },
-                              { label: "Закрыты", value: dash.deals?.byStatus?.CLOSED ?? 0, color: "#059669" },
-                            ].filter(d => d.value > 0)}
-                            height={265}
-                            totalLabel="Сделок"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Quick actions */}
-                  <div className="dash-quick-actions g3" style={{ gap: 12 }}>
-                    {[
-                      { title: "Новая сделка", desc: "Создать сделку с клиентом", action: () => { setTab("deals"); setTimeout(openDealModal, 50); }, color: "#6366F1", bg: "rgba(99,102,241,0.1)",
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
-                      { title: "Новый клиент", desc: "Добавить по номеру телефона", action: () => { setTab("clients"); openClientCreateModal(); }, color: "#059669", bg: "rgba(5,150,105,0.1)",
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
-                      { title: "Новый расход", desc: "Крипта, офис, материалы", action: () => setTab("expenses"), color: "#D97706", bg: "rgba(217,119,6,0.1)",
-                        icon: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> },
-                    ].map((a) => (
-                      <button key={a.title} onClick={a.action} style={{
-                        background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
-                        padding: "16px 18px", display: "flex", alignItems: "center", gap: 14,
-                        cursor: "pointer", transition: "var(--transition)", textAlign: "left",
-                        fontFamily: "inherit", boxShadow: "var(--shadow-card)",
-                      }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = a.color; (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-card)"; }}
-                      >
-                        <div style={{ width: 42, height: 42, borderRadius: 11, background: a.bg, display: "flex", alignItems: "center", justifyContent: "center", color: a.color, flexShrink: 0 }}>{a.icon}</div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: 13.5 }}>{a.title}</div>
-                          <div style={{ fontSize: 11.5, color: "var(--text-secondary)", marginTop: 2 }}>{a.desc}</div>
-                        </div>
-                        <svg width="14" height="14" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" viewBox="0 0 24 24" style={{ marginLeft: "auto", flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Recent activity: deals + expenses */}
-                  <div className="dash-recent-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                    {/* Recent deals */}
-                    <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">Последние сделки</span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setTab("deals")} style={{ color: "var(--accent)" }}>Все →</button>
-                      </div>
-                      <div className="table-scroll" style={{ padding: 0 }}>
-                        <table className="data-table">
-                          <thead><tr><th>Клиент</th><th>Статус</th><th style={{ textAlign: "right" }}>Выход</th></tr></thead>
-                          <tbody>
-                            {dashDealsInPeriod.length === 0 ? (
-                              <tr><td colSpan={3} style={{ padding: "20px 18px", color: "var(--text-secondary)" }}>Нет сделок за период</td></tr>
-                            ) : dashDealsInPeriod.slice(0, 5).map((d) => {
-                              const out = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-                              return (
-                                <tr key={d.id} style={{ cursor: "pointer" }} onClick={() => { setTab("deals"); setTimeout(() => openDealEditModal(d), 50); }}>
-                                  <td style={{ fontWeight: 500 }}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
-                                  <td><span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>{d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}</span></td>
-                                  <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{out > 0 ? out.toLocaleString() : "—"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Recent expenses */}
-                    <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">Последние расходы</span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setTab("expenses")} style={{ color: "var(--accent)" }}>Все →</button>
-                      </div>
-                      <div className="table-scroll" style={{ padding: 0 }}>
-                        <table className="data-table">
-                          <thead><tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th></tr></thead>
-                          <tbody>
-                            {expenses.length === 0 ? (
-                              <tr><td colSpan={3} style={{ padding: "20px 18px", color: "var(--text-secondary)" }}>Нет расходов</td></tr>
-                            ) : expenses.slice(0, 5).map((e) => (
-                              <tr key={e.id}>
-                                <td style={{ fontWeight: 500 }}>{e.title}</td>
-                                <td><span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>{e.status}</span></td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{Number(e.amount).toLocaleString()} {e.currency}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                /* Global view for ADMIN */
-                <div style={{ display: "grid", gap: 16 }}>
-                  {globalDashLoading || !globalDash ? (
-                    <div className="card" style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</div>
-                  ) : (
-                    <>
-                      <div className="metric-grid">
-                        {[
-                          { label: "Сделок всего", value: String(globalDash.totals?.dealsCount ?? 0), iconBg: "rgba(99,102,241,0.1)", iconColor: "#6366F1", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
-                          { label: "Доход", value: (globalDash.totals?.totalAmountOut ?? 0).toLocaleString(), iconBg: "rgba(5,150,105,0.1)", iconColor: "#059669", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg> },
-                          { label: "Воркерам", value: (globalDash.totals?.totalWorkersPayoutUsdt ?? 0).toLocaleString(), iconBg: "rgba(99,102,241,0.1)", iconColor: "#6366F1", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> },
-                          { label: "Расходы", value: (globalDash.totals?.totalExpenses ?? 0).toLocaleString(), iconBg: "rgba(217,119,6,0.1)", iconColor: "#D97706", icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> },
-                        ].map((c) => (
-                          <div key={c.label} className="metric-card">
-                            <div className="metric-card-top"><div className="metric-icon" style={{ background: c.iconBg, color: c.iconColor }}>{c.icon}</div></div>
-                            <div className="metric-body"><div className="metric-value">{c.value}</div><div className="metric-label">{c.label}</div></div>
-                          </div>
-                        ))}
-                        </div>
-                        <div className="table-scroll"><table className="data-table">
-                          <thead>
-                            <tr>
-                              <th>Офис</th>
-                              <th style={{ textAlign: "right" }}>Сделок</th>
-                              <th style={{ textAlign: "right" }}>Доход</th>
-                              <th style={{ textAlign: "right" }}>Воркерам</th>
-                              <th style={{ textAlign: "right" }}>Расходы</th>
-                              <th style={{ width: 100 }}></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(globalDash.byOrg ?? []).map((r: any) => (
-                              <tr key={r.orgId}>
-                                <td style={{ fontWeight: 600 }}>{r.orgName}</td>
-                                <td style={{ textAlign: "right" }}>{r.dealsCount}</td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}>{(r.totalAmountOut ?? 0).toLocaleString()}</td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{(r.totalWorkersPayoutUsdt ?? 0).toLocaleString()}</td>
-                                <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--amber)" }}>{(r.totalExpenses ?? 0).toLocaleString()}</td>
-                                <td><button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => switchOrg(r.orgId)}>Перейти</button></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          </table></div>
-
-                      {/* Bar chart: revenue by org */}
-                      {(globalDash.byOrg ?? []).length > 0 && (
-                        <div className="chart-card" style={{ margin: "0 0 0 0" }}>
-                          <div className="chart-header">
-                            <div className="chart-title">Доход по офисам</div>
-                          </div>
-                          <div className="chart-body">
-                            <BarChart
-                              data={(globalDash.byOrg ?? []).map((r: any) => ({ label: r.orgName, value: r.totalAmountOut ?? 0 }))}
-                              color="#6366F1"
-                              title="Доход"
-                              height={220}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            <DashboardTab
+              dashFrom={dashFrom}
+              dashTo={dashTo}
+              onDashFromChange={setDashFrom}
+              onDashToChange={setDashTo}
+              dashView={dashView}
+              onDashViewChange={setDashView}
+              isSuperAdmin={isSuperAdmin}
+              dash={dash}
+              dashLoading={dashLoading}
+              dashError={dashError}
+              onRefreshDashboard={loadDashboard}
+              globalDash={globalDash}
+              globalDashLoading={globalDashLoading}
+              onRefreshGlobalDash={loadGlobalDash}
+              deals={deals as DashboardDealRow[]}
+              dealsInPeriod={dashDealsInPeriod}
+              expenses={expenses}
+              onNavigateToDeals={() => setTab("deals")}
+              onNavigateToDealsNew={() => { setTab("deals"); setTimeout(openDealModal, 50); }}
+              onNavigateToClientsNew={() => { setTab("clients"); setPendingClientCreate(true); }}
+              onNavigateToExpenses={() => setTab("expenses")}
+              onOpenDealEdit={(d) => { setTab("deals"); setTimeout(() => openDealEditModal(d as Deal), 50); }}
+              onOpenMediator={(mediatorId) => {
+                setTab("mediators");
+                void loadMediators().then(() => {
+                  const m = mediators.find((x: MediatorListItem) => x.id === mediatorId);
+                  if (m) { setSelectedMediator(m); void loadMediatorDetail(m.id); }
+                });
+              }}
+              onSwitchOrg={switchOrg}
+            />
           ) : null}
 
           {/* ===== REPORTS ===== */}
@@ -3205,22 +2516,22 @@ export default function AppPage() {
               {/* Page header */}
               <div className="page-header">
                 <div className="page-header-left">
-                  <div className="page-header-title">Сделки</div>
-                  <div className="page-header-sub">Управляйте сделками, участниками и выплатами</div>
+                  <div className="page-header-title">РЎРґРµР»РєРё</div>
+                  <div className="page-header-sub">РЈРїСЂР°РІР»СЏР№С‚Рµ СЃРґРµР»РєР°РјРё, СѓС‡Р°СЃС‚РЅРёРєР°РјРё Рё РІС‹РїР»Р°С‚Р°РјРё</div>
                 </div>
                 <div className="page-header-actions">
                   <div className="filter-tabs">
-                    {([{ id: "ALL", label: "Все" }, { id: "NEW", label: "Новые" }, { id: "IN_PROGRESS", label: "В работе" }, { id: "CLOSED", label: "Закрытые" }] as const).map((f) => (
+                    {([{ id: "ALL", label: "Р’СЃРµ" }, { id: "NEW", label: "РќРѕРІС‹Рµ" }, { id: "IN_PROGRESS", label: "Р’ СЂР°Р±РѕС‚Рµ" }, { id: "CLOSED", label: "Р—Р°РєСЂС‹С‚С‹Рµ" }] as const).map((f) => (
                       <button key={f.id} className={`filter-tab ${dealFilter === f.id ? "active" : ""}`} onClick={() => setDealFilter(f.id as any)}>{f.label}</button>
                     ))}
                   </div>
-                  <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
+                  <button className="btn btn-primary" onClick={openDealModal}>+ РќРѕРІР°СЏ СЃРґРµР»РєР°</button>
                   {isManager && (
                     <>
                       <input
                         className="form-input"
                         style={{ width: 72 }}
-                        title="Год для дат «23.04» (без года в ячейке)"
+                        title="Р“РѕРґ РґР»СЏ РґР°С‚ В«23.04В» (Р±РµР· РіРѕРґР° РІ СЏС‡РµР№РєРµ)"
                         value={legacyImportYear}
                         onChange={(e) => setLegacyImportYear(e.target.value)}
                       />
@@ -3240,7 +2551,7 @@ export default function AppPage() {
                         disabled={legacyImporting}
                         onClick={() => legacyImportInputRef.current?.click()}
                       >
-                        {legacyImporting ? "Импорт…" : "Импорт Excel"}
+                        {legacyImporting ? "РРјРїРѕСЂС‚вЂ¦" : "РРјРїРѕСЂС‚ Excel"}
                       </button>
                     </>
                   )}
@@ -3252,23 +2563,23 @@ export default function AppPage() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Дата</th><th>Клиент</th><th>Воркеры</th><th>Статус</th>
-                        <th style={{ textAlign: "right" }}>Выход</th>
+                        <th>Р”Р°С‚Р°</th><th>РљР»РёРµРЅС‚</th><th>Р’РѕСЂРєРµСЂС‹</th><th>РЎС‚Р°С‚СѓСЃ</th>
+                        <th style={{ textAlign: "right" }}>Р’С‹С…РѕРґ</th>
                         {isAdmin && <th style={{ width: 40 }}></th>}
                       </tr>
                     </thead>
                     <tbody>
                       {dealsLoading ? (
-                        <tr><td colSpan={6} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
+                        <tr><td colSpan={6} style={{ padding: 24, color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°...</td></tr>
                       ) : deals.filter((d) => dealFilter === "ALL" || d.status === dealFilter).length === 0 ? (
                         <tr><td colSpan={6}>
                           <div className="empty-state">
                             <div className="empty-state-icon">
                               <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
                             </div>
-                            <div className="empty-state-title">Нет сделок</div>
-                            <div className="empty-state-desc">Создайте первую сделку чтобы начать вести учёт</div>
-                            <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
+                            <div className="empty-state-title">РќРµС‚ СЃРґРµР»РѕРє</div>
+                            <div className="empty-state-desc">РЎРѕР·РґР°Р№С‚Рµ РїРµСЂРІСѓСЋ СЃРґРµР»РєСѓ С‡С‚РѕР±С‹ РЅР°С‡Р°С‚СЊ РІРµСЃС‚Рё СѓС‡С‘С‚</div>
+                            <button className="btn btn-primary" onClick={openDealModal}>+ РќРѕРІР°СЏ СЃРґРµР»РєР°</button>
                           </div>
                         </td></tr>
                       ) : (
@@ -3295,21 +2606,21 @@ export default function AppPage() {
                             const workerParts = d.participants.map((p) => {
                               const label = p.user.name || p.user.email.split("@")[0];
                               return `${label} ${p.pct}%`;
-                            }).join(" · ");
+                            }).join(" В· ");
                             return (
                               <tr key={d.id} style={{ cursor: "pointer" }}>
                                 <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} onClick={() => openDealEditModal(d)}>
-                                  {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}
+                                  {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "вЂ”"}
                                 </td>
-                                <td onClick={() => openDealEditModal(d)}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
-                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }} onClick={() => openDealEditModal(d)}>{workerParts || "—"}</td>
+                                <td onClick={() => openDealEditModal(d)}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Р‘РµР· РєР»РёРµРЅС‚Р°</span>}</td>
+                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }} onClick={() => openDealEditModal(d)}>{workerParts || "вЂ”"}</td>
                                 <td onClick={() => openDealEditModal(d)}>
                                   <span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>
-                                    {d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}
+                                    {d.status === "NEW" ? "РќРѕРІР°СЏ" : d.status === "IN_PROGRESS" ? "Р’ СЂР°Р±РѕС‚Рµ" : "Р—Р°РєСЂС‹С‚Р°"}
                                   </span>
                                 </td>
                                 <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} onClick={() => openDealEditModal(d)}>
-                                  {totalOut > 0 ? `${totalOut.toLocaleString("ru-RU")}${dealCurrencyLabel ? " " + dealCurrencyLabel : ""}` : "—"}
+                                  {totalOut > 0 ? `${totalOut.toLocaleString("ru-RU")}${dealCurrencyLabel ? " " + dealCurrencyLabel : ""}` : "вЂ”"}
                                 </td>
                                 {isAdmin && (
                                   <td style={{ width: 40, padding: "0 8px 0 0" }}>
@@ -3317,7 +2628,7 @@ export default function AppPage() {
                                       onClick={(e) => { e.stopPropagation(); deleteDeal(d.id); }}
                                       className="btn btn-ghost"
                                       style={{ width: 28, height: 28, padding: 0, color: "var(--text-tertiary)" }}
-                                      title="Удалить сделку"
+                                      title="РЈРґР°Р»РёС‚СЊ СЃРґРµР»РєСѓ"
                                     >
                                       <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
                                     </button>
@@ -3342,20 +2653,20 @@ export default function AppPage() {
                   <div className="card" style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
                     <div className="card-header">
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="card-title">{dealEditingId ? "Редактировать сделку" : "Новая сделка"}</span>
+                        <span className="card-title">{dealEditingId ? "Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ СЃРґРµР»РєСѓ" : "РќРѕРІР°СЏ СЃРґРµР»РєР°"}</span>
                         {dealTemplateStep === "form" && dealTemplateId && (
                           <span style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>
                             {templates.find(t => t.id === dealTemplateId)?.name}
                           </span>
                         )}
                       </div>
-                      <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
+                      <button className="btn btn-secondary" onClick={closeDealModal}>РћС‚РјРµРЅР°</button>
                     </div>
 
                     {/* Template picker step */}
                     {!dealEditingId && dealTemplateStep === "pick" ? (
                       <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Выберите шаблон сделки:</div>
+                        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё:</div>
                         <div style={{ display: "grid", gap: 8 }}>
                           {templates.map((t) => (
                             <label key={t.id} style={{
@@ -3369,8 +2680,8 @@ export default function AppPage() {
                               <div>
                                 <div style={{ fontWeight: 600 }}>{t.name}</div>
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                                  {t.fields.length} полей · {t.hasWorkers ? "с воркерами" : "без воркеров"}
-                                  {t.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? " · расчёт посредник/ИИ/фонд" : ""}
+                                  {t.fields.length} РїРѕР»РµР№ В· {t.hasWorkers ? "СЃ РІРѕСЂРєРµСЂР°РјРё" : "Р±РµР· РІРѕСЂРєРµСЂРѕРІ"}
+                                  {t.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? " В· СЂР°СЃС‡С‘С‚ РїРѕСЃСЂРµРґРЅРёРє/РР/С„РѕРЅРґ" : ""}
                                 </div>
                               </div>
                             </label>
@@ -3381,13 +2692,13 @@ export default function AppPage() {
                             className="btn btn-primary"
                             onClick={() => {
                               if (!dealTemplateId) {
-                                alert("Выберите шаблон");
+                                alert("Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ");
                                 return;
                               }
                               setDealTemplateStep("form");
                             }}
                           >
-                            Продолжить →
+                            РџСЂРѕРґРѕР»Р¶РёС‚СЊ в†’
                           </button>
                         </div>
                       </div>
@@ -3398,16 +2709,16 @@ export default function AppPage() {
                       {/* Date + Client */}
                       <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 14 }}>
                         <div>
-                          <div className="form-label">Дата *</div>
+                          <div className="form-label">Р”Р°С‚Р° *</div>
                           <input className="form-input" type="date" value={dealDate} onChange={(e) => setDealDate(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">Клиент</div>
+                          <div className="form-label">РљР»РёРµРЅС‚</div>
                           {!dealClientSkip && !dealClientId ? (
                             <div style={{ display: "grid", gap: 6 }}>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <input className="form-input" placeholder="Поиск..." value={dealClientSearch} onChange={(e) => setDealClientSearch(e.target.value)} />
-                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>Без клиента</button>
+                                <input className="form-input" placeholder="РџРѕРёСЃРє..." value={dealClientSearch} onChange={(e) => setDealClientSearch(e.target.value)} />
+                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>Р‘РµР· РєР»РёРµРЅС‚Р°</button>
                               </div>
                               <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-card)", maxHeight: 130, overflow: "auto" }}>
                                 {dealClients.filter((c) => (c.name + " " + c.phone).toLowerCase().includes(dealClientSearch.toLowerCase())).slice(0, 20).map((c) => (
@@ -3420,13 +2731,13 @@ export default function AppPage() {
                             </div>
                           ) : dealClientId ? (
                             <div style={{ background: "var(--green-bg)", borderRadius: 10, padding: "8px 12px", display: "flex", gap: 10, alignItems: "center" }}>
-                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>{dealClients.find((c) => c.id === dealClientId)?.name ?? "Клиент"}</span>
-                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>×</button>
+                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>{dealClients.find((c) => c.id === dealClientId)?.name ?? "РљР»РёРµРЅС‚"}</span>
+                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>Г—</button>
                             </div>
                           ) : (
                             <div style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 12px", color: "var(--text-secondary)", fontStyle: "italic" }}>
-                              Без клиента{" "}
-                              <span style={{ color: "var(--accent)", cursor: "pointer", fontStyle: "normal", marginLeft: 8 }} onClick={() => setDealClientSkip(false)}>Изменить</span>
+                              Р‘РµР· РєР»РёРµРЅС‚Р°{" "}
+                              <span style={{ color: "var(--accent)", cursor: "pointer", fontStyle: "normal", marginLeft: 8 }} onClick={() => setDealClientSkip(false)}>РР·РјРµРЅРёС‚СЊ</span>
                             </div>
                           )}
                         </div>
@@ -3434,11 +2745,11 @@ export default function AppPage() {
 
                       {/* Status */}
                       <div style={{ width: 240 }}>
-                        <div className="form-label">Статус</div>
+                        <div className="form-label">РЎС‚Р°С‚СѓСЃ</div>
                         <select className="form-input" value={dealStatus} onChange={(e) => setDealStatus(e.target.value as DealStatus)}>
-                          <option value="NEW">Новая</option>
-                          <option value="IN_PROGRESS">В работе</option>
-                          <option value="CLOSED">Закрыта</option>
+                          <option value="NEW">РќРѕРІР°СЏ</option>
+                          <option value="IN_PROGRESS">Р’ СЂР°Р±РѕС‚Рµ</option>
+                          <option value="CLOSED">Р—Р°РєСЂС‹С‚Р°</option>
                         </select>
                       </div>
 
@@ -3450,21 +2761,21 @@ export default function AppPage() {
                         return (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
                             <div>
-                              <div className="form-label">Посредник</div>
+                              <div className="form-label">РџРѕСЃСЂРµРґРЅРёРє</div>
                               <select className="form-input" value={dealMediatorId} onChange={(e) => setDealMediatorSelection(e.target.value)}>
-                                <option value="">— не выбран —</option>
+                                <option value="">вЂ” РЅРµ РІС‹Р±СЂР°РЅ вЂ”</option>
                                 {mediators.filter((m: any) => m.isActive !== false).map((m: any) => (
                                   <option key={m.id} value={m.id}>{m.name}{m.defaultPct != null ? ` (${m.defaultPct}%)` : ""}</option>
                                 ))}
                               </select>
                               {mediatorFieldKey && (
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>
-                                  % из справочника подставляется в расчёт{dealMediatorPct ? ` (сейчас ${dealMediatorPct}%)` : ""}
+                                  % РёР· СЃРїСЂР°РІРѕС‡РЅРёРєР° РїРѕРґСЃС‚Р°РІР»СЏРµС‚СЃСЏ РІ СЂР°СЃС‡С‘С‚{dealMediatorPct ? ` (СЃРµР№С‡Р°СЃ ${dealMediatorPct}%)` : ""}
                                 </div>
                               )}
                             </div>
                             <div>
-                              <div className="form-label">% по сделке</div>
+                              <div className="form-label">% РїРѕ СЃРґРµР»РєРµ</div>
                               <input
                                 className="form-input"
                                 type="number"
@@ -3487,16 +2798,16 @@ export default function AppPage() {
                         return (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
                             <div>
-                              <div className="form-label">ОЛХ</div>
+                              <div className="form-label">РћР›РҐ</div>
                               <select className="form-input" value={dealOlxId} onChange={(e) => setDealOlxSelection(e.target.value)}>
-                                <option value="">— не выбран —</option>
+                                <option value="">вЂ” РЅРµ РІС‹Р±СЂР°РЅ вЂ”</option>
                                 {olxList.filter((o: any) => o.isActive !== false).map((o: any) => (
                                   <option key={o.id} value={o.id}>{o.name}{o.defaultPct != null ? ` (${o.defaultPct}%)` : ""}</option>
                                 ))}
                               </select>
                             </div>
                             <div>
-                              <div className="form-label">% по сделке</div>
+                              <div className="form-label">% РїРѕ СЃРґРµР»РєРµ</div>
                               <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealOlxPct} onChange={(e) => setDealOlxPct(e.target.value)} />
                             </div>
                           </div>
@@ -3518,13 +2829,13 @@ export default function AppPage() {
                               border: "1px solid var(--border-light)",
                             }}
                           >
-                            <div className="form-label" style={{ fontWeight: 600 }}>Инфо</div>
+                            <div className="form-label" style={{ fontWeight: 600 }}>РРЅС„Рѕ</div>
                             <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
-                              Процент от <b>зарплатного фонда</b> этой сделки (после посредника, ОЛХ и ИИ). У каждой сделки свой %.
+                              РџСЂРѕС†РµРЅС‚ РѕС‚ <b>Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°</b> СЌС‚РѕР№ СЃРґРµР»РєРё (РїРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР°, РћР›РҐ Рё РР). РЈ РєР°Р¶РґРѕР№ СЃРґРµР»РєРё СЃРІРѕР№ %.
                             </div>
                             <div style={{ maxWidth: 200 }}>
-                              <div className="form-label">% Инфо</div>
-                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="например 5" value={dealInfoPct} onChange={(e) => setDealInfoPct(e.target.value)} />
+                              <div className="form-label">% РРЅС„Рѕ</div>
+                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="РЅР°РїСЂРёРјРµСЂ 5" value={dealInfoPct} onChange={(e) => setDealInfoPct(e.target.value)} />
                             </div>
                           </div>
                         );
@@ -3536,20 +2847,20 @@ export default function AppPage() {
                         return (
                           <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                              <div className="form-label" style={{ margin: 0 }}>Данные [{tpl.name}]</div>
+                              <div className="form-label" style={{ margin: 0 }}>Р”Р°РЅРЅС‹Рµ [{tpl.name}]</div>
                               {tpl.calcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
-                                <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Добавить строку</button>
+                                <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Р”РѕР±Р°РІРёС‚СЊ СЃС‚СЂРѕРєСѓ</button>
                               )}
                             </div>
                             {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (
-                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>Одна строка на сделку. Расчёт по полям: сумма завода, % посредника, % ИИ (от остатка после посредника), затем {parsePayrollPoolPct(tpl)}% в зарплатный фонд.</div>
+                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>РћРґРЅР° СЃС‚СЂРѕРєР° РЅР° СЃРґРµР»РєСѓ. Р Р°СЃС‡С‘С‚ РїРѕ РїРѕР»СЏРј: СЃСѓРјРјР° Р·Р°РІРѕРґР°, % РїРѕСЃСЂРµРґРЅРёРєР°, % РР (РѕС‚ РѕСЃС‚Р°С‚РєР° РїРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР°), Р·Р°С‚РµРј {parsePayrollPoolPct(tpl)}% РІ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ.</div>
                             )}
                             {dealDataRows.map((row, ri) => (
                               <div key={row._id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Строка {ri + 1}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>РЎС‚СЂРѕРєР° {ri + 1}</span>
                                   {dealDataRows.length > 1 && (
-                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16 }} onClick={() => setDealDataRows(p => p.filter(x => x._id !== row._id))}>×</span>
+                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16 }} onClick={() => setDealDataRows(p => p.filter(x => x._id !== row._id))}>Г—</span>
                                   )}
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
@@ -3564,9 +2875,9 @@ export default function AppPage() {
                                     const isGross = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcGrossFieldKey;
                                     const isMediator = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcMediatorPctKey;
                                     const isAi = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcAiPctKey;
-                                    const calcBadge = isGross ? { icon: "💰", color: "var(--accent)", tip: "База расчёта" }
-                                      : isMediator ? { icon: "🏦", color: "var(--amber)", tip: "% посредника" }
-                                      : isAi ? { icon: "🤖", color: "var(--text-secondary)", tip: "% AI" }
+                                    const calcBadge = isGross ? { icon: "рџ’°", color: "var(--accent)", tip: "Р‘Р°Р·Р° СЂР°СЃС‡С‘С‚Р°" }
+                                      : isMediator ? { icon: "рџЏ¦", color: "var(--amber)", tip: "% РїРѕСЃСЂРµРґРЅРёРєР°" }
+                                      : isAi ? { icon: "рџ¤–", color: "var(--text-secondary)", tip: "% AI" }
                                       : null;
                                     return (
                                     <div key={f.key} style={calcBadge ? { background: `${calcBadge.color}0d`, borderRadius: 8, padding: "6px 8px", border: `1.5px solid ${calcBadge.color}44` } : {}}>
@@ -3578,15 +2889,15 @@ export default function AppPage() {
                                         <select className="form-input" value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
                                           style={{ borderColor: calcBadge ? `${calcBadge.color}66` : undefined }}>
-                                          <option value="">— валюта —</option>
+                                          <option value="">вЂ” РІР°Р»СЋС‚Р° вЂ”</option>
                                           {CURRENCIES.map(c => (
-                                            <option key={c} value={c}>{CURRENCY_META[c]?.symbol} {c} — {CURRENCY_META[c]?.name}</option>
+                                            <option key={c} value={c}>{CURRENCY_META[c]?.symbol} {c} вЂ” {CURRENCY_META[c]?.name}</option>
                                           ))}
                                         </select>
                                       ) : f.type === "SELECT" ? (
                                         <select className="form-input" value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}>
-                                          <option value="">— выберите —</option>
+                                          <option value="">вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”</option>
                                           {(f.options ?? "").split(",").map(o => o.trim()).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
                                         </select>
                                       ) : f.type === "CHECKBOX" ? (
@@ -3622,8 +2933,8 @@ export default function AppPage() {
                               return (
                                 <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
                                   <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                                    📊 Расчёт распределения
-                                    {!hasValues && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)" }}>— заполните числовые поля выше</span>}
+                                    рџ“Љ Р Р°СЃС‡С‘С‚ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ
+                                    {!hasValues && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)" }}>вЂ” Р·Р°РїРѕР»РЅРёС‚Рµ С‡РёСЃР»РѕРІС‹Рµ РїРѕР»СЏ РІС‹С€Рµ</span>}
                                   </div>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "3px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
                                     {chain.map((cr, ci) => {
@@ -3644,17 +2955,17 @@ export default function AppPage() {
                                             </>
                                           )}
                                           <span style={{ color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", paddingLeft: 8 }}>
-                                            {isPayroll ? "👥" : "−"} {cr.step.label} ({deductLabel})
+                                            {isPayroll ? "рџ‘Ґ" : "в€’"} {cr.step.label} ({deductLabel})
                                           </span>
                                           <span style={{ textAlign: "right", color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", fontWeight: isPayroll ? 700 : 400 }}>
-                                            − {fmt(cr.deductAmt)}
+                                            в€’ {fmt(cr.deductAmt)}
                                           </span>
                                           <span style={{
                                             color: isLast ? "var(--green)" : "var(--text-secondary)",
                                             fontWeight: isLast ? 700 : 400,
                                             borderTop: "1px dashed var(--border)", paddingTop: 3,
                                           }}>
-                                            {isLast ? "🏢 " : ""}{cr.step.resultLabel}
+                                            {isLast ? "рџЏў " : ""}{cr.step.resultLabel}
                                           </span>
                                           <span style={{
                                             textAlign: "right", fontWeight: isLast ? 700 : 400,
@@ -3678,17 +2989,17 @@ export default function AppPage() {
                               return (
                                 <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
                                   <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                                    📊 Расчёт распределения
-                                    {(!c || c.G === 0) && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>— заполните {grossField?.label ?? "Сумма завода"} 💰 выше</span>}
+                                    рџ“Љ Р Р°СЃС‡С‘С‚ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ
+                                    {(!c || c.G === 0) && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>вЂ” Р·Р°РїРѕР»РЅРёС‚Рµ {grossField?.label ?? "РЎСѓРјРјР° Р·Р°РІРѕРґР°"} рџ’° РІС‹С€Рµ</span>}
                                   </div>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-                                    <span style={{ color: "var(--text-secondary)" }}>💰 Сумма завода</span><span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>🏦 Посредник</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.M ?? 0)}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>рџ’° РЎСѓРјРјР° Р·Р°РІРѕРґР°</span><span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>рџЏ¦ РџРѕСЃСЂРµРґРЅРёРє</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>в€’ {fmt(c?.M ?? 0)}</span>
                                     <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R1</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R1 ?? 0)}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>🤖 AI</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.A ?? 0)}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>рџ¤– AI</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>в€’ {fmt(c?.A ?? 0)}</span>
                                     <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R2</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R2 ?? 0)}</span>
-                                    <span style={{ color: "var(--amber)" }}>👥 ЗП фонд ({parsePayrollPoolPct(tpl)}%)</span><span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>− {fmt(c?.F ?? 0)}</span>
-                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>🏢 Прибыль офиса</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>{fmt(c?.P ?? 0)}</span>
+                                    <span style={{ color: "var(--amber)" }}>рџ‘Ґ Р—Рџ С„РѕРЅРґ ({parsePayrollPoolPct(tpl)}%)</span><span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>в€’ {fmt(c?.F ?? 0)}</span>
+                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>рџЏў РџСЂРёР±С‹Р»СЊ РѕС„РёСЃР°</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>{fmt(c?.P ?? 0)}</span>
                                   </div>
                                 </div>
                               );
@@ -3698,8 +3009,8 @@ export default function AppPage() {
                       })() : (
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div className="form-label" style={{ margin: 0 }}>Операции (классика, без шаблона) *</div>
-                          <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Добавить строку</button>
+                          <div className="form-label" style={{ margin: 0 }}>РћРїРµСЂР°С†РёРё (РєР»Р°СЃСЃРёРєР°, Р±РµР· С€Р°Р±Р»РѕРЅР°) *</div>
+                          <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Р”РѕР±Р°РІРёС‚СЊ СЃС‚СЂРѕРєСѓ</button>
                         </div>
 
                         <div style={{ display: "grid", gap: 10 }}>
@@ -3708,7 +3019,7 @@ export default function AppPage() {
                               {/* row 1: bank, type, shopName */}
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 1fr 28px", gap: 8, marginBottom: 8, alignItems: "end" }}>
                                 <div>
-                                  <div className="form-label" style={{ marginBottom: 3 }}>Банк</div>
+                                  <div className="form-label" style={{ marginBottom: 3 }}>Р‘Р°РЅРє</div>
                                   <input
                                     className="form-input"
                                     value={r.bank}
@@ -3717,26 +3028,26 @@ export default function AppPage() {
                                   />
                                 </div>
                                 <div>
-                                  <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
+                                  <div className="form-label" style={{ marginBottom: 3 }}>РўРёРї</div>
                                   <select
                                     className="form-input"
                                     value={r.operationType}
                                     onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, operationType: e.target.value as OperationType } : x))}
                                   >
-                                    <option value="ATM">Банкомат</option>
-                                    <option value="PURCHASE">Покупка</option>
-                                    <option value="TRANSFER">Перевод</option>
+                                    <option value="ATM">Р‘Р°РЅРєРѕРјР°С‚</option>
+                                    <option value="PURCHASE">РџРѕРєСѓРїРєР°</option>
+                                    <option value="TRANSFER">РџРµСЂРµРІРѕРґ</option>
                                   </select>
                                 </div>
                                 <div>
                                   {r.operationType === "PURCHASE" ? (
                                     <>
-                                      <div className="form-label" style={{ marginBottom: 3 }}>Магазин</div>
+                                      <div className="form-label" style={{ marginBottom: 3 }}>РњР°РіР°Р·РёРЅ</div>
                                       <input
                                         className="form-input"
                                         value={r.shopName}
                                         onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, shopName: e.target.value } : x))}
-                                        placeholder="Название магазина"
+                                        placeholder="РќР°Р·РІР°РЅРёРµ РјР°РіР°Р·РёРЅР°"
                                       />
                                     </>
                                   ) : <div />}
@@ -3744,13 +3055,13 @@ export default function AppPage() {
                                 <div
                                   style={{ width: 28, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
                                   onClick={() => setDealAmounts((p) => p.filter((x) => x.id !== r.id))}
-                                >×</div>
+                                >Г—</div>
                               </div>
 
-                              {/* row 2: amountIn + currencyIn → amountOut + currencyOut */}
+                              {/* row 2: amountIn + currencyIn в†’ amountOut + currencyOut */}
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 24px 1fr 90px", gap: 8, alignItems: "end" }}>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Взяли</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Р’Р·СЏР»Рё</div>
                                   <input
                                     className="form-input"
                                     value={r.amountIn}
@@ -3760,7 +3071,7 @@ export default function AppPage() {
                                   />
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Р’Р°Р»СЋС‚Р°</div>
                                   <select
                                     className="form-input"
                                     value={r.currencyIn}
@@ -3769,9 +3080,9 @@ export default function AppPage() {
                                     {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
                                   </select>
                                 </div>
-                                <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingBottom: 8 }}>→</div>
+                                <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingBottom: 8 }}>в†’</div>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Получили</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>РџРѕР»СѓС‡РёР»Рё</div>
                                   <input
                                     className="form-input"
                                     value={r.amountOut}
@@ -3781,7 +3092,7 @@ export default function AppPage() {
                                   />
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Р’Р°Р»СЋС‚Р°</div>
                                   <select
                                     className="form-input"
                                     value={r.currencyOut}
@@ -3798,11 +3109,11 @@ export default function AppPage() {
                         {/* totals row */}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, paddingTop: 12, marginTop: 12, borderTop: "2px solid var(--border)" }}>
                           <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Итого взяли</div>
+                            <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase" }}>РС‚РѕРіРѕ РІР·СЏР»Рё</div>
                             <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15 }}>{dealTotals.tAmountIn.toLocaleString()}</div>
                           </div>
                           <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "8px 10px" }}>
-                            <div style={{ fontSize: 10, color: "var(--green)", textTransform: "uppercase" }}>Итого получили</div>
+                            <div style={{ fontSize: 10, color: "var(--green)", textTransform: "uppercase" }}>РС‚РѕРіРѕ РїРѕР»СѓС‡РёР»Рё</div>
                             <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: "var(--green)" }}>{dealTotals.tAmountOut.toLocaleString()}</div>
                           </div>
                         </div>
@@ -3840,31 +3151,31 @@ export default function AppPage() {
                             <div style={{ padding: "12px 16px", background: isMediator ? "var(--accent)08" : "var(--bg-metric)", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                                  👥 Зарплата сотрудников
+                                  рџ‘Ґ Р—Р°СЂРїР»Р°С‚Р° СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ
                                   {totalPct === 100 && filledParticipants.length > 0 && (
-                                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 600 }}>✓ распределено</span>
+                                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 600 }}>вњ“ СЂР°СЃРїСЂРµРґРµР»РµРЅРѕ</span>
                                   )}
                                 </div>
                                 {isMediator && incomeBase > 0 ? (
                                   <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-                                    Фонд для распределения:&nbsp;
+                                    Р¤РѕРЅРґ РґР»СЏ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ:&nbsp;
                                     <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontSize: 14 }}>{incomeBase.toLocaleString()}</strong>
-                                    &nbsp;— это {parsePayrollPoolPct(activeTplForParts!)}% от суммы после всех вычетов. Раздели 100% этой суммы между сотрудниками.
+                                    &nbsp;вЂ” СЌС‚Рѕ {parsePayrollPoolPct(activeTplForParts!)}% РѕС‚ СЃСѓРјРјС‹ РїРѕСЃР»Рµ РІСЃРµС… РІС‹С‡РµС‚РѕРІ. Р Р°Р·РґРµР»Рё 100% СЌС‚РѕР№ СЃСѓРјРјС‹ РјРµР¶РґСѓ СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё.
                                   </div>
                                 ) : incomeBase > 0 ? (
                                   <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-                                    База: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong> · укажи % каждому сотруднику, в сумме 100%
+                                    Р‘Р°Р·Р°: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong> В· СѓРєР°Р¶Рё % РєР°Р¶РґРѕРјСѓ СЃРѕС‚СЂСѓРґРЅРёРєСѓ, РІ СЃСѓРјРјРµ 100%
                                   </div>
                                 ) : (
-                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-tertiary)" }}>Укажи суммы в полях выше — сразу увидишь сколько получит каждый</div>
+                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-tertiary)" }}>РЈРєР°Р¶Рё СЃСѓРјРјС‹ РІ РїРѕР»СЏС… РІС‹С€Рµ вЂ” СЃСЂР°Р·Сѓ СѓРІРёРґРёС€СЊ СЃРєРѕР»СЊРєРѕ РїРѕР»СѓС‡РёС‚ РєР°Р¶РґС‹Р№</div>
                                 )}
                               </div>
                               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                                 {filledParticipants.length > 1 && (
-                                  <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={splitEvenly} title="Разделить поровну">⚖️ Поровну</button>
+                                  <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={splitEvenly} title="Р Р°Р·РґРµР»РёС‚СЊ РїРѕСЂРѕРІРЅСѓ">вљ–пёЏ РџРѕСЂРѕРІРЅСѓ</button>
                                 )}
                                 <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: remaining > 0 ? String(remaining) : "0" }])}>
-                                  + Сотрудник
+                                  + РЎРѕС‚СЂСѓРґРЅРёРє
                                 </button>
                               </div>
                             </div>
@@ -3890,10 +3201,10 @@ export default function AppPage() {
                                       value={p.userId}
                                       onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
                                     >
-                                      <option value="">— выбрать сотрудника —</option>
+                                      <option value="">вЂ” РІС‹Р±СЂР°С‚СЊ СЃРѕС‚СЂСѓРґРЅРёРєР° вЂ”</option>
                                       {dealWorkers.map((w) => (
                                         <option key={w.id} value={w.id}>
-                                          {w.name || w.email}{w.position ? ` · ${w.position}` : ""}
+                                          {w.name || w.email}{w.position ? ` В· ${w.position}` : ""}
                                         </option>
                                       ))}
                                     </select>
@@ -3914,13 +3225,13 @@ export default function AppPage() {
                                         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)", fontSize: 13 }}>
                                           {earn.toLocaleString()}
                                         </div>
-                                      ) : <span style={{ color: "var(--border)" }}>—</span>}
+                                      ) : <span style={{ color: "var(--border)" }}>вЂ”</span>}
                                     </div>
                                     {/* Remove */}
                                     <button
                                       style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}
                                       onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}
-                                    >×</button>
+                                    >Г—</button>
                                   </div>
                                 );
                               })}
@@ -3930,10 +3241,10 @@ export default function AppPage() {
                             {dealParticipants.length > 0 && (
                               <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-light)", background: "var(--bg-metric)" }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Распределено: <strong style={{ color: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--amber)" }}>{totalPct}%</strong></span>
+                                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Р Р°СЃРїСЂРµРґРµР»РµРЅРѕ: <strong style={{ color: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--amber)" }}>{totalPct}%</strong></span>
                                   {incomeBase > 0 && (
                                     <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
-                                      {dealParticipants.filter(p => p.userId).reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()} из {incomeBase.toLocaleString()}
+                                      {dealParticipants.filter(p => p.userId).reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()} РёР· {incomeBase.toLocaleString()}
                                     </span>
                                   )}
                                 </div>
@@ -3942,7 +3253,7 @@ export default function AppPage() {
                                 </div>
                                 {totalPct !== 100 && (
                                   <div style={{ marginTop: 6, fontSize: 12, color: totalPct > 100 ? "var(--red)" : "var(--amber)" }}>
-                                    {totalPct > 100 ? `⚠ Превышение на ${totalPct - 100}% — уменьши проценты` : `Осталось распределить: ${100 - totalPct}%${incomeBase > 0 ? ` (${Math.round(incomeBase * (100 - totalPct) / 100 * 100) / 100} в сумме)` : ""}`}
+                                    {totalPct > 100 ? `вљ  РџСЂРµРІС‹С€РµРЅРёРµ РЅР° ${totalPct - 100}% вЂ” СѓРјРµРЅСЊС€Рё РїСЂРѕС†РµРЅС‚С‹` : `РћСЃС‚Р°Р»РѕСЃСЊ СЂР°СЃРїСЂРµРґРµР»РёС‚СЊ: ${100 - totalPct}%${incomeBase > 0 ? ` (${Math.round(incomeBase * (100 - totalPct) / 100 * 100) / 100} РІ СЃСѓРјРјРµ)` : ""}`}
                                   </div>
                                 )}
                               </div>
@@ -3953,17 +3264,17 @@ export default function AppPage() {
 
                       {/* Comment */}
                       <div>
-                        <div className="form-label">Комментарий</div>
+                        <div className="form-label">РљРѕРјРјРµРЅС‚Р°СЂРёР№</div>
                         <textarea className="form-input" value={dealComment} onChange={(e) => setDealComment(e.target.value)} style={{ height: 72, paddingTop: 10 }} />
                       </div>
 
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                         {!dealEditingId && templates.length > 0 && (
-                          <button className="btn btn-secondary" onClick={() => setDealTemplateStep("pick")}>← Шаблон</button>
+                          <button className="btn btn-secondary" onClick={() => setDealTemplateStep("pick")}>в†ђ РЁР°Р±Р»РѕРЅ</button>
                         )}
-                        <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
+                        <button className="btn btn-secondary" onClick={closeDealModal}>РћС‚РјРµРЅР°</button>
                         <button className="btn btn-primary" onClick={saveDeal}>
-                          {dealEditingId ? "Сохранить" : "Создать сделку"}
+                          {dealEditingId ? "РЎРѕС…СЂР°РЅРёС‚СЊ" : "РЎРѕР·РґР°С‚СЊ СЃРґРµР»РєСѓ"}
                         </button>
                       </div>
                     </div>
@@ -3976,635 +3287,60 @@ export default function AppPage() {
 
           {/* ===== CLIENTS ===== */}
           {tab === "clients" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div className="page-header" style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
-                <div className="page-header-left" style={{ flex: "1 1 260px", minWidth: 0 }}>
-                  <div className="page-header-title">Клиенты</div>
-                  <div className="page-header-sub">Колонки по статусам воронки (прокрутка вниз и вбок). Клик по карточке — детали и комментарии. Добавление — кнопкой или AI ассистент. Воронку — в «Настройки».</div>
-                </div>
-                <button type="button" className="btn btn-primary" style={{ flexShrink: 0 }} onClick={() => openClientCreateModal()}>+ Добавить клиента</button>
-              </div>
-
-              <div className="card">
-                <div className="card-header" style={{ flexDirection: "column", alignItems: "stretch", gap: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                    <span className="card-title">Список клиентов</span>
-                    <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Обновить список</button>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginRight: 4 }}>Фильтры</span>
-                    <input className="form-input" style={{ minWidth: 180, flex: "1 1 160px", maxWidth: 280 }} placeholder="Поиск по имени, телефону, банку…" value={clientSearchQ} onChange={(e) => setClientSearchQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void loadClients(); }} />
-                    <button type="button" className="btn btn-secondary" onClick={() => void loadClients()}>Найти</button>
-                    <select className="form-input" style={{ minWidth: 200, maxWidth: 260 }} value={clientStatusFilter} onChange={(e) => setClientStatusFilter(e.target.value)}>
-                      <option value="all">Все статусы</option>
-                      {clientStatuses.map((s) => (
-                        <option key={s.id} value={s.id}>{s.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="card-body" style={{ padding: "18px 16px 20px" }}>
-                  {clientsLoading ? (
-                    <div style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</div>
-                  ) : clientsFiltered.length === 0 ? (
-                    <div className="empty-state">
-                      <div className="empty-state-icon">
-                        <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                      </div>
-                      <div className="empty-state-title">Нет клиентов</div>
-                      <div className="empty-state-desc">Измените фильтр или нажмите «Добавить клиента» / создайте карточку через AI ассистента</div>
-                    </div>
-                  ) : (
-                    <ClientsKanbanBoard
-                      columns={clientKanbanColumns}
-                      onSelectClient={(c) => setClientViewOpen(c as Client)}
-                    />)}
-                </div>
-              </div>
-
-              {clientViewOpen ? (
-                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 56 }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) setClientViewOpen(null); }}>
-                  <div className="card" style={{ width: 520, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", margin: 0 }}>
-                    <div className="card-header" style={{ alignItems: "flex-start", gap: 10 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Клиент</div>
-                        <div className="card-title" style={{ marginTop: 4, lineHeight: 1.25 }}>{clientViewOpen.name}</div>
-                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>{clientViewOpen.phone}</div>
-                        {clientViewOpen.status ? (
-                          <span className="badge" style={{
-                            marginTop: 8,
-                            display: "inline-block",
-                            background: clientViewOpen.status.color ? `${clientViewOpen.status.color}22` : "var(--accent-light)",
-                            color: clientViewOpen.status.color ?? "var(--accent)",
-                            fontSize: 11,
-                          }}>{clientViewOpen.status.label}</span>
-                        ) : null}
-                      </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => setClientViewOpen(null)}>Закрыть</button>
-                    </div>
-                    <div className="card-body" style={{ display: "grid", gap: 14, fontSize: 13 }}>
-                      <div style={{ display: "grid", gap: 10 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
-                          <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>Банк</span>
-                          <span>{clientViewOpen.bank?.trim() || "—"}</span>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
-                          <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>Ассистент</span>
-                          <span>{clientViewOpen.assistantName?.trim() || "—"}</span>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
-                          <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>Начало звонка</span>
-                          <span>{clientViewOpen.callStartedAt
-                            ? new Date(clientViewOpen.callStartedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                            : "—"}</span>
-                        </div>
-                        <div>
-                          <div style={{ color: "var(--text-tertiary)", fontSize: 12, marginBottom: 6 }}>Итог разговора</div>
-                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "var(--text-primary)", padding: "10px 12px", background: "var(--bg-metric)", borderRadius: 8, border: "1px solid var(--border-light)", maxHeight: 200, overflow: "auto" }}>
-                            {clientViewOpen.callSummary?.trim() || "—"}
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ color: "var(--text-tertiary)", fontSize: 12, marginBottom: 6 }}>Внутренняя заметка</div>
-                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{clientViewOpen.note?.trim() || "—"}</div>
-                        </div>
-                        {clientFieldDefs.length > 0 ? (
-                          <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 12, display: "grid", gap: 10 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Доп. поля</div>
-                            {clientFieldDefs.map((def) => {
-                              const raw = clientViewOpen.customData && typeof clientViewOpen.customData === "object"
-                                ? (clientViewOpen.customData as Record<string, unknown>)[def.key]
-                                : undefined;
-                              const val = raw != null && raw !== "" ? String(raw) : "—";
-                              return (
-                                <div key={def.id} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "start" }}>
-                                  <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>{def.label}</span>
-                                  <span style={{ wordBreak: "break-word" }}>{val}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 14 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Комментарии</div>
-                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4, marginBottom: 10, lineHeight: 1.45 }}>
-                          Дописывайте факты по ходу работы — видят все с доступом к клиентам.
-                        </div>
-                        {clientDetailCommentsLoading ? (
-                          <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "8px 0" }}>Загрузка…</div>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto", marginBottom: 10 }}>
-                            {clientDetailComments.length === 0 ? (
-                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Пока нет комментариев</div>
-                            ) : (
-                              clientDetailComments.map((cm) => (
-                                <div key={cm.id} style={{ padding: "8px 10px", background: "var(--bg-metric)", borderRadius: 8, border: "1px solid var(--border-light)" }}>
-                                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 4 }}>
-                                    {(cm.user.name || cm.user.email)} · {new Date(cm.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                  </div>
-                                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.45, color: "var(--text-primary)" }}>{cm.body}</div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        )}
-                        <textarea
-                          className="form-input"
-                          rows={2}
-                          value={clientDetailCommentText}
-                          onChange={(e) => setClientDetailCommentText(e.target.value)}
-                          placeholder="Новый комментарий…"
-                          disabled={clientCommentPosting}
-                          style={{ resize: "vertical", minHeight: 52 }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          style={{ marginTop: 8, width: "100%" }}
-                          disabled={!clientDetailCommentText.trim() || clientCommentPosting}
-                          onClick={() => void postClientComment()}
-                        >
-                          {clientCommentPosting ? "Отправка…" : "Добавить комментарий"}
-                        </button>
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
-                        <button type="button" className="btn btn-secondary" onClick={() => void deleteClient(clientViewOpen.id)}>Удалить</button>
-                        <button type="button" className="btn btn-primary" onClick={() => {
-                          const row = clientViewOpen;
-                          setClientViewOpen(null);
-                          openClientEdit(row);
-                        }}>Редактировать</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {clientCreateModalOpen ? (
-                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 55 }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) setClientCreateModalOpen(false); }}>
-                  <div className="card" style={{ width: 640, maxWidth: "100%", maxHeight: "92vh", overflow: "auto", margin: 0 }}>
-                    <div className="card-header" style={{ alignItems: "flex-start", gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <span className="card-title">Новый клиент</span>
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4, lineHeight: 1.45 }}>Вставьте текст из бота или заполните поля вручную</div>
-                      </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => setClientCreateModalOpen(false)}>Закрыть</button>
-                    </div>
-                    <div className="card-body" style={{ display: "grid", gap: 18 }}>
-                      <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Из Telegram / бота</div>
-                        <div className="form-label">Вставьте целиком сообщение</div>
-                        <textarea className="form-input" rows={4} value={clientPasteImport} onChange={(e) => setClientPasteImport(e.target.value)} placeholder="Строки «Клиент:», «Телефон:», «Банк:», «Ассистент:», Summary, время звонка…" style={{ resize: "vertical", minHeight: 80 }} />
-                        <button type="button" className="btn btn-secondary" style={{ justifySelf: "start" }} onClick={applyClientPasteToNewForm}>Разобрать текст и подставить в форму</button>
-                      </div>
-
-                      <div style={clientFormSectionStyle()}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Обязательно</div>
-                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                          <div>
-                            <div className="form-label">Имя клиента *</div>
-                            <input className="form-input" value={newClientForm.name} onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))} placeholder="Как в CRM" />
-                          </div>
-                          <div>
-                            <div className="form-label">Телефон *</div>
-                            <input className="form-input" value={newClientForm.phone} onChange={(e) => setNewClientForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+48 …" style={{ fontFamily: "'JetBrains Mono', monospace" }} />
-                          </div>
-                          <div>
-                            <div className="form-label">Статус воронки</div>
-                            <select className="form-input" value={newClientForm.statusId} onChange={(e) => setNewClientForm((f) => ({ ...f, statusId: e.target.value }))}>
-                              <option value="">Авто — первый статус в списке</option>
-                              {clientStatuses.map((s) => (
-                                <option key={s.id} value={s.id}>{s.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={clientFormSectionStyle()}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Данные звонка / лида</div>
-                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                          <div>
-                            <div className="form-label">Банк</div>
-                            <input className="form-input" value={newClientForm.bank} onChange={(e) => setNewClientForm((f) => ({ ...f, bank: e.target.value }))} placeholder="PKO BP, …" />
-                          </div>
-                          <div>
-                            <div className="form-label">Ассистент</div>
-                            <input className="form-input" value={newClientForm.assistantName} onChange={(e) => setNewClientForm((f) => ({ ...f, assistantName: e.target.value }))} placeholder="Кто вёл линию" />
-                          </div>
-                          <div>
-                            <div className="form-label">Начало звонка</div>
-                            <input className="form-input" type="datetime-local" value={newClientForm.callStartedAt} onChange={(e) => setNewClientForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="form-label">Итог разговора (summary)</div>
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Текст из бота или кратко своими словами</div>
-                          <textarea className="form-input" rows={4} value={newClientForm.callSummary} onChange={(e) => setNewClientForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical", minHeight: 88 }} />
-                        </div>
-                      </div>
-
-                      <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Только для офиса</div>
-                        <div>
-                          <div className="form-label">Внутренняя заметка</div>
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Не для карточки из бота; видят сотрудники CRM</div>
-                          <input className="form-input" value={newClientForm.note} onChange={(e) => setNewClientForm((f) => ({ ...f, note: e.target.value }))} placeholder="Напоминание менеджеру" />
-                        </div>
-                      </div>
-
-                      {clientFieldDefs.length > 0 ? (
-                        <div style={clientFormSectionStyle()}>
-                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Дополнительные поля</div>
-                          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: -6, marginBottom: 4 }}>Настраиваются в «Настройки» → клиенты</div>
-                          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-                            {clientFieldDefs.map((def) => (
-                              <div key={def.id} style={{ paddingBottom: 12, borderBottom: "1px dashed var(--border-light)" }}>
-                                <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>{FIELD_TYPE_LABELS[def.type]}</div>
-                                {def.type === "CHECKBOX" ? (
-                                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                                    <input type="checkbox" checked={newClientCustom[def.key] === "true"} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
-                                    <span style={{ fontSize: 13 }}>Да</span>
-                                  </label>
-                                ) : def.type === "SELECT" && def.options ? (
-                                  <select className="form-input" value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
-                                    <option value="">Выберите…</option>
-                                    {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
-                                      <option key={o} value={o}>{o}</option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={newClientCustom[def.key] ?? ""} onChange={(e) => setNewClientCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 8, borderTop: "1px solid var(--border-light)", flexWrap: "wrap" }}>
-                        <button type="button" className="btn btn-secondary" onClick={() => setClientCreateModalOpen(false)}>Отмена</button>
-                        <button type="button" className="btn btn-primary" onClick={() => void createClient()} disabled={!newClientForm.name.trim() || !newClientForm.phone.trim()}>Создать клиента</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {clientEditOpen && clientEditing ? (
-                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) setClientEditOpen(false); }}>
-                  <div className="card" style={{ width: 580, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
-                    <div className="card-header" style={{ alignItems: "flex-start" }}>
-                      <div>
-                        <span className="card-title">Редактирование клиента</span>
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>Блоки ниже совпадают с формой создания</div>
-                      </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Закрыть</button>
-                    </div>
-                    <div className="card-body" style={{ display: "grid", gap: 16 }}>
-                      <div style={clientFormSectionStyle()}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Основное</div>
-                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-                          <div>
-                            <div className="form-label">Имя *</div>
-                            <input className="form-input" value={clientEditForm.name} onChange={(e) => setClientEditForm((f) => ({ ...f, name: e.target.value }))} />
-                          </div>
-                          <div>
-                            <div className="form-label">Телефон *</div>
-                            <input className="form-input" value={clientEditForm.phone} onChange={(e) => setClientEditForm((f) => ({ ...f, phone: e.target.value }))} style={{ fontFamily: "'JetBrains Mono', monospace" }} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="form-label">Статус воронки</div>
-                          <select className="form-input" value={clientEditForm.statusId} onChange={(e) => setClientEditForm((f) => ({ ...f, statusId: e.target.value }))}>
-                            {clientStatuses.map((s) => (
-                              <option key={s.id} value={s.id}>{s.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div style={clientFormSectionStyle()}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Звонок / лид</div>
-                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-                          <div>
-                            <div className="form-label">Банк</div>
-                            <input className="form-input" value={clientEditForm.bank} onChange={(e) => setClientEditForm((f) => ({ ...f, bank: e.target.value }))} />
-                          </div>
-                          <div>
-                            <div className="form-label">Ассистент</div>
-                            <input className="form-input" value={clientEditForm.assistantName} onChange={(e) => setClientEditForm((f) => ({ ...f, assistantName: e.target.value }))} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="form-label">Начало звонка</div>
-                          <input className="form-input" type="datetime-local" value={clientEditForm.callStartedAt} onChange={(e) => setClientEditForm((f) => ({ ...f, callStartedAt: e.target.value }))} />
-                        </div>
-                        <div>
-                          <div className="form-label">Итог разговора</div>
-                          <textarea className="form-input" rows={4} value={clientEditForm.callSummary} onChange={(e) => setClientEditForm((f) => ({ ...f, callSummary: e.target.value }))} style={{ resize: "vertical" }} />
-                        </div>
-                      </div>
-                      <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Только для офиса</div>
-                        <div>
-                          <div className="form-label">Внутренняя заметка</div>
-                          <input className="form-input" value={clientEditForm.note} onChange={(e) => setClientEditForm((f) => ({ ...f, note: e.target.value }))} />
-                        </div>
-                      </div>
-                      {clientFieldDefs.length > 0 ? (
-                        <div style={clientFormSectionStyle()}>
-                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Дополнительные поля</div>
-                          <div style={{ display: "grid", gap: 14 }}>
-                            {clientFieldDefs.map((def) => (
-                              <div key={def.id}>
-                                <div className="form-label">{def.label}{def.required ? " *" : ""}</div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>{FIELD_TYPE_LABELS[def.type]}</div>
-                                {def.type === "CHECKBOX" ? (
-                                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                    <input type="checkbox" checked={clientEditCustom[def.key] === "true"} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.checked ? "true" : "" }))} />
-                                    <span style={{ fontSize: 13 }}>Да</span>
-                                  </label>
-                                ) : def.type === "SELECT" && def.options ? (
-                                  <select className="form-input" value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))}>
-                                    <option value="">—</option>
-                                    {def.options.split(/[\n,]/).map((o) => o.trim()).filter(Boolean).map((o) => (
-                                      <option key={o} value={o}>{o}</option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <input className="form-input" type={def.type === "NUMBER" || def.type === "PERCENT" || def.type === "CURRENCY" ? "text" : def.type === "DATE" ? "date" : "text"} value={clientEditCustom[def.key] ?? ""} onChange={(e) => setClientEditCustom((m) => ({ ...m, [def.key]: e.target.value }))} />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
-                        <button type="button" className="btn btn-secondary" onClick={() => setClientEditOpen(false)}>Отмена</button>
-                        <button type="button" className="btn btn-primary" onClick={() => void saveClientEdit()}>Сохранить</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            <ClientsTab
+              clients={clients}
+              loading={clientsLoading}
+              statuses={clientStatuses}
+              fieldDefs={clientFieldDefs}
+              searchQ={clientSearchQ}
+              statusFilter={clientStatusFilter}
+              onSearchQChange={setClientSearchQ}
+              onStatusFilterChange={setClientStatusFilter}
+              onRefresh={loadClients}
+              pendingCreateOpen={pendingClientCreate}
+              onPendingCreateHandled={() => setPendingClientCreate(false)}
+            />
           ) : null}
 
           {/* ===== EXPENSES ===== */}
           {tab === "expenses" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div className="page-header">
-                <div className="page-header-left">
-                  <div className="page-header-title">Расходы</div>
-                  <div className="page-header-sub">Учёт расходов офиса: аренда, крипта, материалы</div>
-                </div>
-              </div>
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Новый расход</span>
-                  <button className="btn btn-primary" onClick={createExpense} disabled={!newExpenseTitle || !newExpenseAmount}>+ Создать</button>
-                </div>
-                <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                  <div>
-                    <div className="form-label">Название</div>
-                    <input className="form-input" value={newExpenseTitle} onChange={(e) => setNewExpenseTitle(e.target.value)} />
-                  </div>
-                  <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 120px 140px" }}>
-                    <div>
-                      <div className="form-label">Сумма</div>
-                      <input className="form-input" value={newExpenseAmount} onChange={(e) => setNewExpenseAmount(e.target.value)} />
-                    </div>
-                    <div>
-                      <div className="form-label">Валюта</div>
-                      <select className="form-input" value={newExpenseCurrency} onChange={(e) => setNewExpenseCurrency(e.target.value)}>
-                        {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <div className="form-label">Оплата</div>
-                      <select className="form-input" value={newExpensePayMethod} onChange={(e) => setNewExpensePayMethod(e.target.value)}>
-                        <option value="bank">Банк</option>
-                        <option value="usdt">USDT</option>
-                        <option value="cash">Кэш</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Multi-currency summary for admin+ */}
-              {isAdmin && expenses.length > 0 && (() => {
-                const byCurrency: Record<string, number> = {};
-                for (const e of expenses) {
-                  byCurrency[e.currency] = (byCurrency[e.currency] ?? 0) + Number(e.amount);
-                }
-                const totalUsd = Object.entries(byCurrency).reduce((s, [cur, amt]) => s + toUsd(amt, cur), 0);
-                return (
-                  <div className="card">
-                    <div className="card-header">
-                      <span className="card-title">Итого по валютам</span>
-                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>≈ {totalUsd.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} USD</span>
-                    </div>
-                    <div className="card-body" style={{ padding: "10px 16px" }}>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        {Object.entries(byCurrency).map(([cur, amt]) => (
-                          <div key={cur} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 14px", minWidth: 110 }}>
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>{CURRENCY_META[cur]?.name ?? cur}</div>
-                            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 16 }}>
-                              {CURRENCY_META[cur]?.symbol ?? ""}{amt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
-                            </div>
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>≈ {toUsd(amt, cur).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} USD</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Расходы</span>
-                  <button className="btn btn-secondary" onClick={loadExpenses}>Обновить</button>
-                </div>
-                <div className="card-body table-scroll" style={{ padding: 0 }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr><th>Название</th><th>Статус</th><th style={{ textAlign: "right" }}>Сумма</th>{isAdmin && <th style={{ width: 40 }}></th>}</tr>
-                    </thead>
-                    <tbody>
-                      {expensesLoading ? (
-                        <tr><td colSpan={3} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
-                      ) : expenses.length === 0 ? (
-                        <tr><td colSpan={3}>
-                          <div className="empty-state">
-                            <div className="empty-state-icon">
-                              <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-                            </div>
-                            <div className="empty-state-title">Нет расходов</div>
-                            <div className="empty-state-desc">Добавьте первый расход используя форму выше</div>
-                          </div>
-                        </td></tr>
-                      ) : (
-                        expenses.map((e) => (
-                          <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseModalOpen(true); }}>
-                            <td style={{ fontWeight: 500 }}>{e.title}</td>
-                            <td>
-                              <span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
-                                {e.status === "APPROVED" ? "Одобрен" : e.status === "SUBMITTED" ? "На проверке" : e.status === "REJECTED" ? "Отклонён" : "Черновик"}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{Number(e.amount).toLocaleString()} {e.currency}</td>
-                            {isAdmin && (
-                              <td style={{ width: 40, padding: "0 8px 0 0" }}>
-                                <button
-                                  onClick={(ev) => { ev.stopPropagation(); deleteExpense(e.id); }}
-                                  className="btn btn-ghost"
-                                  style={{ width: 28, height: 28, padding: 0, color: "var(--text-tertiary)" }}
-                                  title="Удалить"
-                                >
-                                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <ExpenseDetailModal
-                open={expenseModalOpen && !!expenseEditing}
-                expense={expenseEditing}
-                isAdmin={isAdmin}
-                onClose={() => setExpenseModalOpen(false)}
-                onDelete={deleteExpense}
-                onExpenseUpdated={(e) => {
-                  setExpenses((prev) => prev.map((x) => (x.id === e.id ? e : x)));
-                  setExpenseEditing(e);
-                }}
-                onExpensesRefresh={(list) => {
-                  setExpenses(list);
-                  setExpenseEditing((prev) => (prev ? list.find((e) => e.id === prev.id) ?? prev : null));
-                }}
-              />
-              {/* ===== AI ANALYTICS CHAT ===== */}
-              <div className="card" style={{ padding: "20px 24px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-                  <span style={{ fontSize: 22 }}>🤖</span>
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>AI Аналитик</div>
-                    <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                      {aiConfigured === false
-                        ? "Не настроен — добавьте OPENAI_API_KEY на сервере"
-                        : "Задайте вопрос по сделкам, воркерам, статистике"}
-                    </div>
-                  </div>
-                  {aiChatHistory.length > 0 && (
-                    <button className="btn btn-secondary" style={{ marginLeft: "auto", fontSize: 12 }}
-                      onClick={() => setAiChatHistory([])}>Очистить</button>
-                  )}
-                </div>
-
-                {aiChatHistory.length === 0 && (
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, marginBottom: 12 }}>
-                    {[
-                      "Кто топ воркер этого месяца?",
-                      "Какой общий доход?",
-                      "Проанализируй последние сделки",
-                      "Сравни воркеров по выплатам",
-                    ].map(q => (
-                      <button key={q} className="btn btn-secondary"
-                        style={{ fontSize: 12, padding: "6px 12px" }}
-                        onClick={() => sendAiMessage(q)}
-                        disabled={aiChatLoading || aiConfigured === false}>
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {aiChatHistory.length > 0 && (
-                  <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginTop: 14, marginBottom: 14, paddingRight: 4 }}>
-                    {aiChatHistory.map((m, i) => (
-                      <div key={i} style={{
-                        alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                        maxWidth: "80%",
-                        padding: "10px 14px",
-                        borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-                        background: m.role === "user" ? "var(--accent)" : "var(--bg-metric)",
-                        color: m.role === "user" ? "#fff" : "var(--text-primary)",
-                        fontSize: 13,
-                        lineHeight: 1.5,
-                        whiteSpace: "pre-wrap",
-                      }}>
-                        {m.content}
-                      </div>
-                    ))}
-                    {aiChatLoading && (
-                      <div style={{ alignSelf: "flex-start", padding: "10px 14px", borderRadius: "14px 14px 14px 4px", background: "var(--bg-metric)", fontSize: 13, color: "var(--text-tertiary)" }}>
-                        ⏳ Анализирую...
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <input
-                    className="form-input"
-                    value={aiChatInput}
-                    onChange={e => setAiChatInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
-                    placeholder={aiConfigured === false ? "AI не настроен..." : "Напишите вопрос..."}
-                    disabled={aiChatLoading || aiConfigured === false}
-                    style={{ flex: 1 }}
-                  />
-                  <button className="btn btn-primary"
-                    onClick={() => sendAiMessage()}
-                    disabled={aiChatLoading || !aiChatInput.trim() || aiConfigured === false}
-                    style={{ padding: "0 20px" }}>
-                    {aiChatLoading ? "..." : "→"}
-                  </button>
-                </div>
-              </div>
-
-            </div>
+            <ExpensesTab
+              isAdmin={isAdmin}
+              exchangeRates={exchangeRates}
+              expenses={expenses}
+              loading={expensesLoading}
+              onRefresh={loadExpenses}
+              onExpensesChange={setExpenses}
+            />
           ) : null}
 
           {tab === "tasks" ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div className="page-header">
                 <div className="page-header-left">
-                  <div className="page-header-title">Задачи</div>
-                  <div className="page-header-sub">Назначайте сроки, отслеживайте статусы. Исполнители получают письмо о новой задаче.</div>
+                  <div className="page-header-title">Р—Р°РґР°С‡Рё</div>
+                  <div className="page-header-sub">РќР°Р·РЅР°С‡Р°Р№С‚Рµ СЃСЂРѕРєРё, РѕС‚СЃР»РµР¶РёРІР°Р№С‚Рµ СЃС‚Р°С‚СѓСЃС‹. РСЃРїРѕР»РЅРёС‚РµР»Рё РїРѕР»СѓС‡Р°СЋС‚ РїРёСЃСЊРјРѕ Рѕ РЅРѕРІРѕР№ Р·Р°РґР°С‡Рµ.</div>
                 </div>
                 {isManager && (
                   <div className="page-header-actions">
                     <button
                       className="btn btn-primary"
                       onClick={() => { setTaskModalOpen(true); void loadTaskUserOptions(); }}
-                    >+ Новая задача</button>
+                    >+ РќРѕРІР°СЏ Р·Р°РґР°С‡Р°</button>
                   </div>
                 )}
               </div>
               <div className="filter-tabs" style={{ width: "fit-content" }}>
                 {([
-                  { id: "active" as const, label: "Активные" },
-                  { id: "all" as const, label: "Все" },
-                  { id: "done" as const, label: "Архив" },
+                  { id: "active" as const, label: "РђРєС‚РёРІРЅС‹Рµ" },
+                  { id: "all" as const, label: "Р’СЃРµ" },
+                  { id: "done" as const, label: "РђСЂС…РёРІ" },
                 ]).map((f) => (
                   <button key={f.id} type="button" className={`filter-tab ${taskFilter === f.id ? "active" : ""}`} onClick={() => setTaskFilter(f.id)}>{f.label}</button>
                 ))}
               </div>
               {tasksLoading ? (
-                <div style={{ color: "var(--text-secondary)" }}>Загрузка…</div>
+                <div style={{ color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
                   {tasks
@@ -4618,7 +3354,7 @@ export default function AppPage() {
                       const due = t.dueAt ? new Date(t.dueAt) : null;
                       const overdue = !!(due && due < new Date() && t.status !== "DONE" && t.status !== "CANCELLED");
                       const stLabel: Record<TaskStatus, string> = {
-                        PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена",
+                        PENDING: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ", IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ", DONE: "Р’С‹РїРѕР»РЅРµРЅРѕ", CANCELLED: "РћС‚РјРµРЅРµРЅР°",
                       };
                       return (
                         <div
@@ -4635,13 +3371,13 @@ export default function AppPage() {
                           </div>
                           {t.description && <div className="task-card-desc">{t.description}</div>}
                           <div className="task-card-meta">
-                            <span>👤 {t.assignee.name || t.assignee.email}</span>
-                            <span>·</span>
-                            <span>от {t.createdBy.name || t.createdBy.email}</span>
+                            <span>рџ‘¤ {t.assignee.name || t.assignee.email}</span>
+                            <span>В·</span>
+                            <span>РѕС‚ {t.createdBy.name || t.createdBy.email}</span>
                             {t.dueAt && (
                               <>
-                                <span>·</span>
-                                <span className="mono" style={overdue ? { color: "var(--amber)" } : {}}>до {new Date(t.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                <span>В·</span>
+                                <span className="mono" style={overdue ? { color: "var(--amber)" } : {}}>РґРѕ {new Date(t.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                               </>
                             )}
                           </div>
@@ -4649,15 +3385,15 @@ export default function AppPage() {
                             {isMine && t.status !== "DONE" && t.status !== "CANCELLED" && (
                               <>
                                 {t.status === "PENDING" && (
-                                  <button className="btn btn-secondary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "IN_PROGRESS" })}>Взять в работу</button>
+                                  <button className="btn btn-secondary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "IN_PROGRESS" })}>Р’Р·СЏС‚СЊ РІ СЂР°Р±РѕС‚Сѓ</button>
                                 )}
-                                <button className="btn btn-primary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "DONE" })}>Выполнено</button>
+                                <button className="btn btn-primary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "DONE" })}>Р’С‹РїРѕР»РЅРµРЅРѕ</button>
                               </>
                             )}
                             {isManager && (
-                              <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>Удалить</button>
+                              <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>РЈРґР°Р»РёС‚СЊ</button>
                             )}
-                            <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, marginLeft: "auto" }}>Открыть →</button>
+                            <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, marginLeft: "auto" }}>РћС‚РєСЂС‹С‚СЊ в†’</button>
                           </div>
                         </div>
                       );
@@ -4669,8 +3405,8 @@ export default function AppPage() {
                   <div className="empty-state-icon">
                     <svg width="24" height="24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                   </div>
-                  <div className="empty-state-title">Нет задач</div>
-                  <div className="empty-state-desc">{isManager ? "Создайте задачу для сотрудника — он получит письмо" : "Вам пока ничего не назначили"}</div>
+                  <div className="empty-state-title">РќРµС‚ Р·Р°РґР°С‡</div>
+                  <div className="empty-state-desc">{isManager ? "РЎРѕР·РґР°Р№С‚Рµ Р·Р°РґР°С‡Сѓ РґР»СЏ СЃРѕС‚СЂСѓРґРЅРёРєР° вЂ” РѕРЅ РїРѕР»СѓС‡РёС‚ РїРёСЃСЊРјРѕ" : "Р’Р°Рј РїРѕРєР° РЅРёС‡РµРіРѕ РЅРµ РЅР°Р·РЅР°С‡РёР»Рё"}</div>
                 </div>
               )}
               {taskModalOpen && isManager && (
@@ -4681,22 +3417,22 @@ export default function AppPage() {
                 >
                   <div className="card" style={{ width: 480, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
                     <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span className="card-title">Новая задача</span>
-                      <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>×</button>
+                      <span className="card-title">РќРѕРІР°СЏ Р·Р°РґР°С‡Р°</span>
+                      <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>Г—</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 14 }}>
                       <div>
-                        <div className="form-label">Название *</div>
-                        <input className="form-input" value={taskFormTitle} onChange={(e) => setTaskFormTitle(e.target.value)} placeholder="Кратко, что сделать" />
+                        <div className="form-label">РќР°Р·РІР°РЅРёРµ *</div>
+                        <input className="form-input" value={taskFormTitle} onChange={(e) => setTaskFormTitle(e.target.value)} placeholder="РљСЂР°С‚РєРѕ, С‡С‚Рѕ СЃРґРµР»Р°С‚СЊ" />
                       </div>
                       <div>
-                        <div className="form-label">Описание</div>
-                        <textarea className="form-input" value={taskFormDesc} onChange={(e) => setTaskFormDesc(e.target.value)} rows={3} placeholder="Детали" />
+                        <div className="form-label">РћРїРёСЃР°РЅРёРµ</div>
+                        <textarea className="form-input" value={taskFormDesc} onChange={(e) => setTaskFormDesc(e.target.value)} rows={3} placeholder="Р”РµС‚Р°Р»Рё" />
                       </div>
                       <div>
-                        <div className="form-label">Исполнитель *</div>
+                        <div className="form-label">РСЃРїРѕР»РЅРёС‚РµР»СЊ *</div>
                         <select className="form-input" value={taskFormAssigneeId} onChange={(e) => setTaskFormAssigneeId(e.target.value)}>
-                          <option value="">Выберите</option>
+                          <option value="">Р’С‹Р±РµСЂРёС‚Рµ</option>
                           {taskUsersForSelect.map((u) => (
                             <option key={u.id} value={u.id}>{u.name || u.email} ({u.email})</option>
                           ))}
@@ -4704,17 +3440,17 @@ export default function AppPage() {
                       </div>
                       <div className="g2">
                         <div>
-                          <div className="form-label">Начало</div>
+                          <div className="form-label">РќР°С‡Р°Р»Рѕ</div>
                           <input className="form-input" type="datetime-local" value={taskFormStart} onChange={(e) => setTaskFormStart(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">Срок</div>
+                          <div className="form-label">РЎСЂРѕРє</div>
                           <input className="form-input" type="datetime-local" value={taskFormDue} onChange={(e) => setTaskFormDue(e.target.value)} />
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>Отмена</button>
-                        <button className="btn btn-primary" onClick={() => void createTaskFromModal()} disabled={!taskFormTitle.trim() || !taskFormAssigneeId}>Создать</button>
+                        <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>РћС‚РјРµРЅР°</button>
+                        <button className="btn btn-primary" onClick={() => void createTaskFromModal()} disabled={!taskFormTitle.trim() || !taskFormAssigneeId}>РЎРѕР·РґР°С‚СЊ</button>
                       </div>
                     </div>
                   </div>
@@ -4730,19 +3466,19 @@ export default function AppPage() {
               {/* Left: contacts / conversations */}
               <div className={`chat-sidebar${chatActiveUser ? " chat-sidebar--hidden" : ""}`}>
                 <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>Сообщения</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>РЎРѕРѕР±С‰РµРЅРёСЏ</div>
                   <button
                     className="btn btn-secondary"
                     style={{ height: 28, fontSize: 11, padding: "0 10px" }}
                     onClick={() => setChatShowContacts(v => !v)}
-                    title="Новый чат"
-                  >+ Новый</button>
+                    title="РќРѕРІС‹Р№ С‡Р°С‚"
+                  >+ РќРѕРІС‹Р№</button>
                 </div>
 
                 {/* New chat: pick a contact */}
                 {chatShowContacts && (
                   <div style={{ borderBottom: "1px solid var(--border)", maxHeight: 220, overflowY: "auto" }}>
-                    <div style={{ padding: "8px 12px 4px", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сотрудники</div>
+                    <div style={{ padding: "8px 12px 4px", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>РЎРѕС‚СЂСѓРґРЅРёРєРё</div>
                     {chatContacts.map(c => (
                       <div
                         key={c.id}
@@ -4767,8 +3503,8 @@ export default function AppPage() {
                 <div style={{ flex: 1, overflowY: "auto" }}>
                   {chatConversations.length === 0 && !chatShowContacts && (
                     <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
-                      <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
-                      Нажмите «+ Новый» чтобы начать переписку
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>рџ’¬</div>
+                      РќР°Р¶РјРёС‚Рµ В«+ РќРѕРІС‹Р№В» С‡С‚РѕР±С‹ РЅР°С‡Р°С‚СЊ РїРµСЂРµРїРёСЃРєСѓ
                     </div>
                   )}
                   {chatConversations.map(conv => {
@@ -4801,7 +3537,7 @@ export default function AppPage() {
                           </div>
                           {conv.lastMessage && (
                             <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                              {conv.lastMessage.sender.id === user?.id ? "Вы: " : ""}{conv.lastMessage.body}
+                              {conv.lastMessage.sender.id === user?.id ? "Р’С‹: " : ""}{conv.lastMessage.body}
                             </div>
                           )}
                         </div>
@@ -4821,8 +3557,8 @@ export default function AppPage() {
                 {!chatActiveUser ? (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-tertiary)", gap: 12 }}>
                     <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.2" viewBox="0 0 24 24" style={{ opacity: 0.3 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <div style={{ fontWeight: 600, fontSize: 15, opacity: 0.6 }}>Выберите собеседника</div>
-                    <div style={{ fontSize: 13, opacity: 0.5 }}>Все сообщения шифруются AES-256</div>
+                    <div style={{ fontWeight: 600, fontSize: 15, opacity: 0.6 }}>Р’С‹Р±РµСЂРёС‚Рµ СЃРѕР±РµСЃРµРґРЅРёРєР°</div>
+                    <div style={{ fontSize: 13, opacity: 0.5 }}>Р’СЃРµ СЃРѕРѕР±С‰РµРЅРёСЏ С€РёС„СЂСѓСЋС‚СЃСЏ AES-256</div>
                   </div>
                 ) : (
                   <>
@@ -4847,12 +3583,12 @@ export default function AppPage() {
                     {/* Messages */}
                     <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
                       {chatLoading && chatMessages.length === 0 ? (
-                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Загрузка…</div>
+                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
                       ) : chatMessages.length === 0 ? (
                         <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>👋</div>
-                          <div style={{ fontWeight: 600, marginBottom: 4 }}>Начните общение</div>
-                          <div style={{ fontSize: 13 }}>Напишите {chatActiveUser.name || chatActiveUser.email}</div>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>рџ‘‹</div>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>РќР°С‡РЅРёС‚Рµ РѕР±С‰РµРЅРёРµ</div>
+                          <div style={{ fontSize: 13 }}>РќР°РїРёС€РёС‚Рµ {chatActiveUser.name || chatActiveUser.email}</div>
                         </div>
                       ) : chatMessages.map((m, i) => {
                         const isMe = m.sender.id === user?.id;
@@ -4903,7 +3639,7 @@ export default function AppPage() {
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); } }}
-                        placeholder={`Написать ${chatActiveUser.name || chatActiveUser.email}… (Enter — отправить)`}
+                        placeholder={`РќР°РїРёСЃР°С‚СЊ ${chatActiveUser.name || chatActiveUser.email}вЂ¦ (Enter вЂ” РѕС‚РїСЂР°РІРёС‚СЊ)`}
                         rows={1}
                         style={{ flex: 1, resize: "none", minHeight: 40, maxHeight: 120, overflowY: "auto", lineHeight: 1.5 }}
                       />
@@ -4929,24 +3665,24 @@ export default function AppPage() {
               {/* Not configured banner */}
               {aiConfigured === false && (
                 <div style={{ marginBottom: 12, padding: "12px 16px", borderRadius: 12, background: "#f59e0b22", border: "1px solid #f59e0b55", fontSize: 13, color: "#f59e0b", flexShrink: 0 }}>
-                  ⚠️ <strong>AI не настроен.</strong> На сервере нет OPENAI_API_KEY. Добавьте в файл <code>.env</code> на VPS:<br/>
+                  вљ пёЏ <strong>AI РЅРµ РЅР°СЃС‚СЂРѕРµРЅ.</strong> РќР° СЃРµСЂРІРµСЂРµ РЅРµС‚ OPENAI_API_KEY. Р”РѕР±Р°РІСЊС‚Рµ РІ С„Р°Р№Р» <code>.env</code> РЅР° VPS:<br/>
                   <code style={{ display: "block", marginTop: 6, padding: "4px 8px", background: "#0005", borderRadius: 6, fontFamily: "monospace" }}>OPENAI_API_KEY=sk-proj-...</code>
-                  Затем: <code>docker compose up -d backend</code>
+                  Р—Р°С‚РµРј: <code>docker compose up -d backend</code>
                 </div>
               )}
 
               {/* Header */}
               <div className="card" style={{ padding: "16px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>✦</div>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>вњ¦</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>AI Ассистент</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>AI РђСЃСЃРёСЃС‚РµРЅС‚</div>
                   <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                    Сделки, расходы и карточки клиентов из текста или голоса — в том числе вставка уведомления о звонке
+                    РЎРґРµР»РєРё, СЂР°СЃС…РѕРґС‹ Рё РєР°СЂС‚РѕС‡РєРё РєР»РёРµРЅС‚РѕРІ РёР· С‚РµРєСЃС‚Р° РёР»Рё РіРѕР»РѕСЃР° вЂ” РІ С‚РѕРј С‡РёСЃР»Рµ РІСЃС‚Р°РІРєР° СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ Р·РІРѕРЅРєРµ
                   </div>
                 </div>
                 {agentHistory.length > 0 && (
                   <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { setAgentHistory([]); setAgentPending(null); }}>
-                    Очистить
+                    РћС‡РёСЃС‚РёС‚СЊ
                   </button>
                 )}
               </div>
@@ -4955,22 +3691,22 @@ export default function AppPage() {
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingBottom: 8 }}>
                 {agentHistory.length === 0 ? (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "40px 20px" }}>
-                    <div style={{ fontSize: 48 }}>✦</div>
+                    <div style={{ fontSize: 48 }}>вњ¦</div>
                     <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Чем могу помочь?</div>
-                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>Надиктуйте или напишите — или вставьте готовое уведомление о звонке: подготовлю карточку клиента на подтверждение</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Р§РµРј РјРѕРіСѓ РїРѕРјРѕС‡СЊ?</div>
+                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>РќР°РґРёРєС‚СѓР№С‚Рµ РёР»Рё РЅР°РїРёС€РёС‚Рµ вЂ” РёР»Рё РІСЃС‚Р°РІСЊС‚Рµ РіРѕС‚РѕРІРѕРµ СѓРІРµРґРѕРјР»РµРЅРёРµ Рѕ Р·РІРѕРЅРєРµ: РїРѕРґРіРѕС‚РѕРІР»СЋ РєР°СЂС‚РѕС‡РєСѓ РєР»РёРµРЅС‚Р° РЅР° РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ</div>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 600 }}>
                       {(
                         [
-                          "Запиши сделку: вчера Ди и олх взяли 6838 от eurocom 75/25, закрыл Ант",
-                          "Сколько заработал каждый воркер за этот месяц?",
-                          "Запиши расход: аренда офиса 500$",
-                          "Покажи статистику за неделю",
-                          "Какой доход за апрель?",
+                          "Р—Р°РїРёС€Рё СЃРґРµР»РєСѓ: РІС‡РµСЂР° Р”Рё Рё РѕР»С… РІР·СЏР»Рё 6838 РѕС‚ eurocom 75/25, Р·Р°РєСЂС‹Р» РђРЅС‚",
+                          "РЎРєРѕР»СЊРєРѕ Р·Р°СЂР°Р±РѕС‚Р°Р» РєР°Р¶РґС‹Р№ РІРѕСЂРєРµСЂ Р·Р° СЌС‚РѕС‚ РјРµСЃСЏС†?",
+                          "Р—Р°РїРёС€Рё СЂР°СЃС…РѕРґ: Р°СЂРµРЅРґР° РѕС„РёСЃР° 500$",
+                          "РџРѕРєР°Р¶Рё СЃС‚Р°С‚РёСЃС‚РёРєСѓ Р·Р° РЅРµРґРµР»СЋ",
+                          "РљР°РєРѕР№ РґРѕС…РѕРґ Р·Р° Р°РїСЂРµР»СЊ?",
                           {
-                            label: "✅ Клиент из уведомления о звонке (пример)",
-                            text: "✅ Новый звонок\n\n👤Ассистент: Robert Nowak PKO BP\n\n🏦Банк: PKO BP\n\n🧍‍♀️Клиент: Marta Rusowicz\n\n☎️Телефон: +48503703469\n\n📝 Summary: клиентка заявила, что не имеет счёта в PKO BP.\n⏰ Время начала звонка: 04.05.2026, 11:31",
+                            label: "вњ… РљР»РёРµРЅС‚ РёР· СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ Р·РІРѕРЅРєРµ (РїСЂРёРјРµСЂ)",
+                            text: "вњ… РќРѕРІС‹Р№ Р·РІРѕРЅРѕРє\n\nрџ‘¤РђСЃСЃРёСЃС‚РµРЅС‚: Robert Nowak PKO BP\n\nрџЏ¦Р‘Р°РЅРє: PKO BP\n\nрџ§ЌвЂЌв™ЂпёЏРљР»РёРµРЅС‚: Marta Rusowicz\n\nвЋпёЏРўРµР»РµС„РѕРЅ: +48503703469\n\nрџ“ќ Summary: РєР»РёРµРЅС‚РєР° Р·Р°СЏРІРёР»Р°, С‡С‚Рѕ РЅРµ РёРјРµРµС‚ СЃС‡С‘С‚Р° РІ PKO BP.\nвЏ° Р’СЂРµРјСЏ РЅР°С‡Р°Р»Р° Р·РІРѕРЅРєР°: 04.05.2026, 11:31",
                           },
                         ] as const
                       ).map((q) => {
@@ -4992,7 +3728,7 @@ export default function AppPage() {
                       justifyContent: m.role === "user" ? "flex-end" : "flex-start",
                     }}>
                       {m.role === "assistant" && (
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, marginRight: 8, marginTop: 2 }}>✦</div>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, marginRight: 8, marginTop: 2 }}>вњ¦</div>
                       )}
                       <div style={{
                         maxWidth: "75%",
@@ -5010,15 +3746,15 @@ export default function AppPage() {
                         {m.role === "assistant" && m.pendingAction && agentPending && i === agentHistory.length - 1 && (
                           <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-light)" }}>
                             <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={confirmAgentAction}>
-                              ✅ Подтвердить
+                              вњ… РџРѕРґС‚РІРµСЂРґРёС‚СЊ
                             </button>
                             <button className="btn btn-secondary" style={{ fontSize: 13 }}
-                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено. Что нужно изменить?" }]); }}>
-                              ✏️ Изменить
+                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "РћС‚РјРµРЅРµРЅРѕ. Р§С‚Рѕ РЅСѓР¶РЅРѕ РёР·РјРµРЅРёС‚СЊ?" }]); }}>
+                              вњЏпёЏ РР·РјРµРЅРёС‚СЊ
                             </button>
                             <button className="btn btn-secondary" style={{ fontSize: 13, color: "var(--red)" }}
-                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено." }]); }}>
-                              ✕ Отмена
+                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "РћС‚РјРµРЅРµРЅРѕ." }]); }}>
+                              вњ• РћС‚РјРµРЅР°
                             </button>
                           </div>
                         )}
@@ -5028,12 +3764,12 @@ export default function AppPage() {
                 )}
                 {agentLoading && (
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✦</div>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>вњ¦</div>
                     <div style={{ padding: "12px 16px", borderRadius: "18px 18px 18px 4px", background: "var(--bg-card)", border: "1px solid var(--border-light)", fontSize: 14, color: "var(--text-tertiary)" }}>
                       <span style={{ display: "inline-flex", gap: 4 }}>
-                        <span style={{ animation: "pulse 1s ease-in-out infinite" }}>●</span>
-                        <span style={{ animation: "pulse 1s ease-in-out 0.2s infinite" }}>●</span>
-                        <span style={{ animation: "pulse 1s ease-in-out 0.4s infinite" }}>●</span>
+                        <span style={{ animation: "pulse 1s ease-in-out infinite" }}>в—Џ</span>
+                        <span style={{ animation: "pulse 1s ease-in-out 0.2s infinite" }}>в—Џ</span>
+                        <span style={{ animation: "pulse 1s ease-in-out 0.4s infinite" }}>в—Џ</span>
                       </span>
                     </div>
                   </div>
@@ -5048,7 +3784,7 @@ export default function AppPage() {
                     value={agentInput}
                     onChange={e => setAgentInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAgentMessage(); } }}
-                    placeholder="Напишите или надиктуйте... (Enter — отправить, Shift+Enter — новая строка)"
+                    placeholder="РќР°РїРёС€РёС‚Рµ РёР»Рё РЅР°РґРёРєС‚СѓР№С‚Рµ... (Enter вЂ” РѕС‚РїСЂР°РІРёС‚СЊ, Shift+Enter вЂ” РЅРѕРІР°СЏ СЃС‚СЂРѕРєР°)"
                     disabled={agentLoading}
                     rows={2}
                     style={{ flex: 1, resize: "none", lineHeight: 1.5, paddingTop: 10 }}
@@ -5057,7 +3793,7 @@ export default function AppPage() {
                     <button
                       onClick={startVoice}
                       disabled={agentLoading}
-                      title="Голосовой ввод (Chrome/Edge)"
+                      title="Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ (Chrome/Edge)"
                       style={{
                         width: 44, height: 44, borderRadius: 12, border: "none",
                         background: isListening ? "#ef4444" : "var(--bg-hover)",
@@ -5066,24 +3802,24 @@ export default function AppPage() {
                         boxShadow: isListening ? "0 0 0 4px #ef444433" : "none",
                       }}
                     >
-                      {isListening ? "⏹" : "🎤"}
+                      {isListening ? "вЏ№" : "рџЋ¤"}
                     </button>
                     <button
                       className="btn btn-primary"
                       onClick={() => sendAgentMessage()}
                       disabled={agentLoading || !agentInput.trim()}
                       style={{ width: 44, height: 44, padding: 0, borderRadius: 12, fontSize: 18 }}
-                    >→</button>
+                    >в†’</button>
                   </div>
                 </div>
                 {isListening && (
                   <div style={{ marginTop: 6, fontSize: 12, color: "#ef4444", display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1s ease-in-out infinite" }} />
-                    Говорите... (Chrome слушает)
+                    Р“РѕРІРѕСЂРёС‚Рµ... (Chrome СЃР»СѓС€Р°РµС‚)
                   </div>
                 )}
                 <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-tertiary)" }}>
-                  Можно вставить уведомление о звонке (клиент, телефон, банк, summary) — после подтверждения появится карточка в «Клиентах»
+                  РњРѕР¶РЅРѕ РІСЃС‚Р°РІРёС‚СЊ СѓРІРµРґРѕРјР»РµРЅРёРµ Рѕ Р·РІРѕРЅРєРµ (РєР»РёРµРЅС‚, С‚РµР»РµС„РѕРЅ, Р±Р°РЅРє, summary) вЂ” РїРѕСЃР»Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РїРѕСЏРІРёС‚СЃСЏ РєР°СЂС‚РѕС‡РєР° РІ В«РљР»РёРµРЅС‚Р°С…В»
                 </div>
               </div>
 
@@ -5096,20 +3832,20 @@ export default function AppPage() {
               {!staffMember && (
                 <div className="page-header">
                   <div className="page-header-left">
-                    <div className="page-header-title">Сотрудники</div>
-                    <div className="page-header-sub">Управляйте командой, офисами и статистикой сотрудников</div>
+                    <div className="page-header-title">РЎРѕС‚СЂСѓРґРЅРёРєРё</div>
+                    <div className="page-header-sub">РЈРїСЂР°РІР»СЏР№С‚Рµ РєРѕРјР°РЅРґРѕР№, РѕС„РёСЃР°РјРё Рё СЃС‚Р°С‚РёСЃС‚РёРєРѕР№ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ</div>
                   </div>
                 </div>
               )}
               {staffLoading ? (
-                <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
               ) : staffMember ? (
                 // ---- Member detail view ----
                 <div>
                   <button className="btn btn-secondary" style={{ marginBottom: 20 }}
-                    onClick={() => setStaffMember(null)}>← Назад к списку</button>
+                    onClick={() => setStaffMember(null)}>в†ђ РќР°Р·Р°Рґ Рє СЃРїРёСЃРєСѓ</button>
                   {staffMemberLoading ? (
-                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
                   ) : (
                     <div style={{ display: "grid", gap: 16, maxWidth: 760 }}>
                       {/* profile card */}
@@ -5136,7 +3872,7 @@ export default function AppPage() {
                                 </span>
                               )}
                               <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--accent)22", fontSize: 12, color: "var(--accent)" }}>
-                                {({ SUPER_ADMIN: "Супер Админ", ADMIN: "Админ", MANAGER: "Менеджер", WORKER: "Работник" } as Record<string,string>)[staffMember.role] ?? staffMember.role}
+                                {({ SUPER_ADMIN: "РЎСѓРїРµСЂ РђРґРјРёРЅ", ADMIN: "РђРґРјРёРЅ", MANAGER: "РњРµРЅРµРґР¶РµСЂ", WORKER: "Р Р°Р±РѕС‚РЅРёРє" } as Record<string,string>)[staffMember.role] ?? staffMember.role}
                               </span>
                               {staffMember.organization && (
                                 <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--bg-hover)", fontSize: 12, color: "var(--text-secondary)" }}>
@@ -5150,7 +3886,7 @@ export default function AppPage() {
                         {(staffMember.phone || staffMember.telegram || staffMember.contacts) && (
                           <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color)", display: "flex", gap: 20, flexWrap: "wrap" }}>
                             {staffMember.phone && (
-                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Телефон</div>
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>РўРµР»РµС„РѕРЅ</div>
                                 <div style={{ fontSize: 13 }}>{staffMember.phone}</div></div>
                             )}
                             {staffMember.telegram && (
@@ -5158,7 +3894,7 @@ export default function AppPage() {
                                 <div style={{ fontSize: 13 }}>{staffMember.telegram}</div></div>
                             )}
                             {staffMember.contacts && (
-                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Контакты</div>
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>РљРѕРЅС‚Р°РєС‚С‹</div>
                                 <div style={{ fontSize: 13 }}>{staffMember.contacts}</div></div>
                             )}
                           </div>
@@ -5168,11 +3904,11 @@ export default function AppPage() {
                       {/* extra orgs (memberships) */}
                       {isAdmin && (
                         <div className="card" style={{ padding: "16px 20px" }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Офисы сотрудника</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>РћС„РёСЃС‹ СЃРѕС‚СЂСѓРґРЅРёРєР°</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                             {/* Primary org */}
                             <span style={{ padding: "4px 12px", borderRadius: 20, background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
-                              {staffMember.organization?.name ?? "—"} (основной)
+                              {staffMember.organization?.name ?? "вЂ”"} (РѕСЃРЅРѕРІРЅРѕР№)
                             </span>
                             {/* Extra orgs */}
                             {(staffMember.extraMemberships ?? []).map((m: any) => (
@@ -5180,7 +3916,7 @@ export default function AppPage() {
                                 {m.organization.name}
                                 {isAdmin && (
                                   <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontWeight: 700 }}
-                                    onClick={() => removeMembership(staffMember.id, m.organizationId)}>×</span>
+                                    onClick={() => removeMembership(staffMember.id, m.organizationId)}>Г—</span>
                                 )}
                               </span>
                             ))}
@@ -5194,7 +3930,7 @@ export default function AppPage() {
                               return available.length > 0 ? (
                                 <select className="form-input" style={{ width: "auto", fontSize: 12, height: 30, padding: "0 8px" }}
                                   value="" onChange={e => { if (e.target.value) addMembership(staffMember.id, e.target.value); }}>
-                                  <option value="">+ Добавить в офис</option>
+                                  <option value="">+ Р”РѕР±Р°РІРёС‚СЊ РІ РѕС„РёСЃ</option>
                                   {available.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                                 </select>
                               ) : null;
@@ -5202,7 +3938,7 @@ export default function AppPage() {
                           </div>
                           {(staffMember.extraMemberships ?? []).length > 0 && (
                             <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
-                              Сотрудник участвует в сделках и получает выплаты в {1 + (staffMember.extraMemberships?.length ?? 0)} офисах
+                              РЎРѕС‚СЂСѓРґРЅРёРє СѓС‡Р°СЃС‚РІСѓРµС‚ РІ СЃРґРµР»РєР°С… Рё РїРѕР»СѓС‡Р°РµС‚ РІС‹РїР»Р°С‚С‹ РІ {1 + (staffMember.extraMemberships?.length ?? 0)} РѕС„РёСЃР°С…
                             </div>
                           )}
                         </div>
@@ -5217,10 +3953,10 @@ export default function AppPage() {
                           <>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
                               {[
-                                { label: "Сделок", value: staffMember.dealsCount },
-                                { label: "Выплаты (сделки)", value: `$${staffMember.totalPayout}` },
-                                { label: "Начислено (ЗП)", value: empSalary ? `$${empSalary.totalAccrued}` : salaryLoading ? "…" : "—" },
-                                { label: "Задачи (актив.)", value: tasksLoading ? "…" : activeTasks.length },
+                                { label: "РЎРґРµР»РѕРє", value: staffMember.dealsCount },
+                                { label: "Р’С‹РїР»Р°С‚С‹ (СЃРґРµР»РєРё)", value: `$${staffMember.totalPayout}` },
+                                { label: "РќР°С‡РёСЃР»РµРЅРѕ (Р—Рџ)", value: empSalary ? `$${empSalary.totalAccrued}` : salaryLoading ? "вЂ¦" : "вЂ”" },
+                                { label: "Р—Р°РґР°С‡Рё (Р°РєС‚РёРІ.)", value: tasksLoading ? "вЂ¦" : activeTasks.length },
                               ].map((s) => (
                                 <div key={s.label} className="card" style={{ padding: "16px 18px" }}>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{s.label}</div>
@@ -5232,7 +3968,7 @@ export default function AppPage() {
                             {/* Salary block */}
                             <div className="card" style={{ padding: "20px 24px" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600 }}>Зарплата ({salaryPeriod})</div>
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>Р—Р°СЂРїР»Р°С‚Р° ({salaryPeriod})</div>
                                 {isAdmin && (
                                   <button
                                     type="button"
@@ -5244,19 +3980,19 @@ export default function AppPage() {
                                       empSalary?.salaryConfig ?? null,
                                     )}
                                   >
-                                    {empSalary?.salaryConfig ? "Изменить ставку" : "Настроить"}
+                                    {empSalary?.salaryConfig ? "РР·РјРµРЅРёС‚СЊ СЃС‚Р°РІРєСѓ" : "РќР°СЃС‚СЂРѕРёС‚СЊ"}
                                   </button>
                                 )}
                               </div>
                               {salaryLoading ? (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
                               ) : empSalary ? (
                                 <>
                                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
                                     {[
-                                      { label: "Начислено", val: `$${empSalary.totalAccrued}`, color: "var(--text-primary)" },
-                                      { label: "Выплачено", val: `$${empSalary.paidUsd}`, color: "#22c55e" },
-                                      { label: "Баланс", val: `$${empSalary.balance}`, color: empSalary.balance < 0 ? "#ef4444" : "var(--text-primary)" },
+                                      { label: "РќР°С‡РёСЃР»РµРЅРѕ", val: `$${empSalary.totalAccrued}`, color: "var(--text-primary)" },
+                                      { label: "Р’С‹РїР»Р°С‡РµРЅРѕ", val: `$${empSalary.paidUsd}`, color: "#22c55e" },
+                                      { label: "Р‘Р°Р»Р°РЅСЃ", val: `$${empSalary.balance}`, color: empSalary.balance < 0 ? "#ef4444" : "var(--text-primary)" },
                                     ].map(m => (
                                       <div key={m.label} style={{ background: "var(--bg-hover)", borderRadius: 8, padding: "10px 14px" }}>
                                         <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{m.label}</div>
@@ -5266,21 +4002,21 @@ export default function AppPage() {
                                   </div>
                                   {empSalary.salaryConfig && (
                                     <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 16, flexWrap: "wrap" }}>
-                                      <span>Ставка: <b>{empSalary.salaryConfig.baseAmount} {empSalary.salaryConfig.currency}</b></span>
-                                      <span>День выплаты: <b>{empSalary.salaryConfig.payDay}</b></span>
-                                      <span>Бонусы по сделкам: <b>${empSalary.dealEarningsUsd}</b></span>
+                                      <span>РЎС‚Р°РІРєР°: <b>{empSalary.salaryConfig.baseAmount} {empSalary.salaryConfig.currency}</b></span>
+                                      <span>Р”РµРЅСЊ РІС‹РїР»Р°С‚С‹: <b>{empSalary.salaryConfig.payDay}</b></span>
+                                      <span>Р‘РѕРЅСѓСЃС‹ РїРѕ СЃРґРµР»РєР°Рј: <b>${empSalary.dealEarningsUsd}</b></span>
                                     </div>
                                   )}
                                   {empSalary.payments?.length > 0 && (
                                     <div style={{ marginTop: 14 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Выплаты</div>
+                                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Р’С‹РїР»Р°С‚С‹</div>
                                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                         {empSalary.payments.slice(0, 5).map((p: any) => (
                                           <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "6px 10px", background: "var(--bg-hover)", borderRadius: 6 }}>
-                                            <span style={{ color: "var(--text-secondary)" }}>{({ BASE: "Ставка", DEAL_BONUS: "Бонус", ADVANCE: "Аванс", MANUAL: "Вручную" } as Record<string,string>)[p.type] ?? p.type}</span>
+                                            <span style={{ color: "var(--text-secondary)" }}>{({ BASE: "РЎС‚Р°РІРєР°", DEAL_BONUS: "Р‘РѕРЅСѓСЃ", ADVANCE: "РђРІР°РЅСЃ", MANUAL: "Р’СЂСѓС‡РЅСѓСЋ" } as Record<string,string>)[p.type] ?? p.type}</span>
                                             <span style={{ fontWeight: 600 }}>{p.amount} {p.currency}</span>
                                             <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: p.isPaid ? "#22c55e22" : "#f59e0b22", color: p.isPaid ? "#22c55e" : "#f59e0b" }}>
-                                              {p.isPaid ? "Выплачено" : "Ожидает"}
+                                              {p.isPaid ? "Р’С‹РїР»Р°С‡РµРЅРѕ" : "РћР¶РёРґР°РµС‚"}
                                             </span>
                                           </div>
                                         ))}
@@ -5289,17 +4025,17 @@ export default function AppPage() {
                                   )}
                                 </>
                               ) : (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Зарплата не настроена. {isAdmin ? "Нажмите «Настроить» чтобы задать ставку." : ""}</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°СЂРїР»Р°С‚Р° РЅРµ РЅР°СЃС‚СЂРѕРµРЅР°. {isAdmin ? "РќР°Р¶РјРёС‚Рµ В«РќР°СЃС‚СЂРѕРёС‚СЊВ» С‡С‚РѕР±С‹ Р·Р°РґР°С‚СЊ СЃС‚Р°РІРєСѓ." : ""}</div>
                               )}
                             </div>
 
                             {/* Tasks block */}
                             <div className="card" style={{ padding: "20px 24px" }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Задачи</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Р—Р°РґР°С‡Рё</div>
                               {tasksLoading ? (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
                               ) : empTasks.length === 0 ? (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Нет задач</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>РќРµС‚ Р·Р°РґР°С‡</div>
                               ) : (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                   {empTasks.slice(0, 10).map((t: any) => (
@@ -5309,7 +4045,7 @@ export default function AppPage() {
                                       <span style={{ marginLeft: 12, padding: "2px 8px", borderRadius: 10, fontSize: 11, flexShrink: 0,
                                         background: t.status === "DONE" ? "#22c55e22" : t.status === "CANCELLED" ? "#ef444422" : t.status === "IN_PROGRESS" ? "#3b82f622" : "#f59e0b22",
                                         color: t.status === "DONE" ? "#22c55e" : t.status === "CANCELLED" ? "#ef4444" : t.status === "IN_PROGRESS" ? "#3b82f6" : "#f59e0b" }}>
-                                        {({ TODO: "К выполнению", IN_PROGRESS: "В работе", DONE: "Готово", CANCELLED: "Отменена" } as Record<string,string>)[t.status] ?? t.status}
+                                        {({ TODO: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ", IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ", DONE: "Р“РѕС‚РѕРІРѕ", CANCELLED: "РћС‚РјРµРЅРµРЅР°" } as Record<string,string>)[t.status] ?? t.status}
                                       </span>
                                     </div>
                                   ))}
@@ -5323,12 +4059,12 @@ export default function AppPage() {
                       {/* recent deals */}
                       {staffMember.recentDeals?.length > 0 && (
                         <div className="card" style={{ padding: "20px 24px" }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Последние сделки</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>РџРѕСЃР»РµРґРЅРёРµ СЃРґРµР»РєРё</div>
                           <div style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                               <thead>
                                 <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                                  {["Название", "Дата", "Статус", "Ставка %", "Выплата"].map(h => (
+                                  {["РќР°Р·РІР°РЅРёРµ", "Р”Р°С‚Р°", "РЎС‚Р°С‚СѓСЃ", "РЎС‚Р°РІРєР° %", "Р’С‹РїР»Р°С‚Р°"].map(h => (
                                     <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "var(--text-tertiary)", fontWeight: 500, fontSize: 11 }}>{h}</th>
                                   ))}
                                 </tr>
@@ -5336,11 +4072,11 @@ export default function AppPage() {
                               <tbody>
                                 {staffMember.recentDeals.map((d: any) => (
                                   <tr key={d.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                                    <td style={{ padding: "8px 8px" }}>{d.title || d.templateName || "—"}</td>
-                                    <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}</td>
+                                    <td style={{ padding: "8px 8px" }}>{d.title || d.templateName || "вЂ”"}</td>
+                                    <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "вЂ”"}</td>
                                     <td style={{ padding: "8px 8px" }}>
                                       <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: d.status === "DONE" ? "#22c55e22" : d.status === "CANCELLED" ? "#ef444422" : "#f59e0b22", color: d.status === "DONE" ? "#22c55e" : d.status === "CANCELLED" ? "#ef4444" : "#f59e0b" }}>
-                                        {d.status === "DONE" ? "Закрыта" : d.status === "CANCELLED" ? "Отменена" : "В работе"}
+                                        {d.status === "DONE" ? "Р—Р°РєСЂС‹С‚Р°" : d.status === "CANCELLED" ? "РћС‚РјРµРЅРµРЅР°" : "Р’ СЂР°Р±РѕС‚Рµ"}
                                       </span>
                                     </td>
                                     <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.pct}%</td>
@@ -5359,7 +4095,7 @@ export default function AppPage() {
                 // ---- SUPER_ADMIN grouped view ----
                 <div style={{ display: "grid", gap: 24 }}>
                   {(!staffData || staffData.length === 0) ? (
-                    <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет данных</div>
+                    <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>РќРµС‚ РґР°РЅРЅС‹С…</div>
                   ) : staffData.map((group: any) => (
                     <div key={group.org.id} className="card" style={{ padding: "20px 24px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -5368,7 +4104,7 @@ export default function AppPage() {
                         </div>
                         <div>
                           <div style={{ fontSize: 16, fontWeight: 700 }}>{group.org.name}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{group.members.length} сотр.</div>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{group.members.length} СЃРѕС‚СЂ.</div>
                         </div>
                       </div>
                       <StaffTable members={group.members} onSelect={(id: string) => loadStaffMember(id)} />
@@ -5378,9 +4114,9 @@ export default function AppPage() {
               ) : (
                 // ---- ADMIN single office view ----
                 <div className="card" style={{ padding: "20px 24px" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Сотрудники офиса</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>РЎРѕС‚СЂСѓРґРЅРёРєРё РѕС„РёСЃР°</div>
                   {(!staffData || staffData.length === 0) ? (
-                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников</div>
+                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>РќРµС‚ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ</div>
                   ) : (
                     <StaffTable members={staffData} onSelect={(id: string) => loadStaffMember(id)} />
                   )}
@@ -5432,7 +4168,7 @@ export default function AppPage() {
 
           {/* ===== SALARY ===== */}
           {tab === "salary" ? (() => {
-            const ROLE_LABELS_S: Record<string, string> = { ADMIN: "Администратор", MANAGER: "Менеджер", WORKER: "Воркер", SUPER_ADMIN: "Супер-админ" };
+            const ROLE_LABELS_S: Record<string, string> = { ADMIN: "РђРґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ", MANAGER: "РњРµРЅРµРґР¶РµСЂ", WORKER: "Р’РѕСЂРєРµСЂ", SUPER_ADMIN: "РЎСѓРїРµСЂ-Р°РґРјРёРЅ" };
             const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
             const fmtDec = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
@@ -5440,7 +4176,7 @@ export default function AppPage() {
             const totalDebt = salaryData.reduce((s, e) => s + Math.max(0, e.balance ?? 0), 0) + Math.max(0, salaryAiPartner?.balance ?? 0);
             const totalPaid = salaryData.reduce((s, e) => s + (e.paidUsd ?? 0), 0) + (salaryAiPartner?.paidUsd ?? 0);
 
-            // ── CABINET VIEW ──────────────────────────────────────────────
+            // в”Ђв”Ђ CABINET VIEW в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             if (selectedSalaryEmp) {
               const emp = selectedSalaryEmp;
               const isAi = !!emp.isAiPartner;
@@ -5455,7 +4191,7 @@ export default function AppPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <button className="btn btn-ghost" onClick={() => setSelectedSalaryEmp(null)} style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
                       <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-                      Все сотрудники
+                      Р’СЃРµ СЃРѕС‚СЂСѓРґРЅРёРєРё
                     </button>
                     <div style={{ width: 1, height: 24, background: "var(--border)" }} />
                     <div style={{ width: 36, height: 36, borderRadius: "50%", background: avatarColor + "22", color: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
@@ -5463,7 +4199,7 @@ export default function AppPage() {
                     </div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 16 }}>{emp.name || emp.email}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{isAi ? "Партнёр ИИ офиса" : (ROLE_LABELS_S[emp.role] ?? emp.role)}{emp.position ? ` · ${emp.position}` : ""}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{isAi ? "РџР°СЂС‚РЅС‘СЂ РР РѕС„РёСЃР°" : (ROLE_LABELS_S[emp.role] ?? emp.role)}{emp.position ? ` В· ${emp.position}` : ""}</div>
                     </div>
                     <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
                       <input type="month" value={salaryPeriod} onChange={e => { setSalaryPeriod(e.target.value); loadSalary(e.target.value); }}
@@ -5474,22 +4210,22 @@ export default function AppPage() {
                   {/* Metric cards */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
                     {(isAi ? [
-                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Доля ИИ по сделкам офиса: $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#8B5CF6" },
-                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
-                      { label: isInDebt ? "К выплате" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: "Счёт ИИ привязан к офису", color: isInDebt ? "#DC2626" : "#059669" },
+                      { label: "РќР°С‡РёСЃР»РµРЅРѕ", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Р”РѕР»СЏ РР РїРѕ СЃРґРµР»РєР°Рј РѕС„РёСЃР°: $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#8B5CF6" },
+                      { label: "Р’С‹РїР»Р°С‡РµРЅРѕ", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} РїРѕРґС‚РІ. РІС‹РїР»Р°С‚`, color: "#059669" },
+                      { label: isInDebt ? "Рљ РІС‹РїР»Р°С‚Рµ" : "Р‘Р°Р»Р°РЅСЃ", value: `${isInDebt ? "в€’" : "+"}$${fmt(Math.abs(debt))}`, sub: "РЎС‡С‘С‚ РР РїСЂРёРІСЏР·Р°РЅ Рє РѕС„РёСЃСѓ", color: isInDebt ? "#DC2626" : "#059669" },
                     ] : [
-                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: (() => {
+                      { label: "РќР°С‡РёСЃР»РµРЅРѕ", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: (() => {
                           const baseFull = emp.baseUsd ?? 0;
                           const basePart = emp.baseAccruedUsd ?? 0;
                           const pending = Math.max(0, baseFull - basePart);
                           const dealPart = emp.dealEarningsUsd ?? 0;
                           if (cfg && pending > 0 && salaryPeriod === new Date().toISOString().slice(0, 7)) {
-                            return `Ставка $${fmt(basePart)} (ещё $${fmt(pending)} с ${cfg.payDay}-го) + сделки $${fmtDec(dealPart)}`;
+                            return `РЎС‚Р°РІРєР° $${fmt(basePart)} (РµС‰С‘ $${fmt(pending)} СЃ ${cfg.payDay}-РіРѕ) + СЃРґРµР»РєРё $${fmtDec(dealPart)}`;
                           }
-                          return `Ставка $${fmt(basePart || baseFull)} + сделки $${fmtDec(dealPart)}`;
+                          return `РЎС‚Р°РІРєР° $${fmt(basePart || baseFull)} + СЃРґРµР»РєРё $${fmtDec(dealPart)}`;
                         })(), color: "#6366F1" },
-                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат за ${salaryPeriod}`, color: "#059669" },
-                      { label: isInDebt ? "Долг (не выплачено)" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? ((debt > Math.max(0, (emp.totalAccrued ?? 0) - (emp.paidUsd ?? 0)) + 0.01) ? "С учётом прошлых месяцев" : "Требует выплаты") : "Переплата или ровно", color: isInDebt ? "#DC2626" : "#059669" },
+                      { label: "Р’С‹РїР»Р°С‡РµРЅРѕ", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} РїРѕРґС‚РІ. РІС‹РїР»Р°С‚ Р·Р° ${salaryPeriod}`, color: "#059669" },
+                      { label: isInDebt ? "Р”РѕР»Рі (РЅРµ РІС‹РїР»Р°С‡РµРЅРѕ)" : "Р‘Р°Р»Р°РЅСЃ", value: `${isInDebt ? "в€’" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? ((debt > Math.max(0, (emp.totalAccrued ?? 0) - (emp.paidUsd ?? 0)) + 0.01) ? "РЎ СѓС‡С‘С‚РѕРј РїСЂРѕС€Р»С‹С… РјРµСЃСЏС†РµРІ" : "РўСЂРµР±СѓРµС‚ РІС‹РїР»Р°С‚С‹") : "РџРµСЂРµРїР»Р°С‚Р° РёР»Рё СЂРѕРІРЅРѕ", color: isInDebt ? "#DC2626" : "#059669" },
                     ]).map(m => (
                       <div key={m.label} style={{ background: "var(--bg-card)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
@@ -5505,36 +4241,36 @@ export default function AppPage() {
                     {/* Left: Salary settings / AI info */}
                     <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
                       <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{isAi ? "ИИ офиса" : "Настройки зарплаты"}</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{isAi ? "РР РѕС„РёСЃР°" : "РќР°СЃС‚СЂРѕР№РєРё Р·Р°СЂРїР»Р°С‚С‹"}</div>
                         {!isAi && (
                         <button type="button" className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
                           onClick={() => openSalaryConfigModal(emp.userId, emp.name || emp.email, cfg)}>
-                          {cfg ? "Изменить ставку" : "Настроить"}
+                          {cfg ? "РР·РјРµРЅРёС‚СЊ СЃС‚Р°РІРєСѓ" : "РќР°СЃС‚СЂРѕРёС‚СЊ"}
                         </button>
                         )}
                       </div>
                       <div style={{ padding: "16px 18px", display: "grid", gap: 14 }}>
                         {isAi ? (
                           <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                            У каждого офиса один счёт «ИИ». Начисление — доля из шаблона сделок за месяц; прошлые периоды пересчитываются по данным сделок.
+                            РЈ РєР°Р¶РґРѕРіРѕ РѕС„РёСЃР° РѕРґРёРЅ СЃС‡С‘С‚ В«РРВ». РќР°С‡РёСЃР»РµРЅРёРµ вЂ” РґРѕР»СЏ РёР· С€Р°Р±Р»РѕРЅР° СЃРґРµР»РѕРє Р·Р° РјРµСЃСЏС†; РїСЂРѕС€Р»С‹Рµ РїРµСЂРёРѕРґС‹ РїРµСЂРµСЃС‡РёС‚С‹РІР°СЋС‚СЃСЏ РїРѕ РґР°РЅРЅС‹Рј СЃРґРµР»РѕРє.
                           </div>
                         ) : cfg ? (
                           <>
                             <div>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Ставка в месяц</div>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>РЎС‚Р°РІРєР° РІ РјРµСЃСЏС†</div>
                               <div style={{ fontSize: 22, fontWeight: 700 }}>{Number(cfg.baseAmount).toLocaleString()} <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>{cfg.currency}</span></div>
-                              {cfg.currency !== "USD" && <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>≈ ${fmt(emp.baseUsd ?? 0)} USD</div>}
+                              {cfg.currency !== "USD" && <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>в‰€ ${fmt(emp.baseUsd ?? 0)} USD</div>}
                             </div>
                             <div style={{ display: "flex", gap: 20 }}>
                               <div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>День выплаты</div>
-                                <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.payDay}-е</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Р”РµРЅСЊ РІС‹РїР»Р°С‚С‹</div>
+                                <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.payDay}-Рµ</div>
                                 {salaryPeriod === new Date().toISOString().slice(0, 7) && !(emp.baseAccrued || (emp.baseAccruedUsd ?? 0) > 0) && (
-                                  <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}>Ставка войдёт в начисление {cfg.payDay}-го числа</div>
+                                  <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}>РЎС‚Р°РІРєР° РІРѕР№РґС‘С‚ РІ РЅР°С‡РёСЃР»РµРЅРёРµ {cfg.payDay}-РіРѕ С‡РёСЃР»Р°</div>
                                 )}
                               </div>
                               <div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Валюта</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Р’Р°Р»СЋС‚Р°</div>
                                 <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.currency}</div>
                               </div>
                             </div>
@@ -5546,25 +4282,25 @@ export default function AppPage() {
                           </>
                         ) : (
                           <div style={{ padding: "24px 0", textAlign: "center" }}>
-                            <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
-                            <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 14 }}>Ставка не настроена</div>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>рџ’°</div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 14 }}>РЎС‚Р°РІРєР° РЅРµ РЅР°СЃС‚СЂРѕРµРЅР°</div>
                             <button type="button" className="btn btn-primary" style={{ fontSize: 12 }}
                               onClick={() => openSalaryConfigModal(emp.userId, emp.name || emp.email, null)}>
-                              Установить ставку
+                              РЈСЃС‚Р°РЅРѕРІРёС‚СЊ СЃС‚Р°РІРєСѓ
                             </button>
                           </div>
                         )}
 
                         {/* Deal earnings breakdown */}
                         <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 14 }}>
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сделки за {salaryPeriod}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>РЎРґРµР»РєРё Р·Р° {salaryPeriod}</div>
                           {emp.dealEarningsUsd > 0 ? (
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Заработок по сделкам</span>
+                              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Р—Р°СЂР°Р±РѕС‚РѕРє РїРѕ СЃРґРµР»РєР°Рј</span>
                               <span style={{ fontWeight: 700, color: "#059669", fontSize: 15 }}>${fmtDec(emp.dealEarningsUsd)}</span>
                             </div>
                           ) : (
-                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Нет сделок за период</div>
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>РќРµС‚ СЃРґРµР»РѕРє Р·Р° РїРµСЂРёРѕРґ</div>
                           )}
                         </div>
                       </div>
@@ -5573,19 +4309,19 @@ export default function AppPage() {
                     {/* Right: Payment history */}
                     <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
                       <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>История выплат — {salaryPeriod}</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>РСЃС‚РѕСЂРёСЏ РІС‹РїР»Р°С‚ вЂ” {salaryPeriod}</div>
                         <button type="button" className="btn btn-primary" style={{ fontSize: 12 }}
                           onClick={() => openSalaryPaymentModal(emp.userId, emp.name || emp.email, user?.activeOrganizationId ?? "", cfg?.currency ?? "USD")}>
-                          + Добавить выплату
+                          + Р”РѕР±Р°РІРёС‚СЊ РІС‹РїР»Р°С‚Сѓ
                         </button>
                       </div>
 
                       <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
                         {emp.payments.length === 0 ? (
                           <div style={{ padding: "40px 0", textAlign: "center" }}>
-                            <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
-                            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Выплат за этот период нет</div>
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Нажмите «+ Добавить выплату», чтобы зафиксировать</div>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>рџ“‹</div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Р’С‹РїР»Р°С‚ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РЅРµС‚</div>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>РќР°Р¶РјРёС‚Рµ В«+ Р”РѕР±Р°РІРёС‚СЊ РІС‹РїР»Р°С‚СѓВ», С‡С‚РѕР±С‹ Р·Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ</div>
                           </div>
                         ) : (
                           <div style={{ display: "grid", gap: 8 }}>
@@ -5601,14 +4337,14 @@ export default function AppPage() {
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                     <span style={{ fontWeight: 700, fontSize: 15 }}>{p.amount.toLocaleString()} {p.currency}</span>
-                                    {p.currency !== "USD" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>≈ ${fmt(p.amountUsd)}</span>}
+                                    {p.currency !== "USD" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>в‰€ ${fmt(p.amountUsd)}</span>}
                                     <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "var(--accent-light)", color: "var(--accent)", fontWeight: 500 }}>{SALARY_PAYMENT_TYPES[p.type] ?? p.type}</span>
-                                    {p.isPaid && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(5,150,105,0.12)", color: "#059669", fontWeight: 600 }}>✓ Выплачено</span>}
+                                    {p.isPaid && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(5,150,105,0.12)", color: "#059669", fontWeight: 600 }}>вњ“ Р’С‹РїР»Р°С‡РµРЅРѕ</span>}
                                   </div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
                                     {p.note && <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{p.note}</span>}
                                     <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{new Date(p.createdAt).toLocaleDateString("ru-RU")}</span>
-                                    {p.isPaid && p.paidAt && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>· выплачено {new Date(p.paidAt).toLocaleDateString("ru-RU")}</span>}
+                                    {p.isPaid && p.paidAt && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>В· РІС‹РїР»Р°С‡РµРЅРѕ {new Date(p.paidAt).toLocaleDateString("ru-RU")}</span>}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -5616,11 +4352,11 @@ export default function AppPage() {
                                     style={{ padding: "5px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
                                       background: p.isPaid ? "rgba(220,38,38,0.1)" : "rgba(5,150,105,0.12)",
                                       color: p.isPaid ? "#DC2626" : "#059669" }}>
-                                    {p.isPaid ? "Отменить" : "Выплатить"}
+                                    {p.isPaid ? "РћС‚РјРµРЅРёС‚СЊ" : "Р’С‹РїР»Р°С‚РёС‚СЊ"}
                                   </button>
                                   <button onClick={() => deleteSalaryPayment(p.id)}
                                     style={{ padding: "5px 8px", borderRadius: 7, border: "none", cursor: "pointer", background: "rgba(220,38,38,0.08)", color: "#DC2626", fontSize: 13 }}>
-                                    ✕
+                                    вњ•
                                   </button>
                                 </div>
                               </div>
@@ -5635,28 +4371,28 @@ export default function AppPage() {
               );
             }
 
-            // ── LIST VIEW ─────────────────────────────────────────────────
+            // в”Ђв”Ђ LIST VIEW в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             return (
               <div style={{ display: "grid", gap: 16 }}>
                 <div className="page-header">
                   <div className="page-header-left">
-                    <div className="page-header-title">Зарплата</div>
-                    <div className="page-header-sub">Учёт зарплатного фонда, долгов и выплат сотрудникам</div>
+                    <div className="page-header-title">Р—Р°СЂРїР»Р°С‚Р°</div>
+                    <div className="page-header-sub">РЈС‡С‘С‚ Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°, РґРѕР»РіРѕРІ Рё РІС‹РїР»Р°С‚ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј</div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input type="month" value={salaryPeriod}
                       onChange={e => { setSalaryPeriod(e.target.value); loadSalary(e.target.value); }}
                       style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }} />
-                    <button className="btn btn-secondary" onClick={() => loadSalary()}>Обновить</button>
+                    <button className="btn btn-secondary" onClick={() => loadSalary()}>РћР±РЅРѕРІРёС‚СЊ</button>
                   </div>
                 </div>
 
                 {/* Summary strip */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
                   {[
-                    { label: "Фонд ЗП за период", value: `$${fmt(totalFund)}`, sub: "Ставки + заработок по сделкам", color: "#6366F1", bg: "rgba(99,102,241,0.07)" },
-                    { label: "Долг сотрудникам", value: `$${fmt(totalDebt)}`, sub: totalDebt > 0 ? `У ${salaryData.filter((e: any) => (e.balance ?? 0) > 0).length} сотрудников есть долг` : "Все долги погашены", color: totalDebt > 0 ? "#DC2626" : "#059669", bg: totalDebt > 0 ? "rgba(220,38,38,0.06)" : "rgba(5,150,105,0.06)" },
-                    { label: "Итого выплачено", value: `$${fmt(totalPaid)}`, sub: "Подтверждённые выплаты", color: "#059669", bg: "rgba(5,150,105,0.06)" },
+                    { label: "Р¤РѕРЅРґ Р—Рџ Р·Р° РїРµСЂРёРѕРґ", value: `$${fmt(totalFund)}`, sub: "РЎС‚Р°РІРєРё + Р·Р°СЂР°Р±РѕС‚РѕРє РїРѕ СЃРґРµР»РєР°Рј", color: "#6366F1", bg: "rgba(99,102,241,0.07)" },
+                    { label: "Р”РѕР»Рі СЃРѕС‚СЂСѓРґРЅРёРєР°Рј", value: `$${fmt(totalDebt)}`, sub: totalDebt > 0 ? `РЈ ${salaryData.filter((e: any) => (e.balance ?? 0) > 0).length} СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РµСЃС‚СЊ РґРѕР»Рі` : "Р’СЃРµ РґРѕР»РіРё РїРѕРіР°С€РµРЅС‹", color: totalDebt > 0 ? "#DC2626" : "#059669", bg: totalDebt > 0 ? "rgba(220,38,38,0.06)" : "rgba(5,150,105,0.06)" },
+                    { label: "РС‚РѕРіРѕ РІС‹РїР»Р°С‡РµРЅРѕ", value: `$${fmt(totalPaid)}`, sub: "РџРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РІС‹РїР»Р°С‚С‹", color: "#059669", bg: "rgba(5,150,105,0.06)" },
                   ].map(m => (
                     <div key={m.label} style={{ padding: "18px 22px", borderRadius: 14, background: m.bg, border: `1px solid ${m.color}22` }}>
                       <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
@@ -5668,21 +4404,21 @@ export default function AppPage() {
 
                 {salaryAiPartner && (
                   <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid rgba(139,92,246,0.35)", overflow: "hidden", marginBottom: 12 }}>
-                    <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14 }}>🤖 ИИ офиса</div>
+                    <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14 }}>рџ¤– РР РѕС„РёСЃР°</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto", padding: "12px 20px", gap: 8, alignItems: "center", cursor: "pointer" }}
                       onClick={() => setSelectedSalaryEmp(salaryAiPartner)}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(139,92,246,0.15)", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>🤖</div>
-                        <div><div style={{ fontWeight: 600 }}>{salaryAiPartner.name}</div><div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Доля по сделкам</div></div>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(139,92,246,0.15)", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>рџ¤–</div>
+                        <div><div style={{ fontWeight: 600 }}>{salaryAiPartner.name}</div><div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Р”РѕР»СЏ РїРѕ СЃРґРµР»РєР°Рј</div></div>
                       </div>
-                      <div style={{ textAlign: "right", color: "var(--text-tertiary)", fontSize: 12 }}>—</div>
+                      <div style={{ textAlign: "right", color: "var(--text-tertiary)", fontSize: 12 }}>вЂ”</div>
                       <div style={{ textAlign: "right", fontWeight: 600, color: "#8B5CF6" }}>${fmtDec(salaryAiPartner.dealEarningsUsd ?? 0)}</div>
                       <div style={{ textAlign: "right", fontWeight: 700, color: "#8B5CF6" }}>${fmt(salaryAiPartner.totalAccrued ?? 0)}</div>
                       <div style={{ textAlign: "right", color: "#059669" }}>${fmt(salaryAiPartner.paidUsd ?? 0)}</div>
                       <div style={{ textAlign: "right", fontWeight: 700, color: (salaryAiPartner.balance ?? 0) > 0 ? "#DC2626" : "#059669" }}>
-                        {(salaryAiPartner.balance ?? 0) > 0 ? "−" : "+"}${fmt(Math.abs(salaryAiPartner.balance ?? 0))}
+                        {(salaryAiPartner.balance ?? 0) > 0 ? "в€’" : "+"}${fmt(Math.abs(salaryAiPartner.balance ?? 0))}
                       </div>
-                      <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setSelectedSalaryEmp(salaryAiPartner); }}>Кабинет</button>
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setSelectedSalaryEmp(salaryAiPartner); }}>РљР°Р±РёРЅРµС‚</button>
                     </div>
                   </div>
                 )}
@@ -5690,22 +4426,22 @@ export default function AppPage() {
                 {/* Employee table */}
                 <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
                   <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14 }}>
-                    Сотрудники ({salaryData.length})
+                    РЎРѕС‚СЂСѓРґРЅРёРєРё ({salaryData.length})
                   </div>
                   {salaryLoading ? (
-                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
                   ) : salaryData.length === 0 ? (
-                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников в офисе</div>
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>РќРµС‚ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РІ РѕС„РёСЃРµ</div>
                   ) : (
                     <>
                       {/* Table header */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto", padding: "8px 20px", borderBottom: "1px solid var(--border-light)", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", gap: 8 }}>
-                        <span>Сотрудник</span>
-                        <span style={{ textAlign: "right" }}>Ставка</span>
-                        <span style={{ textAlign: "right" }}>Сделки</span>
-                        <span style={{ textAlign: "right" }}>Начислено</span>
-                        <span style={{ textAlign: "right" }}>Выплачено</span>
-                        <span style={{ textAlign: "right" }}>Баланс</span>
+                        <span>РЎРѕС‚СЂСѓРґРЅРёРє</span>
+                        <span style={{ textAlign: "right" }}>РЎС‚Р°РІРєР°</span>
+                        <span style={{ textAlign: "right" }}>РЎРґРµР»РєРё</span>
+                        <span style={{ textAlign: "right" }}>РќР°С‡РёСЃР»РµРЅРѕ</span>
+                        <span style={{ textAlign: "right" }}>Р’С‹РїР»Р°С‡РµРЅРѕ</span>
+                        <span style={{ textAlign: "right" }}>Р‘Р°Р»Р°РЅСЃ</span>
                         <span />
                       </div>
                       {salaryData.map((emp: any) => {
@@ -5732,9 +4468,9 @@ export default function AppPage() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 600, fontSize: 14 }}>{emp.name || emp.email}</div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` · ${emp.position}` : ""}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` В· ${emp.position}` : ""}</div>
                               </div>
-                              {cfg && <div style={{ marginLeft: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--bg-input)", color: "var(--text-tertiary)" }}>ЗП {cfg.payDay}-е</div>}
+                              {cfg && <div style={{ marginLeft: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--bg-input)", color: "var(--text-tertiary)" }}>Р—Рџ {cfg.payDay}-Рµ</div>}
                             </div>
 
                             {/* Base salary */}
@@ -5742,7 +4478,7 @@ export default function AppPage() {
                               {cfg ? (
                                 <span style={{ fontSize: 13, fontWeight: 600 }}>${fmt(emp.baseUsd ?? 0)}</span>
                               ) : (
-                                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>—</span>
+                                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>вЂ”</span>
                               )}
                             </div>
 
@@ -5766,16 +4502,16 @@ export default function AppPage() {
                             {/* Balance */}
                             <div style={{ textAlign: "right" }}>
                               <span style={{ fontSize: 14, fontWeight: 800, color: isInDebt ? "#DC2626" : "#059669" }}>
-                                {isInDebt ? "−" : "+"}${fmt(Math.abs(debt))}
+                                {isInDebt ? "в€’" : "+"}${fmt(Math.abs(debt))}
                               </span>
-                              {isInDebt && <div style={{ fontSize: 10, color: "#DC2626" }}>долг</div>}
+                              {isInDebt && <div style={{ fontSize: 10, color: "#DC2626" }}>РґРѕР»Рі</div>}
                             </div>
 
                             {/* Actions */}
                             <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
                               <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
                                 onClick={() => setSelectedSalaryEmp(emp)}>
-                                Кабинет →
+                                РљР°Р±РёРЅРµС‚ в†’
                               </button>
                             </div>
                           </div>
@@ -5797,17 +4533,17 @@ export default function AppPage() {
               {isSuperAdmin ? (
                 <div className="card">
                   <div className="card-header">
-                    <span className="card-title">Офисы / Организации</span>
-                    <button className="btn btn-secondary" onClick={loadOrgs}>Обновить</button>
+                    <span className="card-title">РћС„РёСЃС‹ / РћСЂРіР°РЅРёР·Р°С†РёРё</span>
+                    <button className="btn btn-secondary" onClick={loadOrgs}>РћР±РЅРѕРІРёС‚СЊ</button>
                   </div>
                   <div className="card-body" style={{ display: "grid", gap: 16 }}>
                     {/* Create org */}
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
                       <div style={{ flex: 1 }}>
-                        <div className="form-label">Название офиса</div>
-                        <input className="form-input" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="Київ, Дніпро, Львів..." />
+                        <div className="form-label">РќР°Р·РІР°РЅРёРµ РѕС„РёСЃР°</div>
+                        <input className="form-input" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="РљРёС—РІ, Р”РЅС–РїСЂРѕ, Р›СЊРІС–РІ..." />
                       </div>
-                      <button className="btn btn-primary" onClick={createOrg} disabled={!newOrgName.trim()}>+ Создать офис</button>
+                      <button className="btn btn-primary" onClick={createOrg} disabled={!newOrgName.trim()}>+ РЎРѕР·РґР°С‚СЊ РѕС„РёСЃ</button>
                     </div>
 
                     {/* Orgs table */}
@@ -5816,22 +4552,22 @@ export default function AppPage() {
                         <table className="data-table">
                           <thead>
                             <tr>
-                              <th>Название</th>
-                              <th style={{ textAlign: "right" }}>Сотрудников</th>
-                              <th style={{ textAlign: "right" }}>Сделок</th>
+                              <th>РќР°Р·РІР°РЅРёРµ</th>
+                              <th style={{ textAlign: "right" }}>РЎРѕС‚СЂСѓРґРЅРёРєРѕРІ</th>
+                              <th style={{ textAlign: "right" }}>РЎРґРµР»РѕРє</th>
                               <th style={{ width: 180 }}></th>
                             </tr>
                           </thead>
                           <tbody>
                             {orgs.length === 0 ? (
-                              <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет офисов</td></tr>
+                              <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>РќРµС‚ РѕС„РёСЃРѕРІ</td></tr>
                             ) : (
                               orgs.map((o) => (
                                 <tr key={o.id}>
                                   <td style={{ fontWeight: 600 }}>
                                     {o.name}
                                     {o.id === user.activeOrganizationId ? (
-                                      <span style={{ marginLeft: 8, fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px" }}>активный</span>
+                                      <span style={{ marginLeft: 8, fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px" }}>Р°РєС‚РёРІРЅС‹Р№</span>
                                     ) : null}
                                   </td>
                                   <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{o._count.users}</td>
@@ -5843,13 +4579,13 @@ export default function AppPage() {
                                           className="btn btn-secondary"
                                           style={{ padding: "4px 12px", fontSize: 12 }}
                                           onClick={() => switchOrg(o.id)}
-                                        >Перейти</button>
+                                        >РџРµСЂРµР№С‚Рё</button>
                                       ) : null}
                                       <button
                                         className="btn btn-secondary"
                                         style={{ padding: "4px 12px", fontSize: 12, color: "var(--red)" }}
                                         onClick={() => deleteOrg(o.id, o.name)}
-                                      >Удалить</button>
+                                      >РЈРґР°Р»РёС‚СЊ</button>
                                     </div>
                                   </td>
                                 </tr>
@@ -5868,10 +4604,10 @@ export default function AppPage() {
                 <div className="card">
                   <div className="card-header">
                     <div>
-                      <span className="card-title">Курсы валют</span>
+                      <span className="card-title">РљСѓСЂСЃС‹ РІР°Р»СЋС‚</span>
                       {ratesLastSync && (
                         <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                          Обновлено: {new Date(ratesLastSync).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          РћР±РЅРѕРІР»РµРЅРѕ: {new Date(ratesLastSync).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                         </div>
                       )}
                     </div>
@@ -5883,10 +4619,10 @@ export default function AppPage() {
                             style={{ animation: ratesSyncing ? "spin 1s linear infinite" : "none" }}>
                             <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                           </svg>
-                          {ratesSyncing ? "Обновление…" : "Авто-обновить"}
+                          {ratesSyncing ? "РћР±РЅРѕРІР»РµРЅРёРµвЂ¦" : "РђРІС‚Рѕ-РѕР±РЅРѕРІРёС‚СЊ"}
                         </button>
                       )}
-                      <button type="button" className="btn btn-secondary" onClick={() => setRatesModalOpen(true)}>Изменить вручную</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => setRatesModalOpen(true)}>РР·РјРµРЅРёС‚СЊ РІСЂСѓС‡РЅСѓСЋ</button>
                     </div>
                   </div>
                   <div className="card-body" style={{ padding: "10px 16px" }}>
@@ -5900,7 +4636,7 @@ export default function AppPage() {
                       ))}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>
-                      Курсы обновляются автоматически каждый день в 06:00 и при запуске сервера. 1 USD — базовая валюта.
+                      РљСѓСЂСЃС‹ РѕР±РЅРѕРІР»СЏСЋС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РєР°Р¶РґС‹Р№ РґРµРЅСЊ РІ 06:00 Рё РїСЂРё Р·Р°РїСѓСЃРєРµ СЃРµСЂРІРµСЂР°. 1 USD вЂ” Р±Р°Р·РѕРІР°СЏ РІР°Р»СЋС‚Р°.
                     </div>
                   </div>
                 </div>
@@ -5909,29 +4645,29 @@ export default function AppPage() {
               {/* Deal Templates */}
               <div className="card">
                 <div className="card-header">
-                  <span className="card-title">Шаблоны сделок</span>
-                  <button className="btn btn-primary" onClick={() => openTemplateModal()}>+ Новый шаблон</button>
+                  <span className="card-title">РЁР°Р±Р»РѕРЅС‹ СЃРґРµР»РѕРє</span>
+                  <button className="btn btn-primary" onClick={() => openTemplateModal()}>+ РќРѕРІС‹Р№ С€Р°Р±Р»РѕРЅ</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
                   {templates.length === 0 ? (
                     <div style={{ color: "var(--text-secondary)", fontSize: 13, padding: "8px 0" }}>
-                      Нет шаблонов. Создайте свой первый шаблон чтобы использовать кастомные поля в сделках.
+                      РќРµС‚ С€Р°Р±Р»РѕРЅРѕРІ. РЎРѕР·РґР°Р№С‚Рµ СЃРІРѕР№ РїРµСЂРІС‹Р№ С€Р°Р±Р»РѕРЅ С‡С‚РѕР±С‹ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ РєР°СЃС‚РѕРјРЅС‹Рµ РїРѕР»СЏ РІ СЃРґРµР»РєР°С….
                     </div>
                   ) : (
                     <div className="card" style={{ border: "1px solid var(--border-light)" }}>
                       <div className="table-scroll" style={{ padding: 0 }}>
                         <table className="data-table">
-                          <thead><tr><th>Название</th><th>Полей</th><th>Воркеры</th><th style={{ width: 160 }}></th></tr></thead>
+                          <thead><tr><th>РќР°Р·РІР°РЅРёРµ</th><th>РџРѕР»РµР№</th><th>Р’РѕСЂРєРµСЂС‹</th><th style={{ width: 160 }}></th></tr></thead>
                           <tbody>
                             {templates.map((t) => (
                               <tr key={t.id}>
                                 <td style={{ fontWeight: 600 }}>{t.name}</td>
                                 <td style={{ color: "var(--text-secondary)" }}>{t.fields.length}</td>
-                                <td>{t.hasWorkers ? <span className="badge badge-green">Да</span> : <span className="badge badge-amber">Нет</span>}</td>
+                                <td>{t.hasWorkers ? <span className="badge badge-green">Р”Р°</span> : <span className="badge badge-amber">РќРµС‚</span>}</td>
                                 <td>
                                   <div style={{ display: "flex", gap: 6 }}>
-                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openTemplateModal(t)}>Редактировать</button>
-                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteTemplate(t.id, t.name)}>Удалить</button>
+                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openTemplateModal(t)}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button>
+                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteTemplate(t.id, t.name)}>РЈРґР°Р»РёС‚СЊ</button>
                                   </div>
                                 </td>
                               </tr>
@@ -5949,40 +4685,40 @@ export default function AppPage() {
                   <div className="card">
                     <div className="card-header">
                       <div>
-                        <span className="card-title">Клиенты — статусы воронки</span>
+                        <span className="card-title">РљР»РёРµРЅС‚С‹ вЂ” СЃС‚Р°С‚СѓСЃС‹ РІРѕСЂРѕРЅРєРё</span>
                         <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
-                          <strong>Код</strong> — латиница для системы (не меняется). <strong>Название</strong> — как видят сотрудники в CRM.
-                          <strong> Порядок</strong> — сортировка в списках. <strong>Цвет</strong> — hex, например <code style={{ fontSize: 11 }}>#3b82f6</code>.
-                          <strong> Конец воронки</strong> — отметка «финальный» статус (например закрыт).
+                          <strong>РљРѕРґ</strong> вЂ” Р»Р°С‚РёРЅРёС†Р° РґР»СЏ СЃРёСЃС‚РµРјС‹ (РЅРµ РјРµРЅСЏРµС‚СЃСЏ). <strong>РќР°Р·РІР°РЅРёРµ</strong> вЂ” РєР°Рє РІРёРґСЏС‚ СЃРѕС‚СЂСѓРґРЅРёРєРё РІ CRM.
+                          <strong> РџРѕСЂСЏРґРѕРє</strong> вЂ” СЃРѕСЂС‚РёСЂРѕРІРєР° РІ СЃРїРёСЃРєР°С…. <strong>Р¦РІРµС‚</strong> вЂ” hex, РЅР°РїСЂРёРјРµСЂ <code style={{ fontSize: 11 }}>#3b82f6</code>.
+                          <strong> РљРѕРЅРµС† РІРѕСЂРѕРЅРєРё</strong> вЂ” РѕС‚РјРµС‚РєР° В«С„РёРЅР°Р»СЊРЅС‹Р№В» СЃС‚Р°С‚СѓСЃ (РЅР°РїСЂРёРјРµСЂ Р·Р°РєСЂС‹С‚).
                         </div>
                       </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientStatuses()}>Обновить</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientStatuses()}>РћР±РЅРѕРІРёС‚СЊ</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 18 }}>
                       <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Добавить статус</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Р”РѕР±Р°РІРёС‚СЊ СЃС‚Р°С‚СѓСЃ</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
                           <div style={{ minWidth: 160 }}>
-                            <div className="form-label">Код (латиница)</div>
+                            <div className="form-label">РљРѕРґ (Р»Р°С‚РёРЅРёС†Р°)</div>
                             <input className="form-input" value={newClientStatusSlug} onChange={(e) => setNewClientStatusSlug(e.target.value)} placeholder="naprimer_ozhidaet" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} />
                           </div>
                           <div style={{ flex: 1, minWidth: 200 }}>
-                            <div className="form-label">Название в интерфейсе</div>
-                            <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="Например: Ожидает ответа" />
+                            <div className="form-label">РќР°Р·РІР°РЅРёРµ РІ РёРЅС‚РµСЂС„РµР№СЃРµ</div>
+                            <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="РќР°РїСЂРёРјРµСЂ: РћР¶РёРґР°РµС‚ РѕС‚РІРµС‚Р°" />
                           </div>
-                          <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>Добавить статус</button>
+                          <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>Р”РѕР±Р°РІРёС‚СЊ СЃС‚Р°С‚СѓСЃ</button>
                         </div>
                       </div>
                       <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "auto" }}>
                         <table className="data-table">
                           <thead style={{ background: "var(--bg-metric)" }}>
                             <tr>
-                              <th><span style={{ display: "block" }}>Код</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>системный</span></th>
-                              <th>Как в CRM</th>
-                              <th style={{ width: 100 }}>Порядок</th>
-                              <th style={{ width: 120 }}>Цвет (HEX)</th>
-                              <th style={{ width: 110 }}><span style={{ display: "block" }}>Конец</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>воронки</span></th>
-                              <th style={{ width: 180 }}>Действия</th>
+                              <th><span style={{ display: "block" }}>РљРѕРґ</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>СЃРёСЃС‚РµРјРЅС‹Р№</span></th>
+                              <th>РљР°Рє РІ CRM</th>
+                              <th style={{ width: 100 }}>РџРѕСЂСЏРґРѕРє</th>
+                              <th style={{ width: 120 }}>Р¦РІРµС‚ (HEX)</th>
+                              <th style={{ width: 110 }}><span style={{ display: "block" }}>РљРѕРЅРµС†</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>РІРѕСЂРѕРЅРєРё</span></th>
+                              <th style={{ width: 180 }}>Р”РµР№СЃС‚РІРёСЏ</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -6020,11 +4756,11 @@ export default function AppPage() {
                                         });
                                         if (!res.ok) {
                                           const j = await res.json().catch(() => ({}));
-                                          return alert(j.message ?? "Ошибка");
+                                          return alert(j.message ?? "РћС€РёР±РєР°");
                                         }
                                         await loadClientStatuses();
-                                      }}>Сохранить</button>
-                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientStatusRow(s.id)}>Удалить</button>
+                                      }}>РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientStatusRow(s.id)}>РЈРґР°Р»РёС‚СЊ</button>
                                     </div>
                                   </td>
                                 </tr>
@@ -6039,48 +4775,48 @@ export default function AppPage() {
                   <div className="card">
                     <div className="card-header">
                       <div>
-                        <span className="card-title">Клиенты — дополнительные поля</span>
+                        <span className="card-title">РљР»РёРµРЅС‚С‹ вЂ” РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ</span>
                         <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
-                          Поля появляются в форме клиента под стандартными блоками. Банк, ассистент и итог звонка уже есть отдельно.
-                          Для типа «Список» в колонке вариантов укажите значения через запятую или с новой строки.
+                          РџРѕР»СЏ РїРѕСЏРІР»СЏСЋС‚СЃСЏ РІ С„РѕСЂРјРµ РєР»РёРµРЅС‚Р° РїРѕРґ СЃС‚Р°РЅРґР°СЂС‚РЅС‹РјРё Р±Р»РѕРєР°РјРё. Р‘Р°РЅРє, Р°СЃСЃРёСЃС‚РµРЅС‚ Рё РёС‚РѕРі Р·РІРѕРЅРєР° СѓР¶Рµ РµСЃС‚СЊ РѕС‚РґРµР»СЊРЅРѕ.
+                          Р”Р»СЏ С‚РёРїР° В«РЎРїРёСЃРѕРєВ» РІ РєРѕР»РѕРЅРєРµ РІР°СЂРёР°РЅС‚РѕРІ СѓРєР°Р¶РёС‚Рµ Р·РЅР°С‡РµРЅРёСЏ С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ РёР»Рё СЃ РЅРѕРІРѕР№ СЃС‚СЂРѕРєРё.
                         </div>
                       </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientFieldDefinitions()}>Обновить</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientFieldDefinitions()}>РћР±РЅРѕРІРёС‚СЊ</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 18 }}>
                       <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Новое поле</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>РќРѕРІРѕРµ РїРѕР»Рµ</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
                           <div style={{ minWidth: 140 }}>
-                            <div className="form-label">Код поля (латиница)</div>
+                            <div className="form-label">РљРѕРґ РїРѕР»СЏ (Р»Р°С‚РёРЅРёС†Р°)</div>
                             <input className="form-input" value={newClientFieldKey} onChange={(e) => setNewClientFieldKey(e.target.value)} placeholder="istochnik" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} />
                           </div>
                           <div style={{ flex: 1, minWidth: 180 }}>
-                            <div className="form-label">Подпись в форме</div>
-                            <input className="form-input" value={newClientFieldLabel} onChange={(e) => setNewClientFieldLabel(e.target.value)} placeholder="Источник лида" />
+                            <div className="form-label">РџРѕРґРїРёСЃСЊ РІ С„РѕСЂРјРµ</div>
+                            <input className="form-input" value={newClientFieldLabel} onChange={(e) => setNewClientFieldLabel(e.target.value)} placeholder="РСЃС‚РѕС‡РЅРёРє Р»РёРґР°" />
                           </div>
                           <div style={{ width: 200 }}>
-                            <div className="form-label">Тип данных</div>
+                            <div className="form-label">РўРёРї РґР°РЅРЅС‹С…</div>
                             <select className="form-input" value={newClientFieldType} onChange={(e) => setNewClientFieldType(e.target.value as FieldType)}>
                               {FIELD_TYPES_ALL.map((t) => (
                                 <option key={t} value={t}>{FIELD_TYPE_LABELS[t]}</option>
                               ))}
                             </select>
                           </div>
-                          <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>Добавить поле</button>
+                          <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>Р”РѕР±Р°РІРёС‚СЊ РїРѕР»Рµ</button>
                         </div>
                       </div>
                       <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "auto" }}>
                         <table className="data-table">
                           <thead style={{ background: "var(--bg-metric)" }}>
                             <tr>
-                              <th><span style={{ display: "block" }}>Код</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>не меняется</span></th>
-                              <th>Подпись</th>
-                              <th style={{ width: 160 }}>Тип</th>
-                              <th style={{ width: 90 }}>Порядок</th>
-                              <th style={{ width: 80 }}>Обяз.</th>
-                              <th style={{ minWidth: 160 }}><span style={{ display: "block" }}>Варианты</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>для списка</span></th>
-                              <th style={{ width: 180 }}>Действия</th>
+                              <th><span style={{ display: "block" }}>РљРѕРґ</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>РЅРµ РјРµРЅСЏРµС‚СЃСЏ</span></th>
+                              <th>РџРѕРґРїРёСЃСЊ</th>
+                              <th style={{ width: 160 }}>РўРёРї</th>
+                              <th style={{ width: 90 }}>РџРѕСЂСЏРґРѕРє</th>
+                              <th style={{ width: 80 }}>РћР±СЏР·.</th>
+                              <th style={{ minWidth: 160 }}><span style={{ display: "block" }}>Р’Р°СЂРёР°РЅС‚С‹</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>РґР»СЏ СЃРїРёСЃРєР°</span></th>
+                              <th style={{ width: 180 }}>Р”РµР№СЃС‚РІРёСЏ</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -6126,11 +4862,11 @@ export default function AppPage() {
                                         });
                                         if (!res.ok) {
                                           const j = await res.json().catch(() => ({}));
-                                          return alert(j.message ?? "Ошибка");
+                                          return alert(j.message ?? "РћС€РёР±РєР°");
                                         }
                                         await loadClientFieldDefinitions();
-                                      }}>Сохранить</button>
-                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientFieldRow(f.id)}>Удалить</button>
+                                      }}>РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientFieldRow(f.id)}>РЈРґР°Р»РёС‚СЊ</button>
                                     </div>
                                   </td>
                                 </tr>
@@ -6146,53 +4882,53 @@ export default function AppPage() {
 
               <div className="card">
                 <div className="card-header">
-                  <span className="card-title">Пользователи</span>
-                  <button className="btn btn-secondary" onClick={loadUsers}>Обновить</button>
+                  <span className="card-title">РџРѕР»СЊР·РѕРІР°С‚РµР»Рё</span>
+                  <button className="btn btn-secondary" onClick={loadUsers}>РћР±РЅРѕРІРёС‚СЊ</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 16 }}>
                   {!isAdmin ? (
-                    <div style={{ color: "var(--text-secondary)" }}>Доступно только для Админа и Супер Админа.</div>
+                    <div style={{ color: "var(--text-secondary)" }}>Р”РѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РґР»СЏ РђРґРјРёРЅР° Рё РЎСѓРїРµСЂ РђРґРјРёРЅР°.</div>
                   ) : (
                     <>
                       {/* create form */}
                       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                         <div>
-                          <div className="form-label">Логин (email)</div>
-                          <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} placeholder="email или username" />
+                          <div className="form-label">Р›РѕРіРёРЅ (email)</div>
+                          <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} placeholder="email РёР»Рё username" />
                         </div>
                         <div>
-                          <div className="form-label">Имя (отображается в CRM)</div>
-                          <input className="form-input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Иван Петров" />
+                          <div className="form-label">РРјСЏ (РѕС‚РѕР±СЂР°Р¶Р°РµС‚СЃСЏ РІ CRM)</div>
+                          <input className="form-input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="РРІР°РЅ РџРµС‚СЂРѕРІ" />
                         </div>
                         <div>
-                          <div className="form-label">Пароль</div>
+                          <div className="form-label">РџР°СЂРѕР»СЊ</div>
                           <input className="form-input" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">Должность / Роль в команде</div>
-                          <input className="form-input" value={newUserPosition} onChange={(e) => setNewUserPosition(e.target.value)} placeholder="Воркер, Кассир, Бухгалтер..." />
+                          <div className="form-label">Р”РѕР»Р¶РЅРѕСЃС‚СЊ / Р РѕР»СЊ РІ РєРѕРјР°РЅРґРµ</div>
+                          <input className="form-input" value={newUserPosition} onChange={(e) => setNewUserPosition(e.target.value)} placeholder="Р’РѕСЂРєРµСЂ, РљР°СЃСЃРёСЂ, Р‘СѓС…РіР°Р»С‚РµСЂ..." />
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                           <div>
-                            <div className="form-label">Доступ</div>
+                            <div className="form-label">Р”РѕСЃС‚СѓРї</div>
                             <select className="form-input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
-                              <option value="WORKER">Работник</option>
-                              <option value="MANAGER">Менеджер</option>
-                              <option value="ADMIN">Админ офиса</option>
-                              {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
+                              <option value="WORKER">Р Р°Р±РѕС‚РЅРёРє</option>
+                              <option value="MANAGER">РњРµРЅРµРґР¶РµСЂ</option>
+                              <option value="ADMIN">РђРґРјРёРЅ РѕС„РёСЃР°</option>
+                              {isSuperAdmin && <option value="SUPER_ADMIN">РЎСѓРїРµСЂ РђРґРјРёРЅ</option>}
                             </select>
                           </div>
                           <div>
-                            <div className="form-label">Офис</div>
+                            <div className="form-label">РћС„РёСЃ</div>
                             <select className="form-input" value={newUserTargetOrgId} onChange={(e) => setNewUserTargetOrgId(e.target.value)}>
-                              <option value="">Текущий</option>
+                              <option value="">РўРµРєСѓС‰РёР№</option>
                               {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                             </select>
                           </div>
                         </div>
                       </div>
                       <div>
-                        <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ Создать пользователя</button>
+                        <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ РЎРѕР·РґР°С‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ</button>
                       </div>
 
                       {/* users table */}
@@ -6201,24 +4937,24 @@ export default function AppPage() {
                           <table className="data-table">
                             <thead>
                               <tr>
-                                <th>Логин</th>
-                                <th>Имя</th>
-                                <th>Должность</th>
-                                <th>Офис</th>
-                                <th>Доступ</th>
-                                <th style={{ width: 260 }}>Действия</th>
+                                <th>Р›РѕРіРёРЅ</th>
+                                <th>РРјСЏ</th>
+                                <th>Р”РѕР»Р¶РЅРѕСЃС‚СЊ</th>
+                                <th>РћС„РёСЃ</th>
+                                <th>Р”РѕСЃС‚СѓРї</th>
+                                <th style={{ width: 260 }}>Р”РµР№СЃС‚РІРёСЏ</th>
                               </tr>
                             </thead>
                             <tbody>
                               {usersLoading ? (
-                                <tr><td colSpan={6} style={{ padding: 16 }}>Загрузка...</td></tr>
+                                <tr><td colSpan={6} style={{ padding: 16 }}>Р—Р°РіСЂСѓР·РєР°...</td></tr>
                               ) : users.length === 0 ? (
-                                <tr><td colSpan={6} style={{ padding: 16 }}>Пока пусто</td></tr>
+                                <tr><td colSpan={6} style={{ padding: 16 }}>РџРѕРєР° РїСѓСЃС‚Рѕ</td></tr>
                               ) : (
                                 users.map((u) => (
                                   <tr key={u.id}>
                                     <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{u.email}</td>
-                                    <td style={{ fontWeight: 600 }}>{u.name || <span style={{ color: "var(--text-tertiary)", fontStyle: "italic", fontWeight: 400 }}>не задано</span>}</td>
+                                    <td style={{ fontWeight: 600 }}>{u.name || <span style={{ color: "var(--text-tertiary)", fontStyle: "italic", fontWeight: 400 }}>РЅРµ Р·Р°РґР°РЅРѕ</span>}</td>
                                     <td>
                                       {userPositionId === u.id ? (
                                         <div style={{ display: "flex", gap: 4 }}>
@@ -6226,23 +4962,23 @@ export default function AppPage() {
                                             className="form-input"
                                             value={userPositionValue}
                                             onChange={(e) => setUserPositionValue(e.target.value)}
-                                            placeholder="Воркер..."
+                                            placeholder="Р’РѕСЂРєРµСЂ..."
                                             style={{ width: 120 }}
                                           />
                                           <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPosition(u.id)}>OK</button>
-                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPositionId(null)}>×</button>
+                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPositionId(null)}>Г—</button>
                                         </div>
                                       ) : (
                                         <span
                                           style={{ cursor: "pointer", color: u.position ? "var(--text-primary)" : "var(--text-tertiary)", fontStyle: u.position ? "normal" : "italic" }}
                                           onClick={() => { setUserPositionId(u.id); setUserPositionValue(u.position ?? ""); }}
                                         >
-                                          {u.position || "не задана"}
+                                          {u.position || "РЅРµ Р·Р°РґР°РЅР°"}
                                         </span>
                                       )}
                                     </td>
                                     <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                                      {orgs.find((o) => o.id === u.organizationId)?.name ?? "—"}
+                                      {orgs.find((o) => o.id === u.organizationId)?.name ?? "вЂ”"}
                                     </td>
                                     <td>
                                       <select
@@ -6251,10 +4987,10 @@ export default function AppPage() {
                                         style={{ width: 120 }}
                                         onChange={(e) => changeUserRole(u.id, e.target.value as any)}
                                       >
-                                        <option value="WORKER">Работник</option>
-                                        <option value="MANAGER">Менеджер</option>
-                                        <option value="ADMIN">Админ офиса</option>
-                                        {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
+                                        <option value="WORKER">Р Р°Р±РѕС‚РЅРёРє</option>
+                                        <option value="MANAGER">РњРµРЅРµРґР¶РµСЂ</option>
+                                        <option value="ADMIN">РђРґРјРёРЅ РѕС„РёСЃР°</option>
+                                        {isSuperAdmin && <option value="SUPER_ADMIN">РЎСѓРїРµСЂ РђРґРјРёРЅ</option>}
                                       </select>
                                     </td>
                                     <td>
@@ -6264,24 +5000,24 @@ export default function AppPage() {
                                             <input
                                               className="form-input"
                                               type="password"
-                                              placeholder="Новый пароль"
+                                              placeholder="РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ"
                                               value={userPwdValue}
                                               onChange={(e) => setUserPwdValue(e.target.value)}
                                               style={{ width: 120 }}
                                             />
                                             <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => resetUserPassword(u.id)}>OK</button>
-                                            <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
+                                            <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>Г—</button>
                                           </div>
                                         ) : (
                                           <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(u.id); setUserPwdValue(""); }}>
-                                            Сменить пароль
+                                            РЎРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ
                                           </button>
                                         )}
                                         <button
                                           className="btn btn-secondary"
                                           style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }}
                                           onClick={() => deleteUser(u.id, u.email)}
-                                        >Удалить</button>
+                                        >РЈРґР°Р»РёС‚СЊ</button>
                                       </div>
                                     </td>
                                   </tr>
@@ -6296,28 +5032,28 @@ export default function AppPage() {
                 </div>
               </div>
 
-              {/* Audit log — admin only */}
+              {/* Audit log вЂ” admin only */}
               {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
                 <div className="card">
                   <div className="card-header">
-                    <span className="card-title">Журнал действий</span>
-                    <button className="btn btn-secondary" onClick={() => loadAuditLog(0)} style={{ fontSize: 12 }}>Обновить</button>
+                    <span className="card-title">Р–СѓСЂРЅР°Р» РґРµР№СЃС‚РІРёР№</span>
+                    <button className="btn btn-secondary" onClick={() => loadAuditLog(0)} style={{ fontSize: 12 }}>РћР±РЅРѕРІРёС‚СЊ</button>
                   </div>
                   <div className="card-body" style={{ padding: 0 }}>
                     {auditLoading ? (
-                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Загрузка...</div>
+                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
                     ) : auditLog.length === 0 ? (
-                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Нет записей</div>
+                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>РќРµС‚ Р·Р°РїРёСЃРµР№</div>
                     ) : (
                       <>
                         <div className="table-scroll">
                           <table className="data-table">
                             <thead>
                               <tr>
-                                <th>Время</th>
-                                <th>Сотрудник</th>
-                                <th>Действие</th>
-                                <th>Объект</th>
+                                <th>Р’СЂРµРјСЏ</th>
+                                <th>РЎРѕС‚СЂСѓРґРЅРёРє</th>
+                                <th>Р”РµР№СЃС‚РІРёРµ</th>
+                                <th>РћР±СЉРµРєС‚</th>
                                 <th>IP</th>
                               </tr>
                             </thead>
@@ -6341,10 +5077,10 @@ export default function AppPage() {
                                     </span>
                                   </td>
                                   <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                                    {row.entityType ? `${row.entityType}${row.entityId ? ` #${row.entityId.slice(0, 8)}` : ""}` : "—"}
+                                    {row.entityType ? `${row.entityType}${row.entityId ? ` #${row.entityId.slice(0, 8)}` : ""}` : "вЂ”"}
                                   </td>
                                   <td style={{ fontSize: 11, color: "var(--text-tertiary)", fontFamily: "monospace" }}>
-                                    {row.ip ?? "—"}
+                                    {row.ip ?? "вЂ”"}
                                   </td>
                                 </tr>
                               ))}
@@ -6353,11 +5089,11 @@ export default function AppPage() {
                         </div>
                         {/* Pagination */}
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderTop: "1px solid var(--border-light)", fontSize: 12, color: "var(--text-secondary)" }}>
-                          <span>{auditTotal} записей</span>
+                          <span>{auditTotal} Р·Р°РїРёСЃРµР№</span>
                           <div style={{ display: "flex", gap: 6 }}>
-                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset === 0} onClick={() => loadAuditLog(Math.max(0, auditOffset - AUDIT_LIMIT))}>← Назад</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset === 0} onClick={() => loadAuditLog(Math.max(0, auditOffset - AUDIT_LIMIT))}>в†ђ РќР°Р·Р°Рґ</button>
                             <span style={{ lineHeight: "28px" }}>{Math.floor(auditOffset / AUDIT_LIMIT) + 1} / {Math.ceil(auditTotal / AUDIT_LIMIT) || 1}</span>
-                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset + AUDIT_LIMIT >= auditTotal} onClick={() => loadAuditLog(auditOffset + AUDIT_LIMIT)}>Вперёд →</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset + AUDIT_LIMIT >= auditTotal} onClick={() => loadAuditLog(auditOffset + AUDIT_LIMIT)}>Р’РїРµСЂС‘Рґ в†’</button>
                           </div>
                         </div>
                       </>
@@ -6373,13 +5109,13 @@ export default function AppPage() {
             <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
 
               {profileLoading ? (
-                <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
+                <div style={{ color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
               ) : (
                 <>
                   {/* Info card */}
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">Личные данные</span>
+                      <span className="card-title">Р›РёС‡РЅС‹Рµ РґР°РЅРЅС‹Рµ</span>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 14 }}>
 
@@ -6396,7 +5132,7 @@ export default function AppPage() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 16 }}>{profile?.name || profile?.email}</div>
                           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-                            {ROLE_LABELS[profile?.role as Role] ?? profile?.role} · {profile?.organization?.name}
+                            {ROLE_LABELS[profile?.role as Role] ?? profile?.role} В· {profile?.organization?.name}
                           </div>
                           {profile?.position && (
                             <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{profile.position}</div>
@@ -6406,21 +5142,21 @@ export default function AppPage() {
 
                       <div className="g2">
                         <div>
-                          <div className="form-label">Имя</div>
-                          <input className="form-input" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Иван Иванов" />
+                          <div className="form-label">РРјСЏ</div>
+                          <input className="form-input" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="РРІР°РЅ РРІР°РЅРѕРІ" />
                         </div>
                         <div>
-                          <div className="form-label">Email (логин)</div>
+                          <div className="form-label">Email (Р»РѕРіРёРЅ)</div>
                           <input className="form-input" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="email@example.com" />
                         </div>
                       </div>
 
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Контакты</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>РљРѕРЅС‚Р°РєС‚С‹</div>
                         <div style={{ display: "grid", gap: 12 }}>
                           <div className="g2">
                             <div>
-                              <div className="form-label">Телефон</div>
+                              <div className="form-label">РўРµР»РµС„РѕРЅ</div>
                               <input className="form-input" value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="+380 XX XXX XXXX" />
                             </div>
                             <div>
@@ -6429,9 +5165,9 @@ export default function AppPage() {
                             </div>
                           </div>
                           <div>
-                            <div className="form-label">Другие контакты</div>
+                            <div className="form-label">Р”СЂСѓРіРёРµ РєРѕРЅС‚Р°РєС‚С‹</div>
                             <textarea className="form-input" value={profileContacts} onChange={(e) => setProfileContacts(e.target.value)}
-                              placeholder="Viber, WhatsApp, другое..." style={{ height: 72 }} />
+                              placeholder="Viber, WhatsApp, РґСЂСѓРіРѕРµ..." style={{ height: 72 }} />
                           </div>
                         </div>
                       </div>
@@ -6445,7 +5181,7 @@ export default function AppPage() {
 
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving}>
-                          {profileSaving ? "Сохраняем..." : "Сохранить"}
+                          {profileSaving ? "РЎРѕС…СЂР°РЅСЏРµРј..." : "РЎРѕС…СЂР°РЅРёС‚СЊ"}
                         </button>
                       </div>
                     </div>
@@ -6454,20 +5190,20 @@ export default function AppPage() {
                   {/* Password change card */}
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">Смена пароля</span>
+                      <span className="card-title">РЎРјРµРЅР° РїР°СЂРѕР»СЏ</span>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 14 }}>
                       <div>
-                        <div className="form-label">Текущий пароль</div>
+                        <div className="form-label">РўРµРєСѓС‰РёР№ РїР°СЂРѕР»СЊ</div>
                         <input className="form-input" type="password" value={pwdOld} onChange={(e) => setPwdOld(e.target.value)} autoComplete="current-password" />
                       </div>
                       <div className="g2">
                         <div>
-                          <div className="form-label">Новый пароль</div>
+                          <div className="form-label">РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ</div>
                           <input className="form-input" type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} autoComplete="new-password" />
                         </div>
                         <div>
-                          <div className="form-label">Повтор пароля</div>
+                          <div className="form-label">РџРѕРІС‚РѕСЂ РїР°СЂРѕР»СЏ</div>
                           <input className="form-input" type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} autoComplete="new-password" />
                         </div>
                       </div>
@@ -6481,7 +5217,7 @@ export default function AppPage() {
 
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button className="btn btn-primary" onClick={changePassword} disabled={pwdSaving}>
-                          {pwdSaving ? "Меняем..." : "Изменить пароль"}
+                          {pwdSaving ? "РњРµРЅСЏРµРј..." : "РР·РјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ"}
                         </button>
                       </div>
                     </div>
@@ -6490,23 +5226,23 @@ export default function AppPage() {
                   {/* Active sessions card */}
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">Активные сессии</span>
+                      <span className="card-title">РђРєС‚РёРІРЅС‹Рµ СЃРµСЃСЃРёРё</span>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={loadSessions} style={{ fontSize: 12 }}>Обновить</button>
-                        <button className="btn btn-secondary" onClick={revokeAllSessions} style={{ fontSize: 12, color: "var(--red)" }}>Завершить все другие</button>
+                        <button className="btn btn-secondary" onClick={loadSessions} style={{ fontSize: 12 }}>РћР±РЅРѕРІРёС‚СЊ</button>
+                        <button className="btn btn-secondary" onClick={revokeAllSessions} style={{ fontSize: 12, color: "var(--red)" }}>Р—Р°РІРµСЂС€РёС‚СЊ РІСЃРµ РґСЂСѓРіРёРµ</button>
                       </div>
                     </div>
                     <div className="card-body" style={{ padding: 0 }}>
                       {sessionsLoading ? (
-                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Загрузка...</div>
+                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°...</div>
                       ) : sessions.length === 0 ? (
-                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Нет активных сессий</div>
+                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>РќРµС‚ Р°РєС‚РёРІРЅС‹С… СЃРµСЃСЃРёР№</div>
                       ) : (
                         <div style={{ display: "grid" }}>
                           {sessions.map((s, i) => {
                             const ua = s.userAgent ?? "";
                             const isMobile = /mobile|android|iphone|ipad/i.test(ua);
-                            const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/ ]([\d.]+)/)?.[0] ?? "Браузер неизвестен";
+                            const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/ ]([\d.]+)/)?.[0] ?? "Р‘СЂР°СѓР·РµСЂ РЅРµРёР·РІРµСЃС‚РµРЅ";
                             const isFirst = i === 0;
                             return (
                               <div key={s.id} style={{
@@ -6515,19 +5251,19 @@ export default function AppPage() {
                                 borderTop: i > 0 ? "1px solid var(--border-light)" : undefined,
                                 background: isFirst ? "var(--accent)06" : undefined,
                               }}>
-                                <div style={{ fontSize: 22, flexShrink: 0 }}>{isMobile ? "📱" : "💻"}</div>
+                                <div style={{ fontSize: 22, flexShrink: 0 }}>{isMobile ? "рџ“±" : "рџ’»"}</div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600 }}>
                                     {browser}
                                     {isFirst && (
-                                      <span style={{ marginLeft: 8, fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>текущая</span>
+                                      <span style={{ marginLeft: 8, fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>С‚РµРєСѓС‰Р°СЏ</span>
                                     )}
                                   </div>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                                    IP: {s.ip ?? "—"} · Последняя активность: {new Date(s.lastActiveAt).toLocaleString("ru")}
+                                    IP: {s.ip ?? "вЂ”"} В· РџРѕСЃР»РµРґРЅСЏСЏ Р°РєС‚РёРІРЅРѕСЃС‚СЊ: {new Date(s.lastActiveAt).toLocaleString("ru")}
                                   </div>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
-                                    Создана: {new Date(s.createdAt).toLocaleString("ru")}
+                                    РЎРѕР·РґР°РЅР°: {new Date(s.createdAt).toLocaleString("ru")}
                                   </div>
                                 </div>
                                 {!isFirst && (
@@ -6537,7 +5273,7 @@ export default function AppPage() {
                                     onClick={() => revokeSession(s.id)}
                                     disabled={sessionRevoking === s.id}
                                   >
-                                    {sessionRevoking === s.id ? "..." : "Завершить"}
+                                    {sessionRevoking === s.id ? "..." : "Р—Р°РІРµСЂС€РёС‚СЊ"}
                                   </button>
                                 )}
                               </div>
@@ -6606,24 +5342,24 @@ export default function AppPage() {
           <div className="card" style={{ width: 700, maxWidth: "100%", maxHeight: "92vh", overflow: "auto" }}>
             <div className="card-header">
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="card-title">{templateEditing ? "Редактировать шаблон" : "Новый шаблон сделки"}</span>
+                <span className="card-title">{templateEditing ? "Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ С€Р°Р±Р»РѕРЅ" : "РќРѕРІС‹Р№ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё"}</span>
                 {!templateEditing && (
                   <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500 }}>
-                    Шаг {tplWizardStep === "type" ? "1" : "2"} из 2
+                    РЁР°Рі {tplWizardStep === "type" ? "1" : "2"} РёР· 2
                   </span>
                 )}
               </div>
-              <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>Отмена</button>
+              <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>РћС‚РјРµРЅР°</button>
             </div>
 
-            {/* ── ШАГ 1: выбор типа схемы ── */}
+            {/* в”Ђв”Ђ РЁРђР“ 1: РІС‹Р±РѕСЂ С‚РёРїР° СЃС…РµРјС‹ в”Ђв”Ђ */}
             {tplWizardStep === "type" && !templateEditing && (
               <div className="card-body" style={{ display: "grid", gap: 20 }}>
                 <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-                  Выберите, как будут считаться деньги в сделках по этому шаблону:
+                  Р’С‹Р±РµСЂРёС‚Рµ, РєР°Рє Р±СѓРґСѓС‚ СЃС‡РёС‚Р°С‚СЊСЃСЏ РґРµРЅСЊРіРё РІ СЃРґРµР»РєР°С… РїРѕ СЌС‚РѕРјСѓ С€Р°Р±Р»РѕРЅСѓ:
                 </div>
 
-                {/* Карточка 1: схема посредника */}
+                {/* РљР°СЂС‚РѕС‡РєР° 1: СЃС…РµРјР° РїРѕСЃСЂРµРґРЅРёРєР° */}
                 <div
                   onClick={() => {
                     setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
@@ -6639,24 +5375,24 @@ export default function AppPage() {
                   onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent)33")}
                   onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}
                 >
-                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>💸</div>
+                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>рџ’ё</div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Схема с посредником, AI и сотрудниками</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>РЎС…РµРјР° СЃ РїРѕСЃСЂРµРґРЅРёРєРѕРј, AI Рё СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё</div>
                     <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                      Подходит если деньги идут по цепочке:
+                      РџРѕРґС…РѕРґРёС‚ РµСЃР»Рё РґРµРЅСЊРіРё РёРґСѓС‚ РїРѕ С†РµРїРѕС‡РєРµ:
                     </div>
                     <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {["Сумма завода", "→ вычет посредника %", "→ вычет AI %", "→ зарплатный фонд %", "→ прибыль офиса"].map((s, i) => (
+                      {["РЎСѓРјРјР° Р·Р°РІРѕРґР°", "в†’ РІС‹С‡РµС‚ РїРѕСЃСЂРµРґРЅРёРєР° %", "в†’ РІС‹С‡РµС‚ AI %", "в†’ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ %", "в†’ РїСЂРёР±С‹Р»СЊ РѕС„РёСЃР°"].map((s, i) => (
                         <span key={i} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 20, background: i === 0 ? "var(--accent)" : "var(--bg-metric)", color: i === 0 ? "#fff" : "var(--text-secondary)", fontWeight: i === 0 ? 700 : 400 }}>{s}</span>
                       ))}
                     </div>
                     <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      Система сама считает сколько кому достаётся. Вам остаётся только вводить суммы и проценты.
+                      РЎРёСЃС‚РµРјР° СЃР°РјР° СЃС‡РёС‚Р°РµС‚ СЃРєРѕР»СЊРєРѕ РєРѕРјСѓ РґРѕСЃС‚Р°С‘С‚СЃСЏ. Р’Р°Рј РѕСЃС‚Р°С‘С‚СЃСЏ С‚РѕР»СЊРєРѕ РІРІРѕРґРёС‚СЊ СЃСѓРјРјС‹ Рё РїСЂРѕС†РµРЅС‚С‹.
                     </div>
                   </div>
                 </div>
 
-                {/* Карточка 2: простая схема */}
+                {/* РљР°СЂС‚РѕС‡РєР° 2: РїСЂРѕСЃС‚Р°СЏ СЃС…РµРјР° */}
                 <div
                   onClick={() => {
                     setTplCalcPreset("");
@@ -6674,48 +5410,48 @@ export default function AppPage() {
                   onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent)22")}
                   onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}
                 >
-                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--bg-metric)", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>📋</div>
+                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--bg-metric)", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>рџ“‹</div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Произвольная форма</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>РџСЂРѕРёР·РІРѕР»СЊРЅР°СЏ С„РѕСЂРјР°</div>
                     <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                      Вы сами добавляете нужные поля — текст, числа, списки, флажки. Подходит для любой структуры данных.
+                      Р’С‹ СЃР°РјРё РґРѕР±Р°РІР»СЏРµС‚Рµ РЅСѓР¶РЅС‹Рµ РїРѕР»СЏ вЂ” С‚РµРєСЃС‚, С‡РёСЃР»Р°, СЃРїРёСЃРєРё, С„Р»Р°Р¶РєРё. РџРѕРґС…РѕРґРёС‚ РґР»СЏ Р»СЋР±РѕР№ СЃС‚СЂСѓРєС‚СѓСЂС‹ РґР°РЅРЅС‹С….
                     </div>
                     <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      Расчёт зарплаты сотрудников по одному выбранному числовому полю.
+                      Р Р°СЃС‡С‘С‚ Р·Р°СЂРїР»Р°С‚С‹ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РїРѕ РѕРґРЅРѕРјСѓ РІС‹Р±СЂР°РЅРЅРѕРјСѓ С‡РёСЃР»РѕРІРѕРјСѓ РїРѕР»СЋ.
                     </div>
                   </div>
                 </div>
 
                 <div style={{ paddingTop: 4, textAlign: "center", fontSize: 12, color: "var(--text-tertiary)" }}>
-                  Нажмите на карточку чтобы продолжить
+                  РќР°Р¶РјРёС‚Рµ РЅР° РєР°СЂС‚РѕС‡РєСѓ С‡С‚РѕР±С‹ РїСЂРѕРґРѕР»Р¶РёС‚СЊ
                 </div>
               </div>
             )}
 
-            {/* ── ШАГ 2: настройка полей ── */}
+            {/* в”Ђв”Ђ РЁРђР“ 2: РЅР°СЃС‚СЂРѕР№РєР° РїРѕР»РµР№ в”Ђв”Ђ */}
             {(tplWizardStep === "fields" || templateEditing) && (
               <div className="card-body" style={{ display: "grid", gap: 18 }}>
 
-                {/* Название */}
+                {/* РќР°Р·РІР°РЅРёРµ */}
                 <div>
-                  <div className="form-label">Название шаблона *</div>
+                  <div className="form-label">РќР°Р·РІР°РЅРёРµ С€Р°Р±Р»РѕРЅР° *</div>
                   <input className="form-input" value={tplName} onChange={(e) => setTplName(e.target.value)}
-                    placeholder="Например: Обменник PLN, Крипто-схема…" autoFocus />
+                    placeholder="РќР°РїСЂРёРјРµСЂ: РћР±РјРµРЅРЅРёРє PLN, РљСЂРёРїС‚Рѕ-СЃС…РµРјР°вЂ¦" autoFocus />
                 </div>
 
-                {/* Схема — краткий блок, только если MEDIATOR_AI */}
+                {/* РЎС…РµРјР° вЂ” РєСЂР°С‚РєРёР№ Р±Р»РѕРє, С‚РѕР»СЊРєРѕ РµСЃР»Рё MEDIATOR_AI */}
                 {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
                   <div style={{ display: "grid", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid var(--accent)33" }}>
                     <div style={{ background: "var(--accent)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>💸</span>
-                      <span style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>Схема: посредник → AI → зарплатный фонд → прибыль</span>
+                      <span style={{ fontSize: 16 }}>рџ’ё</span>
+                      <span style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>РЎС…РµРјР°: РїРѕСЃСЂРµРґРЅРёРє в†’ AI в†’ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ в†’ РїСЂРёР±С‹Р»СЊ</span>
                     </div>
                     <div style={{ padding: "12px 16px", background: "var(--accent)06", display: "grid", gap: 10 }}>
                       <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                        Три поля расчёта уже добавлены (выделены цветом и заблокированы). Вам нужно только задать <strong>% зарплатного фонда</strong> — сколько процентов от оставшейся суммы идёт на зарплаты сотрудников.
+                        РўСЂРё РїРѕР»СЏ СЂР°СЃС‡С‘С‚Р° СѓР¶Рµ РґРѕР±Р°РІР»РµРЅС‹ (РІС‹РґРµР»РµРЅС‹ С†РІРµС‚РѕРј Рё Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅС‹). Р’Р°Рј РЅСѓР¶РЅРѕ С‚РѕР»СЊРєРѕ Р·Р°РґР°С‚СЊ <strong>% Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°</strong> вЂ” СЃРєРѕР»СЊРєРѕ РїСЂРѕС†РµРЅС‚РѕРІ РѕС‚ РѕСЃС‚Р°РІС€РµР№СЃСЏ СЃСѓРјРјС‹ РёРґС‘С‚ РЅР° Р·Р°СЂРїР»Р°С‚С‹ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ.
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>% зарплатного фонда</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>% Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°</div>
                         <input
                           className="form-input"
                           value={tplPayrollPoolPct}
@@ -6724,63 +5460,63 @@ export default function AppPage() {
                           style={{ width: 90, fontFamily: "'JetBrains Mono', monospace" }}
                         />
                         <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                          Пример: при 20% — если осталось 70, то 14 идёт сотрудникам, 56 — прибыль офиса
+                          РџСЂРёРјРµСЂ: РїСЂРё 20% вЂ” РµСЃР»Рё РѕСЃС‚Р°Р»РѕСЃСЊ 70, С‚Рѕ 14 РёРґС‘С‚ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј, 56 вЂ” РїСЂРёР±С‹Р»СЊ РѕС„РёСЃР°
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* AI-парсер */}
+                {/* AI-РїР°СЂСЃРµСЂ */}
                 <div>
                   <button
                     className="btn btn-secondary"
                     onClick={() => setAiParseOpen(p => !p)}
                     style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, width: "100%", justifyContent: "center" }}
                   >
-                    <span>🤖</span> {aiParseOpen ? "Скрыть AI-помощника" : "Создать поля через AI (вставить строки из таблицы)"}
+                    <span>рџ¤–</span> {aiParseOpen ? "РЎРєСЂС‹С‚СЊ AI-РїРѕРјРѕС‰РЅРёРєР°" : "РЎРѕР·РґР°С‚СЊ РїРѕР»СЏ С‡РµСЂРµР· AI (РІСЃС‚Р°РІРёС‚СЊ СЃС‚СЂРѕРєРё РёР· С‚Р°Р±Р»РёС†С‹)"}
                   </button>
                   {aiParseOpen && (
                     <div style={{ marginTop: 10, border: "1px solid var(--accent)44", borderRadius: 12, padding: 16, background: "var(--accent)08" }}>
                       <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
-                        Вставьте 2–5 строк из вашей таблицы. AI сам определит колонки и типы полей.
+                        Р’СЃС‚Р°РІСЊС‚Рµ 2вЂ“5 СЃС‚СЂРѕРє РёР· РІР°С€РµР№ С‚Р°Р±Р»РёС†С‹. AI СЃР°Рј РѕРїСЂРµРґРµР»РёС‚ РєРѕР»РѕРЅРєРё Рё С‚РёРїС‹ РїРѕР»РµР№.
                       </div>
                       <textarea
                         className="form-input"
                         value={aiParseSample}
                         onChange={e => setAiParseSample(e.target.value)}
                         style={{ height: 90, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", paddingTop: 10 }}
-                        placeholder={"21,04  Ди+олх(Н)  75/25  DP  eurocom  6838\n22.04  Ди+Вл+Бо  45/30/25  DP  eurocom  5809"}
+                        placeholder={"21,04  Р”Рё+РѕР»С…(Рќ)  75/25  DP  eurocom  6838\n22.04  Р”Рё+Р’Р»+Р‘Рѕ  45/30/25  DP  eurocom  5809"}
                       />
                       {aiParseError && <div style={{ marginTop: 6, fontSize: 12, color: "var(--red)" }}>{aiParseError}</div>}
                       <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={() => { setAiParseOpen(false); setAiParseSample(""); setAiParseError(null); }}>Отмена</button>
+                        <button className="btn btn-secondary" onClick={() => { setAiParseOpen(false); setAiParseSample(""); setAiParseError(null); }}>РћС‚РјРµРЅР°</button>
                         <button className="btn btn-primary" onClick={aiParseTemplate} disabled={aiParsing || !aiParseSample.trim()}>
-                          {aiParsing ? "Анализирую..." : "Определить поля →"}
+                          {aiParsing ? "РђРЅР°Р»РёР·РёСЂСѓСЋ..." : "РћРїСЂРµРґРµР»РёС‚СЊ РїРѕР»СЏ в†’"}
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Список полей */}
+                {/* РЎРїРёСЃРѕРє РїРѕР»РµР№ */}
                 <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
                   <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>Поля сделки</span>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>РџРѕР»СЏ СЃРґРµР»РєРё</span>
                       {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>Первые 3 поля — расчётные (нельзя удалить)</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>РџРµСЂРІС‹Рµ 3 РїРѕР»СЏ вЂ” СЂР°СЃС‡С‘С‚РЅС‹Рµ (РЅРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ)</span>
                       )}
                       {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplHasWorkers && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>Нажмите 💰 у числового поля — на его основе будет считаться зарплата</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>РќР°Р¶РјРёС‚Рµ рџ’° Сѓ С‡РёСЃР»РѕРІРѕРіРѕ РїРѕР»СЏ вЂ” РЅР° РµРіРѕ РѕСЃРЅРѕРІРµ Р±СѓРґРµС‚ СЃС‡РёС‚Р°С‚СЊСЃСЏ Р·Р°СЂРїР»Р°С‚Р°</span>
                       )}
                     </div>
-                    <button className="btn btn-secondary" onClick={addTplField}>+ Добавить поле</button>
+                    <button className="btn btn-secondary" onClick={addTplField}>+ Р”РѕР±Р°РІРёС‚СЊ РїРѕР»Рµ</button>
                   </div>
 
                   {tplFields.length === 0 ? (
                     <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
-                      Нажмите «+ Добавить поле» — например: ФИО, Телефон, Банк, Валюта, Метод
+                      РќР°Р¶РјРёС‚Рµ В«+ Р”РѕР±Р°РІРёС‚СЊ РїРѕР»РµВ» вЂ” РЅР°РїСЂРёРјРµСЂ: Р¤РРћ, РўРµР»РµС„РѕРЅ, Р‘Р°РЅРє, Р’Р°Р»СЋС‚Р°, РњРµС‚РѕРґ
                     </div>
                   ) : (
                     <div style={{ display: "grid" }}>
@@ -6790,9 +5526,9 @@ export default function AppPage() {
                         const canBeIncome = f.type === "NUMBER" || f.type === "PERCENT";
                         const isFixed = ["fixed_gross", "fixed_mediator", "fixed_ai"].includes(f._id);
                         const fixedLabel: Record<string, string> = {
-                          fixed_gross: "Сумма завода — число, сколько денег зашло",
-                          fixed_mediator: "% посредника — сколько % забирает посредник",
-                          fixed_ai: "% AI — сколько % уходит на AI (от суммы после посредника)",
+                          fixed_gross: "РЎСѓРјРјР° Р·Р°РІРѕРґР° вЂ” С‡РёСЃР»Рѕ, СЃРєРѕР»СЊРєРѕ РґРµРЅРµРі Р·Р°С€Р»Рѕ",
+                          fixed_mediator: "% РїРѕСЃСЂРµРґРЅРёРєР° вЂ” СЃРєРѕР»СЊРєРѕ % Р·Р°Р±РёСЂР°РµС‚ РїРѕСЃСЂРµРґРЅРёРє",
+                          fixed_ai: "% AI вЂ” СЃРєРѕР»СЊРєРѕ % СѓС…РѕРґРёС‚ РЅР° AI (РѕС‚ СЃСѓРјРјС‹ РїРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР°)",
                         };
                         return (
                           <div key={f._id} style={{
@@ -6802,56 +5538,56 @@ export default function AppPage() {
                           }}>
                             {isFixed ? (
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <span style={{ fontSize: 16 }}>{f._id === "fixed_gross" ? "💰" : f._id === "fixed_mediator" ? "🏦" : "🤖"}</span>
+                                <span style={{ fontSize: 16 }}>{f._id === "fixed_gross" ? "рџ’°" : f._id === "fixed_mediator" ? "рџЏ¦" : "рџ¤–"}</span>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: 13 }}>{f.label}</div>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{fixedLabel[f._id]}</div>
                                 </div>
-                                <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 600 }}>зафиксировано</span>
+                                <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 600 }}>Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅРѕ</span>
                               </div>
                             ) : (
                               <>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 160px auto 32px", gap: 10, alignItems: "end" }}>
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Название поля</div>
-                                    <input className="form-input" value={f.label} placeholder="ФИО, Телефон, Банк, Метод…"
+                                    <div className="form-label" style={{ marginBottom: 3 }}>РќР°Р·РІР°РЅРёРµ РїРѕР»СЏ</div>
+                                    <input className="form-input" value={f.label} placeholder="Р¤РРћ, РўРµР»РµС„РѕРЅ, Р‘Р°РЅРє, РњРµС‚РѕРґвЂ¦"
                                       onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
                                   </div>
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип ввода</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>РўРёРї РІРІРѕРґР°</div>
                                     <select className="form-input" value={f.type}
                                       onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, type: e.target.value as FieldType } : x))}>
-                                      <option value="TEXT">Текст (любой)</option>
-                                      <option value="NUMBER">Число / сумма</option>
-                                      <option value="PERCENT">Процент (0–100)</option>
-                                      <option value="CURRENCY">Валюта (USD/EUR/UAH…)</option>
-                                      <option value="SELECT">Список вариантов</option>
-                                      <option value="DATE">Дата</option>
-                                      <option value="CHECKBOX">Да / Нет</option>
+                                      <option value="TEXT">РўРµРєСЃС‚ (Р»СЋР±РѕР№)</option>
+                                      <option value="NUMBER">Р§РёСЃР»Рѕ / СЃСѓРјРјР°</option>
+                                      <option value="PERCENT">РџСЂРѕС†РµРЅС‚ (0вЂ“100)</option>
+                                      <option value="CURRENCY">Р’Р°Р»СЋС‚Р° (USD/EUR/UAHвЂ¦)</option>
+                                      <option value="SELECT">РЎРїРёСЃРѕРє РІР°СЂРёР°РЅС‚РѕРІ</option>
+                                      <option value="DATE">Р”Р°С‚Р°</option>
+                                      <option value="CHECKBOX">Р”Р° / РќРµС‚</option>
                                     </select>
                                   </div>
                                   <div style={{ display: "flex", alignItems: "flex-end", gap: 6, paddingBottom: 1 }}>
                                     {tplHasWorkers && canBeIncome && tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
                                       <button
-                                        title="Зарплата считается от этого поля"
+                                        title="Р—Р°СЂРїР»Р°С‚Р° СЃС‡РёС‚Р°РµС‚СЃСЏ РѕС‚ СЌС‚РѕРіРѕ РїРѕР»СЏ"
                                         onClick={() => setTplIncomeFieldKey(isIncomeField ? "" : fieldKey)}
                                         style={{ height: 38, width: 38, borderRadius: 8, border: isIncomeField ? "2px solid var(--accent)" : "1px solid var(--border)", background: isIncomeField ? "var(--accent)" : "var(--bg-card)", cursor: "pointer", fontSize: 18, transition: "all 0.15s" }}
-                                      >💰</button>
+                                      >рџ’°</button>
                                     )}
                                   </div>
                                   <div style={{ height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 20, borderRadius: 8 }}
-                                    onClick={() => { setTplFields(p => p.filter((_, xi) => xi !== i)); if (isIncomeField) setTplIncomeFieldKey(""); }}>×</div>
+                                    onClick={() => { setTplFields(p => p.filter((_, xi) => xi !== i)); if (isIncomeField) setTplIncomeFieldKey(""); }}>Г—</div>
                                 </div>
                                 {f.type === "SELECT" && (
                                   <div style={{ marginTop: 8 }}>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Варианты для выбора (через запятую)</div>
-                                    <input className="form-input" value={f.options} placeholder="Нал, Безнал, Карта, USDT…"
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Р’Р°СЂРёР°РЅС‚С‹ РґР»СЏ РІС‹Р±РѕСЂР° (С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ)</div>
+                                    <input className="form-input" value={f.options} placeholder="РќР°Р», Р‘РµР·РЅР°Р», РљР°СЂС‚Р°, USDTвЂ¦"
                                       onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, options: e.target.value } : x))} />
                                   </div>
                                 )}
                                 {isIncomeField && (
                                   <div style={{ marginTop: 6, fontSize: 11, color: "var(--accent)" }}>
-                                    💰 Зарплата сотрудников считается как % от этого поля
+                                    рџ’° Р—Р°СЂРїР»Р°С‚Р° СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ СЃС‡РёС‚Р°РµС‚СЃСЏ РєР°Рє % РѕС‚ СЌС‚РѕРіРѕ РїРѕР»СЏ
                                   </div>
                                 )}
                               </>
@@ -6863,7 +5599,7 @@ export default function AppPage() {
                   )}
                 </div>
 
-                {/* ── Расчётная цепочка ── */}
+                {/* в”Ђв”Ђ Р Р°СЃС‡С‘С‚РЅР°СЏ С†РµРїРѕС‡РєР° в”Ђв”Ђ */}
                 {(() => {
                   const numericFields = tplFields.filter(f => f.type === "NUMBER" || f.type === "PERCENT");
                   const allFieldKeys = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
@@ -6872,9 +5608,9 @@ export default function AppPage() {
                     <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
                       <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: tplCalcSteps.length > 0 ? "1px solid var(--border)" : undefined, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>📊 Расчётная цепочка</span>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>рџ“Љ Р Р°СЃС‡С‘С‚РЅР°СЏ С†РµРїРѕС‡РєР°</span>
                           <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
-                            {tplCalcSteps.length > 0 ? `${tplCalcSteps.length} шаг(ов)` : "необязательно — для автоматического распределения денег"}
+                            {tplCalcSteps.length > 0 ? `${tplCalcSteps.length} С€Р°Рі(РѕРІ)` : "РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ вЂ” РґР»СЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕРіРѕ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ РґРµРЅРµРі"}
                           </span>
                         </div>
                         <button
@@ -6889,12 +5625,12 @@ export default function AppPage() {
                             resultLabel: "",
                             isPayrollPool: false,
                           }])}
-                        >+ Добавить шаг</button>
+                        >+ Р”РѕР±Р°РІРёС‚СЊ С€Р°Рі</button>
                       </div>
 
                       {tplCalcSteps.length === 0 ? (
                         <div style={{ padding: "16px", fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                          Цепочка позволяет описать как деньги делятся по шагам: каждый шаг берёт сумму из предыдущего остатка или из поля, и вычитает % или фиксированную сумму. Один шаг можно пометить как «зарплатный фонд» — он будет распределяться между сотрудниками.
+                          Р¦РµРїРѕС‡РєР° РїРѕР·РІРѕР»СЏРµС‚ РѕРїРёСЃР°С‚СЊ РєР°Рє РґРµРЅСЊРіРё РґРµР»СЏС‚СЃСЏ РїРѕ С€Р°РіР°Рј: РєР°Р¶РґС‹Р№ С€Р°Рі Р±РµСЂС‘С‚ СЃСѓРјРјСѓ РёР· РїСЂРµРґС‹РґСѓС‰РµРіРѕ РѕСЃС‚Р°С‚РєР° РёР»Рё РёР· РїРѕР»СЏ, Рё РІС‹С‡РёС‚Р°РµС‚ % РёР»Рё С„РёРєСЃРёСЂРѕРІР°РЅРЅСѓСЋ СЃСѓРјРјСѓ. РћРґРёРЅ С€Р°Рі РјРѕР¶РЅРѕ РїРѕРјРµС‚РёС‚СЊ РєР°Рє В«Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґВ» вЂ” РѕРЅ Р±СѓРґРµС‚ СЂР°СЃРїСЂРµРґРµР»СЏС‚СЊСЃСЏ РјРµР¶РґСѓ СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё.
                         </div>
                       ) : (
                         <div style={{ display: "grid", gap: 0 }}>
@@ -6908,19 +5644,19 @@ export default function AppPage() {
                                     className="form-input"
                                     value={step.label}
                                     onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, label: e.target.value } : s))}
-                                    placeholder="Название шага (кому идут деньги)"
+                                    placeholder="РќР°Р·РІР°РЅРёРµ С€Р°РіР° (РєРѕРјСѓ РёРґСѓС‚ РґРµРЅСЊРіРё)"
                                     style={{ flex: 1, fontWeight: 600 }}
                                   />
                                   <button
                                     style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", fontSize: 16, color: "var(--text-tertiary)" }}
                                     onClick={() => setTplCalcSteps(p => p.filter(s => s.id !== step.id))}
-                                  >×</button>
+                                  >Г—</button>
                                 </div>
 
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                                   {/* Source */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Взять сумму из</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Р’Р·СЏС‚СЊ СЃСѓРјРјСѓ РёР·</div>
                                     <select
                                       className="form-input"
                                       value={`${step.sourceType}:${step.sourceId}`}
@@ -6933,22 +5669,22 @@ export default function AppPage() {
                                         const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
                                         return fDef?.type === "NUMBER" || fDef?.type === "PERCENT";
                                       }).map(f => (
-                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>📋 {f.label}</option>
+                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>рџ“‹ {f.label}</option>
                                       ))}
                                       {prevSteps.map(ps => (
-                                        <option key={`step:${ps.id}`} value={`step:${ps.id}`}>↩ Остаток: {ps.resultLabel || ps.label || `Шаг ${tplCalcSteps.indexOf(ps) + 1}`}</option>
+                                        <option key={`step:${ps.id}`} value={`step:${ps.id}`}>в†© РћСЃС‚Р°С‚РѕРє: {ps.resultLabel || ps.label || `РЁР°Рі ${tplCalcSteps.indexOf(ps) + 1}`}</option>
                                       ))}
                                     </select>
                                   </div>
                                   {/* Deduct field */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Вычесть поле</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Р’С‹С‡РµСЃС‚СЊ РїРѕР»Рµ</div>
                                     <select
                                       className="form-input"
                                       value={step.deductFieldKey}
                                       onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductFieldKey: e.target.value } : s))}
                                     >
-                                      <option value="">— выберите поле —</option>
+                                      <option value="">вЂ” РІС‹Р±РµСЂРёС‚Рµ РїРѕР»Рµ вЂ”</option>
                                       {allFieldKeys.filter(f => {
                                         const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
                                         return fDef?.type === "PERCENT" || fDef?.type === "NUMBER";
@@ -6959,24 +5695,24 @@ export default function AppPage() {
                                   </div>
                                   {/* Deduct type */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип вычитания</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>РўРёРї РІС‹С‡РёС‚Р°РЅРёСЏ</div>
                                     <select
                                       className="form-input"
                                       value={step.deductType}
                                       onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductType: e.target.value as "percent"|"fixed" } : s))}
                                     >
-                                      <option value="percent">% от источника</option>
-                                      <option value="fixed">Фиксированная сумма</option>
+                                      <option value="percent">% РѕС‚ РёСЃС‚РѕС‡РЅРёРєР°</option>
+                                      <option value="fixed">Р¤РёРєСЃРёСЂРѕРІР°РЅРЅР°СЏ СЃСѓРјРјР°</option>
                                     </select>
                                   </div>
                                   {/* Result label */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Название остатка</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>РќР°Р·РІР°РЅРёРµ РѕСЃС‚Р°С‚РєР°</div>
                                     <input
                                       className="form-input"
                                       value={step.resultLabel}
                                       onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, resultLabel: e.target.value } : s))}
-                                      placeholder="Например: После посредника (R1)"
+                                      placeholder="РќР°РїСЂРёРјРµСЂ: РџРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР° (R1)"
                                     />
                                   </div>
                                 </div>
@@ -6993,7 +5729,7 @@ export default function AppPage() {
                                     style={{ width: 15, height: 15, accentColor: "var(--amber)" }}
                                   />
                                   <span style={{ fontSize: 12, color: "var(--amber)", fontWeight: step.isPayrollPool ? 700 : 400 }}>
-                                    👥 Это зарплатный фонд — вычитаемая сумма распределяется между сотрудниками
+                                    рџ‘Ґ Р­С‚Рѕ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ вЂ” РІС‹С‡РёС‚Р°РµРјР°СЏ СЃСѓРјРјР° СЂР°СЃРїСЂРµРґРµР»СЏРµС‚СЃСЏ РјРµР¶РґСѓ СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё
                                   </span>
                                 </label>
                               </div>
@@ -7005,25 +5741,25 @@ export default function AppPage() {
                   );
                 })()}
 
-                {/* Для простой схемы — есть ли воркеры */}
+                {/* Р”Р»СЏ РїСЂРѕСЃС‚РѕР№ СЃС…РµРјС‹ вЂ” РµСЃС‚СЊ Р»Рё РІРѕСЂРєРµСЂС‹ */}
                 {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0 && (
                   <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                     <input type="checkbox" checked={tplHasWorkers} onChange={(e) => setTplHasWorkers(e.target.checked)}
                       style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>Распределять зарплату сотрудникам по этой сделке</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Если включено — при создании сделки нужно будет указать кому и сколько %</div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>Р Р°СЃРїСЂРµРґРµР»СЏС‚СЊ Р·Р°СЂРїР»Р°С‚Сѓ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј РїРѕ СЌС‚РѕР№ СЃРґРµР»РєРµ</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Р•СЃР»Рё РІРєР»СЋС‡РµРЅРѕ вЂ” РїСЂРё СЃРѕР·РґР°РЅРёРё СЃРґРµР»РєРё РЅСѓР¶РЅРѕ Р±СѓРґРµС‚ СѓРєР°Р·Р°С‚СЊ РєРѕРјСѓ Рё СЃРєРѕР»СЊРєРѕ %</div>
                     </div>
                   </label>
                 )}
 
-                {/* Кнопки */}
+                {/* РљРЅРѕРїРєРё */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
                   {!templateEditing ? (
-                    <button className="btn btn-secondary" onClick={() => setTplWizardStep("type")}>← Назад</button>
+                    <button className="btn btn-secondary" onClick={() => setTplWizardStep("type")}>в†ђ РќР°Р·Р°Рґ</button>
                   ) : <div />}
                   <button className="btn btn-primary" onClick={saveTemplate}>
-                    {templateEditing ? "Сохранить изменения" : "Создать шаблон →"}
+                    {templateEditing ? "РЎРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ" : "РЎРѕР·РґР°С‚СЊ С€Р°Р±Р»РѕРЅ в†’"}
                   </button>
                 </div>
               </div>
@@ -7059,7 +5795,7 @@ export default function AppPage() {
                   <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.3 }}>{taskDetail.title}</div>
                 )}
                 <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 3 }}>
-                  от {taskDetail.createdBy.name || taskDetail.createdBy.email} · {new Date(taskDetail.createdAt).toLocaleDateString("ru-RU")}
+                  РѕС‚ {taskDetail.createdBy.name || taskDetail.createdBy.email} В· {new Date(taskDetail.createdAt).toLocaleDateString("ru-RU")}
                 </div>
               </div>
               {isManager && !taskEditMode && (
@@ -7071,15 +5807,15 @@ export default function AppPage() {
                   setTaskEditStart(taskDetail.startsAt ? taskDetail.startsAt.slice(0, 16) : "");
                   setTaskEditAssigneeId(taskDetail.assignee.id);
                   void loadTaskUserOptions();
-                }}>Редактировать</button>
+                }}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button>
               )}
               {taskEditMode && (
                 <>
-                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12 }} onClick={() => void saveTaskEdit()}>Сохранить</button>
-                  <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => setTaskEditMode(false)}>Отмена</button>
+                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12 }} onClick={() => void saveTaskEdit()}>РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+                  <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => setTaskEditMode(false)}>РћС‚РјРµРЅР°</button>
                 </>
               )}
-              <button className="btn btn-ghost" style={{ height: 32, width: 32, padding: 0, fontSize: 18, flexShrink: 0 }} onClick={() => setTaskDetail(null)}>×</button>
+              <button className="btn btn-ghost" style={{ height: 32, width: 32, padding: 0, fontSize: 18, flexShrink: 0 }} onClick={() => setTaskDetail(null)}>Г—</button>
             </div>
 
             {/* Body */}
@@ -7088,22 +5824,22 @@ export default function AppPage() {
               {!taskEditMode && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   {(() => {
-                    const stLabel: Record<TaskStatus, string> = { PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена" };
+                    const stLabel: Record<TaskStatus, string> = { PENDING: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ", IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ", DONE: "Р’С‹РїРѕР»РЅРµРЅРѕ", CANCELLED: "РћС‚РјРµРЅРµРЅР°" };
                     const stClass: Record<TaskStatus, string> = { PENDING: "badge-amber", IN_PROGRESS: "badge-blue", DONE: "badge-green", CANCELLED: "badge-gray" };
                     return <span className={`badge ${stClass[taskDetail.status]}`}>{stLabel[taskDetail.status]}</span>;
                   })()}
                   {taskDetail.dueAt && (
                     <span style={{ fontSize: 12, color: new Date(taskDetail.dueAt) < new Date() && taskDetail.status !== "DONE" ? "var(--amber)" : "var(--text-tertiary)" }}>
-                      Срок: {new Date(taskDetail.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      РЎСЂРѕРє: {new Date(taskDetail.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </span>
                   )}
                   {/* Quick status actions for assignee */}
                   {user?.id === taskDetail.assignee.id && taskDetail.status !== "DONE" && taskDetail.status !== "CANCELLED" && (
                     <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                       {taskDetail.status === "PENDING" && (
-                        <button className="btn btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "IN_PROGRESS" }).then(() => setTaskDetail(prev => prev ? { ...prev, status: "IN_PROGRESS" } : null))}>Взять в работу</button>
+                        <button className="btn btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "IN_PROGRESS" }).then(() => setTaskDetail(prev => prev ? { ...prev, status: "IN_PROGRESS" } : null))}>Р’Р·СЏС‚СЊ РІ СЂР°Р±РѕС‚Сѓ</button>
                       )}
-                      <button className="btn btn-primary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "DONE" }).then(() => { setTaskDetail(prev => prev ? { ...prev, status: "DONE" } : null); void loadTaskPendingCount(); })}>Выполнено ✓</button>
+                      <button className="btn btn-primary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "DONE" }).then(() => { setTaskDetail(prev => prev ? { ...prev, status: "DONE" } : null); void loadTaskPendingCount(); })}>Р’С‹РїРѕР»РЅРµРЅРѕ вњ“</button>
                     </div>
                   )}
                 </div>
@@ -7113,22 +5849,22 @@ export default function AppPage() {
               {taskEditMode && (
                 <div style={{ display: "grid", gap: 12 }}>
                   <div>
-                    <div className="form-label">Описание</div>
-                    <textarea className="form-input" rows={3} value={taskEditDesc} onChange={e => setTaskEditDesc(e.target.value)} placeholder="Детали задачи" />
+                    <div className="form-label">РћРїРёСЃР°РЅРёРµ</div>
+                    <textarea className="form-input" rows={3} value={taskEditDesc} onChange={e => setTaskEditDesc(e.target.value)} placeholder="Р”РµС‚Р°Р»Рё Р·Р°РґР°С‡Рё" />
                   </div>
                   <div>
-                    <div className="form-label">Исполнитель</div>
+                    <div className="form-label">РСЃРїРѕР»РЅРёС‚РµР»СЊ</div>
                     <select className="form-input" value={taskEditAssigneeId} onChange={e => setTaskEditAssigneeId(e.target.value)}>
                       {taskUsersForSelect.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
                     </select>
                   </div>
                   <div className="g2">
                     <div>
-                      <div className="form-label">Начало</div>
+                      <div className="form-label">РќР°С‡Р°Р»Рѕ</div>
                       <input className="form-input" type="datetime-local" value={taskEditStart} onChange={e => setTaskEditStart(e.target.value)} />
                     </div>
                     <div>
-                      <div className="form-label">Срок</div>
+                      <div className="form-label">РЎСЂРѕРє</div>
                       <input className="form-input" type="datetime-local" value={taskEditDue} onChange={e => setTaskEditDue(e.target.value)} />
                     </div>
                   </div>
@@ -7138,7 +5874,7 @@ export default function AppPage() {
               {/* Description (view) */}
               {!taskEditMode && taskDetail.description && (
                 <div>
-                  <div className="form-label" style={{ marginBottom: 6 }}>Описание</div>
+                  <div className="form-label" style={{ marginBottom: 6 }}>РћРїРёСЃР°РЅРёРµ</div>
                   <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)", background: "var(--bg-metric)", borderRadius: 10, padding: "12px 14px" }}>
                     {taskDetail.description}
                   </div>
@@ -7148,20 +5884,20 @@ export default function AppPage() {
               {/* Info row */}
               {!taskEditMode && (
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
-                  <span>👤 Исполнитель: <strong>{taskDetail.assignee.name || taskDetail.assignee.email}</strong></span>
-                  {taskDetail.startsAt && <span>📅 Начало: {new Date(taskDetail.startsAt).toLocaleDateString("ru-RU")}</span>}
+                  <span>рџ‘¤ РСЃРїРѕР»РЅРёС‚РµР»СЊ: <strong>{taskDetail.assignee.name || taskDetail.assignee.email}</strong></span>
+                  {taskDetail.startsAt && <span>рџ“… РќР°С‡Р°Р»Рѕ: {new Date(taskDetail.startsAt).toLocaleDateString("ru-RU")}</span>}
                 </div>
               )}
 
               {/* Comments */}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>
-                  Комментарии {taskComments.length > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({taskComments.length})</span>}
+                  РљРѕРјРјРµРЅС‚Р°СЂРёРё {taskComments.length > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({taskComments.length})</span>}
                 </div>
                 {taskCommentsLoading ? (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
                 ) : taskComments.length === 0 ? (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Комментариев пока нет — напишите первым!</div>
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>РљРѕРјРјРµРЅС‚Р°СЂРёРµРІ РїРѕРєР° РЅРµС‚ вЂ” РЅР°РїРёС€РёС‚Рµ РїРµСЂРІС‹Рј!</div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {taskComments.map(c => (
@@ -7190,7 +5926,7 @@ export default function AppPage() {
                 value={taskCommentInput}
                 onChange={e => setTaskCommentInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitTaskComment(); } }}
-                placeholder="Написать комментарий… (Enter — отправить)"
+                placeholder="РќР°РїРёСЃР°С‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№вЂ¦ (Enter вЂ” РѕС‚РїСЂР°РІРёС‚СЊ)"
                 rows={1}
                 style={{ flex: 1, resize: "none", minHeight: 38, maxHeight: 100, overflowY: "auto" }}
               />

@@ -18,14 +18,15 @@
 | Отчёты (вкладка) | `components/reports/ReportsTab.tsx`, `lib/reports.ts` |
 | Excel «Учет сделок» | `apps/backend/src/reports/accounting-export.service.ts` |
 | Клиенты (канбан) | `components/clients/ClientsKanbanBoard.tsx`, `buildClientKanbanColumns` в `lib/clients.ts` |
+| ОЛХ, Инфо, импорт Excel | `OlxTab`, `Deal.infoPct`, `accounting-import`, payout |
+| Расходы (вкладка) | `components/expenses/ExpensesTab.tsx`, `lib/expenses.ts` |
+| Клиенты (вкладка + модалки) | `ClientsTab`, `ClientViewModal`, `ClientCreateModal`, `ClientEditModal`, `lib/clients.ts` |
+| Дашборд | `DashboardTab`, `DashboardCurrentView`, `DashboardGlobalView`, `WorkerDashboard`, `lib/dashboard.ts` |
 
 ## Дальше (по одному PR/коммиту)
 
-1. Вкладка **Clients** — модалки создания/просмотра/редактирования
-2. **Импорт** Excel «Учет сделок» (зеркало экспорта)
-3. Сущность **ОЛХ** (как посредники) + **Инфо** (% от ЗП фонда)
-4. **Deals** / **Dashboard** (крупные, в конце)
-5. Шаблон сделок (wizard) — отдельно, самый большой блок
+1. **Deals** — таблица + модалка сделки (самый крупный блок)
+2. Шаблон сделок (wizard) — отдельно
 
 ## VPS
 
