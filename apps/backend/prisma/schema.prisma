@@ -12,6 +12,7 @@ enum Role {
   ADMIN
   MANAGER
   WORKER
+  AI_PARTNER
 }
 
 enum DealStatus {
@@ -68,6 +69,8 @@ model Organization {
 
   clientStatuses         ClientStatus[]
   clientFieldDefinitions ClientFieldDefinition[]
+  mediators              Mediator[]
+  aiPartner              OrganizationAiPartner?
 }
 
 model User {
@@ -101,6 +104,7 @@ model User {
   salaryConfig      EmployeeSalaryConfig?
   salaryPayments    SalaryPayment[]
   clientComments    ClientComment[]
+  aiPartnerForOrg   OrganizationAiPartner?
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -242,9 +246,54 @@ model Deal {
 
   rateSnapshot  Json?  // { "EUR": 1.08, "PLN": 4.1, ... } — rates at the time of deal creation
 
+  mediatorLink  DealMediator?
+
   @@index([organizationId])
   @@index([clientId])
   @@index([templateId])
+}
+
+/// Посредник офиса — выбирается в сделке, доля % и сумма по сделкам в отчётах
+model Mediator {
+  id             String   @id @default(cuid())
+  name           String
+  phone          String?
+  note           String?
+  defaultPct     Decimal? @db.Decimal(5, 2)
+  isActive       Boolean  @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dealLinks      DealMediator[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+/// Привязка посредника к сделке (один посредник на сделку)
+model DealMediator {
+  id         String   @id @default(cuid())
+  dealId     String   @unique
+  deal       Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  mediatorId String
+  mediator   Mediator @relation(fields: [mediatorId], references: [id], onDelete: Restrict)
+  pct        Decimal  @db.Decimal(5, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([mediatorId])
+}
+
+/// Партнёр ИИ офиса — один на организацию, начисления как у сотрудника (User AI_PARTNER)
+model OrganizationAiPartner {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String       @default("AI")
+  userId         String       @unique
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model DealTemplate {
@@ -440,10 +489,11 @@ model EmployeeSalaryConfig {
 }
 
 enum SalaryPaymentType {
-  BASE       // базовая ставка
-  DEAL_BONUS // бонус по сделкам
-  ADVANCE    // аванс
-  MANUAL     // ручная корректировка
+  BASE         // базовая ставка
+  DEAL_BONUS   // бонус по сделкам
+  AI_DEAL_SHARE // доля ИИ по сделкам (офисный AI-партнёр)
+  ADVANCE      // аванс
+  MANUAL       // ручная корректировка
 }
 
 // Individual salary payment records

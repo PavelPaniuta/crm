@@ -27,7 +27,7 @@ export class StaffService {
   private async getStatsForOrg(organizationId: string) {
     const [users, ratesArr] = await Promise.all([
       this.prisma.user.findMany({
-        where: { organizationId },
+        where: { organizationId, role: { not: 'AI_PARTNER' } },
         select: {
           id: true, email: true, name: true, role: true, position: true,
           phone: true, telegram: true, contacts: true,

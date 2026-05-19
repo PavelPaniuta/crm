@@ -182,7 +182,7 @@ type ChatConversation = {
   lastAt: string;
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "tasks" | "assistant" | "chat" | "salary";
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "mediators" | "tasks" | "assistant" | "chat" | "salary";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
@@ -346,6 +346,7 @@ type Deal = {
     shopName?: string | null;
   }>;
   dataRows?: DealDataRow[];
+  mediatorLink?: { mediatorId: string; pct: string | number; mediator: { id: string; name: string } } | null;
   participants: Array<{
     id: string;
     pct: number;
@@ -376,6 +377,7 @@ const CURRENCIES = ["USD", "EUR", "UAH", "PLN", "CHF"];
 const SALARY_PAYMENT_TYPES: Record<string, string> = {
   BASE: "Ставка",
   DEAL_BONUS: "Бонус по сделкам",
+  AI_DEAL_SHARE: "Доля ИИ по сделкам",
   ADVANCE: "Аванс",
   MANUAL: "Ручная",
 };
@@ -629,7 +631,18 @@ export default function AppPage() {
 
   // --- Salary ---
   const [salaryData, setSalaryData] = useState<any[]>([]);
+  const [salaryAiPartner, setSalaryAiPartner] = useState<any | null>(null);
   const [salaryLoading, setSalaryLoading] = useState(false);
+  const [mediators, setMediators] = useState<any[]>([]);
+  const [mediatorsLoading, setMediatorsLoading] = useState(false);
+  const [selectedMediator, setSelectedMediator] = useState<any | null>(null);
+  const [mediatorDetail, setMediatorDetail] = useState<any | null>(null);
+  const [mediatorDetailLoading, setMediatorDetailLoading] = useState(false);
+  const [mediatorFormOpen, setMediatorFormOpen] = useState(false);
+  const [mediatorForm, setMediatorForm] = useState({ name: "", phone: "", note: "", defaultPct: "" });
+  const [mediatorEditingId, setMediatorEditingId] = useState<string | null>(null);
+  const [dealMediatorId, setDealMediatorId] = useState<string>("");
+  const [dealMediatorPct, setDealMediatorPct] = useState<string>("");
   const [salaryPeriod, setSalaryPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [selectedSalaryEmp, setSelectedSalaryEmp] = useState<any | null>(null);
   const [salaryConfigModal, setSalaryConfigModal] = useState<{ userId: string; name: string; config: any } | null>(null);
@@ -732,6 +745,7 @@ export default function AppPage() {
     if (tab === "settings") return "Настройки";
     if (tab === "profile") return "Мой профиль";
     if (tab === "staff") return "Сотрудники";
+    if (tab === "mediators") return "Посредники";
     if (tab === "tasks") return "Задачи";
     if (tab === "chat") return "Чат";
     if (tab === "assistant") return "AI Ассистент";
@@ -786,6 +800,7 @@ export default function AppPage() {
       }
     }
     if (tab === "staff") loadStaff();
+    if (tab === "mediators") { void loadMediators(); setSelectedMediator(null); setMediatorDetail(null); }
     if (tab === "salary") loadSalary();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if (tab === "assistant") void loadClientStatuses();
@@ -1018,6 +1033,68 @@ export default function AppPage() {
     }
   }
 
+  async function loadMediators() {
+    setMediatorsLoading(true);
+    try {
+      const res = await fetch("/api/mediators", { credentials: "include" });
+      if (res.ok) setMediators(await res.json());
+    } finally { setMediatorsLoading(false); }
+  }
+
+  async function loadMediatorDetail(id: string, period?: string) {
+    setMediatorDetailLoading(true);
+    try {
+      const p = period ?? salaryPeriod;
+      const res = await fetch(`/api/mediators/${id}?period=${p}`, { credentials: "include" });
+      if (res.ok) setMediatorDetail(await res.json());
+    } finally { setMediatorDetailLoading(false); }
+  }
+
+  async function saveMediator() {
+    if (!mediatorForm.name.trim()) return alert("Укажите имя");
+    const body = {
+      name: mediatorForm.name.trim(),
+      phone: mediatorForm.phone.trim() || undefined,
+      note: mediatorForm.note.trim() || undefined,
+      defaultPct: mediatorForm.defaultPct ? Number(mediatorForm.defaultPct) : undefined,
+    };
+    const res = await fetch(mediatorEditingId ? `/api/mediators/${mediatorEditingId}` : "/api/mediators", {
+      method: mediatorEditingId ? "PATCH" : "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return alert("Не удалось сохранить");
+    setMediatorFormOpen(false);
+    setMediatorEditingId(null);
+    await loadMediators();
+    if (selectedMediator?.id === mediatorEditingId) void loadMediatorDetail(mediatorEditingId!);
+  }
+
+  function openMediatorForm(m?: { id: string; name: string; phone?: string | null; note?: string | null; defaultPct?: number | null }) {
+    if (m) {
+      setMediatorEditingId(m.id);
+      setMediatorForm({
+        name: m.name,
+        phone: m.phone ?? "",
+        note: m.note ?? "",
+        defaultPct: m.defaultPct != null ? String(m.defaultPct) : "",
+      });
+    } else {
+      setMediatorEditingId(null);
+      setMediatorForm({ name: "", phone: "", note: "", defaultPct: "" });
+    }
+    setMediatorFormOpen(true);
+  }
+
+  async function deleteMediator(id: string) {
+    if (!confirm("Удалить посредника? Если есть сделки — будет деактивирован.")) return;
+    const res = await fetch(`/api/mediators/${id}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) return alert("Не удалось удалить");
+    if (selectedMediator?.id === id) { setSelectedMediator(null); setMediatorDetail(null); }
+    await loadMediators();
+  }
+
   async function loadStaff() {
     setStaffLoading(true);
     setStaffMember(null);
@@ -1034,10 +1111,13 @@ export default function AppPage() {
       const orgId = user?.activeOrganizationId ?? "";
       const res = await fetch(`/api/salary/overview?organizationId=${orgId}&period=${p}`, { credentials: "include" });
       if (res.ok) {
-        const data = await res.json();
-        setSalaryData(data);
-        // refresh cabinet if open
-        setSelectedSalaryEmp((prev: any) => prev ? data.find((e: any) => e.userId === prev.userId) ?? prev : null);
+        const json = await res.json();
+        const employees = Array.isArray(json) ? json : (json.employees ?? []);
+        setSalaryData(employees);
+        setSalaryAiPartner(Array.isArray(json) ? null : (json.aiPartner ?? null));
+        setSelectedSalaryEmp((prev: any) =>
+          prev ? employees.find((e: any) => e.userId === prev.userId) ?? (json.aiPartner?.userId === prev.userId ? json.aiPartner : prev) : null,
+        );
       }
     } finally { setSalaryLoading(false); }
   }
@@ -2316,6 +2396,8 @@ export default function AppPage() {
       setDealTemplateStep("pick");
     }
     setDealDataRows([{ _id: crypto.randomUUID(), data: {} }]);
+    setDealMediatorId("");
+    setDealMediatorPct("");
     fetchDealDropdowns();
   }
 
@@ -2348,6 +2430,8 @@ export default function AppPage() {
     setDealParticipants(
       (deal.participants ?? []).map((p) => ({ id: p.id, userId: p.user.id, pct: String(p.pct) })),
     );
+    setDealMediatorId(deal.mediatorLink?.mediatorId ?? "");
+    setDealMediatorPct(deal.mediatorLink ? String(deal.mediatorLink.pct) : "");
     fetchDealDropdowns();
   }
 
@@ -2355,9 +2439,11 @@ export default function AppPage() {
     Promise.all([
       fetch("/api/clients", { credentials: "include" }),
       fetch("/api/users/public", { credentials: "include" }),
-    ]).then(async ([cRes, wRes]) => {
+      fetch("/api/mediators", { credentials: "include" }),
+    ]).then(async ([cRes, wRes, mRes]) => {
       if (cRes.ok) setDealClients(await cRes.json());
       if (wRes.ok) setDealWorkers(await wRes.json());
+      if (mRes.ok) setMediators(await mRes.json());
     });
   }
 
@@ -2440,7 +2526,11 @@ export default function AppPage() {
     if (activeTpl) {
       // Template-based deal
       const rowsPayload = dealDataRows.map((r, i) => ({ data: r.data, order: i }));
-      const payload = { ...basePayload, templateId: activeTpl.id, dataRows: rowsPayload };
+      const mediatorPayload = {
+        mediatorId: dealMediatorId || null,
+        mediatorPct: dealMediatorPct ? Number(dealMediatorPct) : null,
+      };
+      const payload = { ...basePayload, templateId: activeTpl.id, dataRows: rowsPayload, ...mediatorPayload };
 
       if (!dealEditingId) {
         const dRes = await fetch("/api/deals", {
@@ -2590,7 +2680,7 @@ export default function AppPage() {
               dashboard: isWorker ? "Мой кабинет" : "Дашборд",
               deals: "Сделки", clients: "Клиенты",
               expenses: "Расходы", reports: "Отчёты",
-              staff: "Сотрудники", salary: "Зарплата", tasks: "Задачи", chat: "Чат",
+              staff: "Сотрудники", mediators: "Посредники", salary: "Зарплата", tasks: "Задачи", chat: "Чат",
               assistant: "AI Ассистент", settings: "Настройки", profile: "Профиль"
             };
             const NAV_SVG: Record<string, ReactElement> = {
@@ -2600,6 +2690,7 @@ export default function AppPage() {
               expenses: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>,
               reports: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>,
               staff: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+              mediators: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-2-2m0 0l-2 2m2-2v6"/></svg>,
               tasks: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
               chat: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
               assistant: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 10 4a2 2 0 0 1 2-2z"/></svg>,
@@ -2654,6 +2745,7 @@ export default function AppPage() {
               <div className="nav-divider" />
               <div className="nav-section">Команда</div>
               {isAdmin && renderItem("staff")}
+              {isManager && renderItem("mediators")}
               {renderItem("tasks")}
               {renderItem("chat")}
               <div className="nav-divider" />
@@ -2855,6 +2947,24 @@ export default function AppPage() {
                         trend: profit >= 0 ? "up" : "down",
                         icon: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
                       },
+                      {
+                        label: "Посредники",
+                        value: `$${(dash.partners?.totalMediatorUsd ?? 0).toLocaleString()}`,
+                        sub: `Сделок с посредником: ${dash.partners?.dealsWithMediator ?? 0}`,
+                        iconColor: "#D97706",
+                        iconBg: "rgba(217,119,6,0.1)",
+                        trend: null,
+                        icon: <span style={{ fontSize: 18 }}>🤝</span>,
+                      },
+                      {
+                        label: "Доля ИИ (офис)",
+                        value: `$${(dash.partners?.totalAiUsd ?? 0).toLocaleString()}`,
+                        sub: "Начисляется на счёт ИИ в разделе «Зарплата»",
+                        iconColor: "#8B5CF6",
+                        iconBg: "rgba(139,92,246,0.12)",
+                        trend: null,
+                        icon: <span style={{ fontSize: 18 }}>🤖</span>,
+                      },
                     ];
                     return (
                       <div className="metric-grid">
@@ -2882,6 +2992,20 @@ export default function AppPage() {
                       </div>
                     );
                   })()}
+
+                  {dash?.partners?.mediators?.length > 0 && (
+                    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600 }}>Посредники за период</div>
+                      {dash.partners.mediators.map((row: any) => (
+                        <div key={row.mediatorId} style={{ display: "grid", gridTemplateColumns: "1fr 80px 100px", padding: "10px 20px", gap: 8, borderTop: "1px solid var(--border-light)", fontSize: 13, cursor: "pointer" }}
+                          onClick={() => { setTab("mediators"); void loadMediators().then(() => { const m = mediators.find((x: any) => x.id === row.mediatorId); if (m) { setSelectedMediator(m); void loadMediatorDetail(m.id); } }); }}>
+                          <span style={{ fontWeight: 500 }}>{row.name}</span>
+                          <span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>{row.dealsCount}</span>
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#D97706" }}>${row.totalUsd.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Charts row */}
                   {dash && !dashLoading && (
@@ -3426,6 +3550,35 @@ export default function AppPage() {
                           <option value="CLOSED">Закрыта</option>
                         </select>
                       </div>
+
+                      {dealTemplateId && (() => {
+                        const tplM = templates.find((t) => t.id === dealTemplateId);
+                        const showMediator = tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL || (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
+                        if (!showMediator) return null;
+                        return (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
+                            <div>
+                              <div className="form-label">Посредник</div>
+                              <select className="form-input" value={dealMediatorId} onChange={(e) => {
+                                const id = e.target.value;
+                                setDealMediatorId(id);
+                                const m = mediators.find((x: any) => x.id === id);
+                                if (m?.defaultPct != null && !dealMediatorPct) setDealMediatorPct(String(m.defaultPct));
+                              }}>
+                                <option value="">— не выбран —</option>
+                                {mediators.filter((m: any) => m.isActive !== false).map((m: any) => (
+                                  <option key={m.id} value={m.id}>{m.name}{m.defaultPct != null ? ` (по умолч. ${m.defaultPct}%)` : ""}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <div className="form-label">% по сделке</div>
+                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealMediatorPct}
+                                onChange={(e) => setDealMediatorPct(e.target.value)} />
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Template-based fields OR classic amounts */}
                       {dealTemplateId && templates.find(t => t.id === dealTemplateId) ? (() => {
@@ -5432,23 +5585,128 @@ export default function AppPage() {
             </div>
           ) : null}
 
+          {/* ===== MEDIATORS ===== */}
+          {tab === "mediators" ? (
+            <div style={{ display: "grid", gap: 16 }}>
+              {!selectedMediator ? (
+                <>
+                  <div className="page-header">
+                    <div className="page-header-left">
+                      <div className="page-header-title">Посредники</div>
+                      <div className="page-header-sub">Справочник для сделок и отчёт по доле за период (пересчёт по шаблонам)</div>
+                    </div>
+                    <button className="btn btn-primary" onClick={() => openMediatorForm()}>+ Добавить</button>
+                  </div>
+                  {mediatorsLoading ? (
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                  ) : mediators.length === 0 ? (
+                    <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-tertiary)" }}>
+                      Нет посредников. Добавьте первого — его можно будет выбрать при создании сделки.
+                    </div>
+                  ) : (
+                    <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px auto", padding: "8px 20px", borderBottom: "1px solid var(--border-light)", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", gap: 8 }}>
+                        <span>Имя</span><span>% по умолч.</span><span>Телефон</span><span />
+                      </div>
+                      {mediators.map((m: any) => (
+                        <div key={m.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px auto", padding: "12px 20px", gap: 8, alignItems: "center", borderBottom: "1px solid var(--border-light)", opacity: m.isActive === false ? 0.5 : 1 }}>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{m.name}</div>
+                            {m.note && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{m.note}</div>}
+                          </div>
+                          <span style={{ fontSize: 13 }}>{m.defaultPct != null ? `${m.defaultPct}%` : "—"}</span>
+                          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{m.phone || "—"}</span>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
+                              onClick={() => { setSelectedMediator(m); void loadMediatorDetail(m.id); }}>Отчёт</button>
+                            <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openMediatorForm(m)}>Изм.</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: "grid", gap: 16 }}>
+                  <button className="btn btn-secondary" style={{ width: "fit-content" }}
+                    onClick={() => { setSelectedMediator(null); setMediatorDetail(null); }}>← К списку</button>
+                  <div className="page-header" style={{ margin: 0 }}>
+                    <div className="page-header-left">
+                      <div className="page-header-title">{selectedMediator.name}</div>
+                      <div className="page-header-sub">
+                        {selectedMediator.defaultPct != null ? `По умолчанию ${selectedMediator.defaultPct}% · ` : ""}
+                        {selectedMediator.phone || "без телефона"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input type="month" value={salaryPeriod} onChange={(e) => { setSalaryPeriod(e.target.value); void loadMediatorDetail(selectedMediator.id, e.target.value); }}
+                        style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }} />
+                      <button className="btn btn-secondary" onClick={() => openMediatorForm(selectedMediator)}>Изменить</button>
+                      <button className="btn btn-ghost" onClick={() => deleteMediator(selectedMediator.id)}>Удалить</button>
+                    </div>
+                  </div>
+                  {mediatorDetailLoading ? (
+                    <div style={{ padding: 40, textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
+                  ) : mediatorDetail ? (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
+                        <div style={{ padding: "18px 22px", borderRadius: 14, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Итого за {salaryPeriod}</div>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: "#D97706" }}>${(mediatorDetail.totalUsd ?? 0).toLocaleString()}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Сделок: {mediatorDetail.dealsCount ?? 0}</div>
+                        </div>
+                        <div style={{ padding: "18px 22px", borderRadius: 14, background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Как считается</div>
+                          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 8, lineHeight: 1.5 }}>
+                            Сумма по каждой сделке из шаблона (поле посредника или % в карточке сделки), в USD по курсу на дату сделки. Прошлые месяцы пересчитываются автоматически.
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600 }}>Сделки</div>
+                        {(mediatorDetail.deals ?? []).length === 0 ? (
+                          <div style={{ padding: 40, textAlign: "center", color: "var(--text-tertiary)" }}>Нет сделок за период</div>
+                        ) : (
+                          <>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px 100px", padding: "8px 20px", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", gap: 8, borderBottom: "1px solid var(--border-light)" }}>
+                              <span>Сделка</span><span>Дата</span><span style={{ textAlign: "right" }}>%</span><span style={{ textAlign: "right" }}>USD</span>
+                            </div>
+                            {(mediatorDetail.deals ?? []).map((d: any) => (
+                              <div key={d.dealId} style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px 100px", padding: "10px 20px", gap: 8, alignItems: "center", borderBottom: "1px solid var(--border-light)", fontSize: 13 }}>
+                                <span style={{ fontWeight: 500 }}>{d.title || d.dealId.slice(0, 8)}</span>
+                                <span style={{ color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru") : "—"}</span>
+                                <span style={{ textAlign: "right" }}>{d.pct}%</span>
+                                <span style={{ textAlign: "right", fontWeight: 600, color: "#D97706" }}>${(d.amountUsd ?? 0).toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* ===== SALARY ===== */}
           {tab === "salary" ? (() => {
             const ROLE_LABELS_S: Record<string, string> = { ADMIN: "Администратор", MANAGER: "Менеджер", WORKER: "Воркер", SUPER_ADMIN: "Супер-админ" };
             const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
             const fmtDec = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
-            const totalFund = salaryData.reduce((s, e) => s + (e.totalAccrued ?? 0), 0);
-            const totalDebt = salaryData.reduce((s, e) => s + Math.max(0, e.balance ?? 0), 0);
-            const totalPaid = salaryData.reduce((s, e) => s + (e.paidUsd ?? 0), 0);
+            const totalFund = salaryData.reduce((s, e) => s + (e.totalAccrued ?? 0), 0) + (salaryAiPartner?.totalAccrued ?? 0);
+            const totalDebt = salaryData.reduce((s, e) => s + Math.max(0, e.balance ?? 0), 0) + Math.max(0, salaryAiPartner?.balance ?? 0);
+            const totalPaid = salaryData.reduce((s, e) => s + (e.paidUsd ?? 0), 0) + (salaryAiPartner?.paidUsd ?? 0);
 
             // ── CABINET VIEW ──────────────────────────────────────────────
             if (selectedSalaryEmp) {
               const emp = selectedSalaryEmp;
+              const isAi = !!emp.isAiPartner;
               const cfg = emp.salaryConfig;
               const debt = emp.balance ?? 0;
               const isInDebt = debt > 0;
-              const avatarColor = ["#6366F1","#059669","#D97706","#DC2626","#0EA5E9"][emp.email.charCodeAt(0) % 5];
+              const avatarColor = ["#6366F1","#059669","#D97706","#DC2626","#8B5CF6"][(emp.email || emp.name || "a").charCodeAt(0) % 5];
 
               return (
                 <div style={{ display: "grid", gap: 16 }}>
@@ -5464,7 +5722,7 @@ export default function AppPage() {
                     </div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 16 }}>{emp.name || emp.email}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` · ${emp.position}` : ""}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{isAi ? "Партнёр ИИ офиса" : (ROLE_LABELS_S[emp.role] ?? emp.role)}{emp.position ? ` · ${emp.position}` : ""}</div>
                     </div>
                     <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
                       <input type="month" value={salaryPeriod} onChange={e => { setSalaryPeriod(e.target.value); loadSalary(e.target.value); }}
@@ -5474,11 +5732,15 @@ export default function AppPage() {
 
                   {/* Metric cards */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-                    {[
+                    {(isAi ? [
+                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Доля ИИ по сделкам офиса: $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#8B5CF6" },
+                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
+                      { label: isInDebt ? "К выплате" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: "Счёт ИИ привязан к офису", color: isInDebt ? "#DC2626" : "#059669" },
+                    ] : [
                       { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Ставка $${fmt(emp.baseUsd ?? 0)} + Сделки $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#6366F1" },
                       { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
                       { label: isInDebt ? "Долг (не выплачено)" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? "Требует выплаты" : "Переплата или ровно", color: isInDebt ? "#DC2626" : "#059669" },
-                    ].map(m => (
+                    ]).map(m => (
                       <div key={m.label} style={{ background: "var(--bg-card)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
                         <div style={{ fontSize: 26, fontWeight: 800, color: m.color, lineHeight: 1.1 }}>{m.value}</div>
@@ -5490,17 +5752,23 @@ export default function AppPage() {
                   {/* Main grid: settings + history */}
                   <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14 }}>
 
-                    {/* Left: Salary settings */}
+                    {/* Left: Salary settings / AI info */}
                     <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
                       <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>Настройки зарплаты</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{isAi ? "ИИ офиса" : "Настройки зарплаты"}</div>
+                        {!isAi && (
                         <button type="button" className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
                           onClick={() => openSalaryConfigModal(emp.userId, emp.name || emp.email, cfg)}>
                           {cfg ? "Изменить ставку" : "Настроить"}
                         </button>
+                        )}
                       </div>
                       <div style={{ padding: "16px 18px", display: "grid", gap: 14 }}>
-                        {cfg ? (
+                        {isAi ? (
+                          <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+                            У каждого офиса один счёт «ИИ». Начисление — доля из шаблона сделок за месяц; прошлые периоды пересчитываются по данным сделок.
+                          </div>
+                        ) : cfg ? (
                           <>
                             <div>
                               <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Ставка в месяц</div>
@@ -5644,6 +5912,27 @@ export default function AppPage() {
                     </div>
                   ))}
                 </div>
+
+                {salaryAiPartner && (
+                  <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid rgba(139,92,246,0.35)", overflow: "hidden", marginBottom: 12 }}>
+                    <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14 }}>🤖 ИИ офиса</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto", padding: "12px 20px", gap: 8, alignItems: "center", cursor: "pointer" }}
+                      onClick={() => setSelectedSalaryEmp(salaryAiPartner)}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(139,92,246,0.15)", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>🤖</div>
+                        <div><div style={{ fontWeight: 600 }}>{salaryAiPartner.name}</div><div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Доля по сделкам</div></div>
+                      </div>
+                      <div style={{ textAlign: "right", color: "var(--text-tertiary)", fontSize: 12 }}>—</div>
+                      <div style={{ textAlign: "right", fontWeight: 600, color: "#8B5CF6" }}>${fmtDec(salaryAiPartner.dealEarningsUsd ?? 0)}</div>
+                      <div style={{ textAlign: "right", fontWeight: 700, color: "#8B5CF6" }}>${fmt(salaryAiPartner.totalAccrued ?? 0)}</div>
+                      <div style={{ textAlign: "right", color: "#059669" }}>${fmt(salaryAiPartner.paidUsd ?? 0)}</div>
+                      <div style={{ textAlign: "right", fontWeight: 700, color: (salaryAiPartner.balance ?? 0) > 0 ? "#DC2626" : "#059669" }}>
+                        {(salaryAiPartner.balance ?? 0) > 0 ? "−" : "+"}${fmt(Math.abs(salaryAiPartner.balance ?? 0))}
+                      </div>
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setSelectedSalaryEmp(salaryAiPartner); }}>Кабинет</button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Employee table */}
                 <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
@@ -6518,7 +6807,26 @@ export default function AppPage() {
         </div>
       </div>
 
-      {/* ===== SALARY CONFIG MODAL ===== */}
+      {mediatorFormOpen && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setMediatorFormOpen(false); }}>
+          <div className="card" style={{ width: 440, maxWidth: "100%" }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="card-header"><span className="card-title">{mediatorEditingId ? "Редактировать посредника" : "Новый посредник"}</span></div>
+            <div className="card-body" style={{ display: "grid", gap: 12 }}>
+              <div><div className="form-label">Имя *</div><input className="form-input" value={mediatorForm.name} onChange={(e) => setMediatorForm((f) => ({ ...f, name: e.target.value }))} /></div>
+              <div><div className="form-label">Телефон</div><input className="form-input" value={mediatorForm.phone} onChange={(e) => setMediatorForm((f) => ({ ...f, phone: e.target.value }))} /></div>
+              <div><div className="form-label">% по умолчанию</div><input className="form-input" type="number" min={0} max={100} step="0.01" value={mediatorForm.defaultPct} onChange={(e) => setMediatorForm((f) => ({ ...f, defaultPct: e.target.value }))} /></div>
+              <div><div className="form-label">Заметка</div><textarea className="form-input" rows={2} value={mediatorForm.note} onChange={(e) => setMediatorForm((f) => ({ ...f, note: e.target.value }))} /></div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn btn-secondary" onClick={() => setMediatorFormOpen(false)}>Отмена</button>
+                <button className="btn btn-primary" onClick={() => void saveMediator()}>Сохранить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {/* ===== SALARY CONFIG MODAL ===== */}
       {salaryConfigModal && (
         <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
           onMouseDown={(e) => { if (e.target === e.currentTarget && !salaryConfigSaving) setSalaryConfigModal(null); }}>

@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal, getEffectiveRates, CalcStep, computeChain, computeMediatorAiPayroll, MEDIATOR_AI_PAYROLL } from '../deals/deal-payout.util';
+import {
+  getPayrollBaseForTemplateDeal,
+  getEffectiveRates,
+  getDealPayoutBreakdown,
+  breakdownToUsd,
+  CalcStep,
+  computeChain,
+  computeMediatorAiPayroll,
+  MEDIATOR_AI_PAYROLL,
+} from '../deals/deal-payout.util';
+import { MediatorsService } from '../mediators/mediators.service';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -32,7 +42,10 @@ const TEMPLATE_SELECT = {
 
 @Injectable()
 export class DashboardService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mediators: MediatorsService,
+  ) {}
 
   private async loadRates(): Promise<Record<string, number>> {
     const rows = await this.prisma.exchangeRate.findMany();
@@ -150,6 +163,8 @@ export class DashboardService {
     let totalAmountOut = 0;
     let totalOfficeIncome = 0;
     let totalWorkersPayoutUsdt = 0;
+    let totalMediatorUsd = 0;
+    let totalAiUsd = 0;
 
     for (const d of deals) {
       const tpl = d.template as any;
@@ -162,6 +177,10 @@ export class DashboardService {
       totalAmountOut += gross;
       totalOfficeIncome += officeIncome;
 
+      const split = breakdownToUsd(getDealPayoutBreakdown(d as any), currency, effectiveRates);
+      totalMediatorUsd += split.mediator;
+      totalAiUsd += split.ai;
+
       // Worker payroll base in deal currency → USD (using historical rates)
       const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
       for (const p of d.participants) {
@@ -170,6 +189,8 @@ export class DashboardService {
         }
       }
     }
+
+    const mediatorsSummary = await this.mediators.getOrgSummary(organizationId, fromDate, toDate);
 
     const expenses = await this.prisma.expense.findMany({
       where: { organizationId, createdAt: { gte: fromDate, lte: toDate } },
@@ -201,6 +222,12 @@ export class DashboardService {
         count: expensesCount,
         byStatus: expensesByStatus,
         totalAmount: Math.round(totalExpenses * 100) / 100,
+      },
+      partners: {
+        totalMediatorUsd: Math.round(totalMediatorUsd * 100) / 100,
+        totalAiUsd: Math.round(totalAiUsd * 100) / 100,
+        mediators: mediatorsSummary.rows,
+        dealsWithMediator: mediatorsSummary.dealsWithMediator,
       },
     };
   }

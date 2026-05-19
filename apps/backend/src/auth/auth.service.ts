@@ -12,6 +12,7 @@ export class AuthService {
       where: { email },
     });
     if (!user) throw new BadRequestException('Invalid credentials');
+    if (user.role === 'AI_PARTNER') throw new BadRequestException('Invalid credentials');
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) throw new BadRequestException('Invalid credentials');

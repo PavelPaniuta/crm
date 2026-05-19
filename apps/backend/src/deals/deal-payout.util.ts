@@ -12,7 +12,8 @@ export type CalcStep = {
   deductType: 'percent' | 'fixed';
   deductFieldKey: string;   // field that holds the % or fixed amount
   resultLabel: string;
-  isPayrollPool: boolean;   // deductAmt of this step = payroll fund
+  isPayrollPool?: boolean;  // deductAmt of this step = payroll fund
+  isAiShare?: boolean;      // deductAmt of this step = office AI share
 };
 
 export type CalcStepResult = {
@@ -45,6 +46,113 @@ export function getPayrollBaseFromChain(chain: CalcStepResult[]): number {
   if (payrollStep) return Math.max(0, payrollStep.deductAmt);
   const last = chain[chain.length - 1];
   return last ? Math.max(0, last.result) : 0;
+}
+
+export function getAiShareFromChain(chain: CalcStepResult[]): number {
+  const aiStep = chain.find((c) => c.step.isAiShare);
+  if (aiStep) return Math.max(0, aiStep.deductAmt);
+  return 0;
+}
+
+export type DealPayoutBreakdown = {
+  gross: number;
+  mediator: number;
+  ai: number;
+  payrollPool: number;
+  office: number;
+  mode: 'classic' | 'incomeField' | 'mediatorAiPayroll' | 'calcChain' | 'none';
+};
+
+export type DealForPayout = {
+  amounts: { amountOut: unknown }[];
+  dataRows: { data: unknown }[];
+  template:
+    | (MediatorAiPayrollKeys & {
+        incomeFieldKey: string | null;
+        calcSteps?: unknown;
+        fields?: Array<{ key: string; type: string }>;
+      })
+    | null;
+  rateSnapshot?: unknown;
+};
+
+/** Суммы в валюте сделки (до конвертации в USD). */
+export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown {
+  const empty: DealPayoutBreakdown = {
+    gross: 0,
+    mediator: 0,
+    ai: 0,
+    payrollPool: 0,
+    office: 0,
+    mode: 'none',
+  };
+  if (deal.amounts.length > 0) {
+    const gross = deal.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
+    return { gross, mediator: 0, ai: 0, payrollPool: gross, office: 0, mode: 'classic' };
+  }
+  const t = deal.template;
+  if (!t || deal.dataRows.length === 0) return empty;
+  const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
+  if (!first) return empty;
+
+  if (Array.isArray(t.calcSteps) && (t.calcSteps as CalcStep[]).length > 0) {
+    const chain = computeChain(first, t.calcSteps as CalcStep[]);
+    const gross = chain[0]?.source ?? 0;
+    const office = chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
+    return {
+      gross,
+      mediator: 0,
+      ai: getAiShareFromChain(chain),
+      payrollPool: getPayrollBaseFromChain(chain),
+      office,
+      mode: 'calcChain',
+    };
+  }
+
+  const calc = computeMediatorAiPayroll(first, t);
+  if (calc) {
+    return {
+      gross: calc.G,
+      mediator: calc.M,
+      ai: calc.A,
+      payrollPool: calc.F,
+      office: calc.P,
+      mode: 'mediatorAiPayroll',
+    };
+  }
+
+  if (t.incomeFieldKey) {
+    const gross = deal.dataRows.reduce((s, r) => {
+      const d = r.data as Record<string, unknown>;
+      return s + (Number(d[t.incomeFieldKey!]) || 0);
+    }, 0);
+    return { gross, mediator: 0, ai: 0, payrollPool: gross, office: 0, mode: 'incomeField' };
+  }
+  return empty;
+}
+
+export function breakdownToUsd(
+  breakdown: DealPayoutBreakdown,
+  currency: string,
+  rates: Record<string, number>,
+): DealPayoutBreakdown {
+  const f = (n: number) => toUsdAmount(n, currency, rates);
+  return {
+    gross: f(breakdown.gross),
+    mediator: f(breakdown.mediator),
+    ai: f(breakdown.ai),
+    payrollPool: f(breakdown.payrollPool),
+    office: f(breakdown.office),
+    mode: breakdown.mode,
+  };
+}
+
+function toUsdAmount(amount: number, currency: string, rates: Record<string, number>): number {
+  if (!amount) return 0;
+  if (!currency || currency === 'USD') return amount;
+  const rate = rates[currency];
+  if (!rate || rate === 0) return amount;
+  return amount / rate;
 }
 
 // ─── Legacy: MEDIATOR_AI_PAYROLL preset ─────────────────────────────────────

@@ -34,7 +34,42 @@ export class DealsService {
         user: { select: { id: true, email: true, role: true, position: true, organizationId: true, organization: { select: { name: true } } } },
       },
     },
+    mediatorLink: { include: { mediator: true } },
   };
+
+  private async upsertDealMediator(
+    dealId: string,
+    organizationId: string,
+    mediatorId: string | null | undefined,
+    mediatorPct: number | null | undefined,
+    template: { calcMediatorPctKey?: string | null } | null,
+    dataRows?: Array<{ data: Record<string, unknown> }>,
+  ) {
+    if (mediatorId === undefined) return;
+    if (!mediatorId) {
+      await this.prisma.dealMediator.deleteMany({ where: { dealId } });
+      return;
+    }
+    const mediator = await this.prisma.mediator.findFirst({
+      where: { id: mediatorId, organizationId, isActive: true },
+    });
+    if (!mediator) throw new BadRequestException('Посредник не найден');
+
+    let pct = mediatorPct;
+    if (pct == null || !Number.isFinite(pct)) {
+      if (mediator.defaultPct != null) pct = Number(mediator.defaultPct);
+      else if (template?.calcMediatorPctKey && dataRows?.[0]?.data) {
+        pct = Number(dataRows[0].data[template.calcMediatorPctKey]) || 0;
+      } else pct = 0;
+    }
+    if (pct < 0 || pct > 100) throw new BadRequestException('Процент посредника должен быть от 0 до 100');
+
+    await this.prisma.dealMediator.upsert({
+      where: { dealId },
+      create: { dealId, mediatorId, pct },
+      update: { mediatorId, pct },
+    });
+  }
 
   list(organizationId: string) {
     return this.prisma.deal.findMany({
@@ -63,10 +98,19 @@ export class DealsService {
       comment?: string | null;
       templateId?: string | null;
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
+      mediatorId?: string | null;
+      mediatorPct?: number | null;
     },
   ) {
     const rateSnapshot = await loadRateSnapshot(this.prisma);
-    return this.prisma.deal.create({
+    let template: { calcMediatorPctKey?: string | null } | null = null;
+    if (data.templateId) {
+      template = await this.prisma.dealTemplate.findFirst({
+        where: { id: data.templateId, organizationId },
+        select: { calcMediatorPctKey: true },
+      });
+    }
+    const deal = await this.prisma.deal.create({
       data: {
         organizationId,
         title: data.title,
@@ -82,6 +126,18 @@ export class DealsService {
       },
       include: this.dealInclude,
     });
+    if (data.mediatorId) {
+      await this.upsertDealMediator(
+        deal.id,
+        organizationId,
+        data.mediatorId,
+        data.mediatorPct ?? null,
+        template,
+        data.dataRows,
+      );
+      return this.get(organizationId, deal.id);
+    }
+    return deal;
   }
 
   async delete(organizationId: string, id: string) {
@@ -90,6 +146,7 @@ export class DealsService {
     await this.prisma.dealDataRow.deleteMany({ where: { dealId: id } });
     await this.prisma.dealAmount.deleteMany({ where: { dealId: id } });
     await this.prisma.dealParticipant.deleteMany({ where: { dealId: id } });
+    await this.prisma.dealMediator.deleteMany({ where: { dealId: id } });
     await this.prisma.deal.delete({ where: { id } });
     return { ok: true };
   }
@@ -105,9 +162,14 @@ export class DealsService {
       comment?: string | null;
       templateId?: string | null;
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
+      mediatorId?: string | null;
+      mediatorPct?: number | null;
     },
   ) {
-    const existing = await this.prisma.deal.findFirst({ where: { id, organizationId } });
+    const existing = await this.prisma.deal.findFirst({
+      where: { id, organizationId },
+      include: { template: { select: { calcMediatorPctKey: true } } },
+    });
     if (!existing) throw new NotFoundException();
 
     if (data.dataRows !== undefined) {
@@ -119,7 +181,7 @@ export class DealsService {
       }
     }
 
-    return this.prisma.deal.update({
+    const updated = await this.prisma.deal.update({
       where: { id },
       data: {
         title: data.title,
@@ -131,6 +193,24 @@ export class DealsService {
       },
       include: this.dealInclude,
     });
+
+    if (data.mediatorId !== undefined) {
+      const rows =
+        data.dataRows ??
+        (await this.prisma.dealDataRow.findMany({ where: { dealId: id }, orderBy: { order: 'asc' } })).map(
+          (r) => ({ data: r.data as Record<string, unknown> }),
+        );
+      await this.upsertDealMediator(
+        id,
+        organizationId,
+        data.mediatorId,
+        data.mediatorPct ?? null,
+        existing.template,
+        rows,
+      );
+      return this.get(organizationId, id);
+    }
+    return updated;
   }
 
   async addAmount(organizationId: string, dealId: string, data: AmountInput) {

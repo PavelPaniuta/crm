@@ -70,7 +70,18 @@ export class DealsController {
   @Post()
   create(
     @Req() req: any,
-    @Body() body: { title: string; clientId?: string | null; dealDate?: string; status?: DealStatus; comment?: string | null; templateId?: string | null; dataRows?: Array<{ data: Record<string, unknown>; order?: number }> },
+    @Body()
+    body: {
+      title: string;
+      clientId?: string | null;
+      dealDate?: string;
+      status?: DealStatus;
+      comment?: string | null;
+      templateId?: string | null;
+      dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
+      mediatorId?: string | null;
+      mediatorPct?: number | null;
+    },
   ) {
     return this.deals.create(req.user.activeOrganizationId, body);
   }
@@ -92,6 +103,10 @@ export class DealsController {
       clientId?: string | null;
       dealDate?: string;
       comment?: string | null;
+      templateId?: string | null;
+      dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
+      mediatorId?: string | null;
+      mediatorPct?: number | null;
     },
   ) {
     return this.deals.update(req.user.activeOrganizationId, id, body);

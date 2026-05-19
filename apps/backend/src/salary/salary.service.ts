@@ -1,7 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { getPayrollBaseForTemplateDeal, getEffectiveRates } from '../deals/deal-payout.util';
+import {
+  getPayrollBaseForTemplateDeal,
+  getEffectiveRates,
+  getDealPayoutBreakdown,
+  breakdownToUsd,
+} from '../deals/deal-payout.util';
+import { OfficeAiService } from '../office-ai/office-ai.service';
+import { Role } from '@prisma/client';
 
 function toUsd(amount: number, currency: string, rates: Record<string, number>): number {
   if (!amount) return 0;
@@ -34,7 +41,10 @@ const DEAL_TEMPLATE_SELECT = {
 
 @Injectable()
 export class SalaryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private officeAi: OfficeAiService,
+  ) {}
 
   private async loadRates(): Promise<Record<string, number>> {
     const rows = await this.prisma.exchangeRate.findMany();
@@ -50,9 +60,9 @@ export class SalaryService {
     const fromDate = new Date(Date.UTC(year, month - 1, 1));
     const toDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
-    const [users, rates] = await Promise.all([
+    const [users, rates, aiPartnerRecord, orgDeals] = await Promise.all([
       this.prisma.user.findMany({
-        where: { organizationId },
+        where: { organizationId, role: { not: Role.AI_PARTNER } },
         select: {
           id: true, email: true, name: true, role: true, position: true,
           salaryConfig: true,
@@ -78,9 +88,30 @@ export class SalaryService {
         orderBy: { name: 'asc' },
       }),
       this.loadRates(),
+      this.officeAi.getForOrganization(organizationId).catch(() => null),
+      this.prisma.deal.findMany({
+        where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
+        select: {
+          rateSnapshot: true,
+          amounts: { select: { amountOut: true, currencyOut: true } },
+          dataRows: { select: { data: true } },
+          template: { select: DEAL_TEMPLATE_SELECT },
+        },
+      }),
     ]);
 
-    return users.map((u) => {
+    let aiDealEarningsUsd = 0;
+    for (const deal of orgDeals) {
+      const tpl = deal.template as any;
+      const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
+      const currency = getDealCurrency(tpl, first);
+      const effectiveRates = getEffectiveRates(deal, rates);
+      const split = breakdownToUsd(getDealPayoutBreakdown(deal as any), currency, effectiveRates);
+      aiDealEarningsUsd += split.ai;
+    }
+    aiDealEarningsUsd = Math.round(aiDealEarningsUsd * 100) / 100;
+
+    const employees = users.map((u) => {
       // Deal earnings in USD
       let dealEarningsUsd = 0;
       for (const dp of u.dealParticipants) {
@@ -139,6 +170,68 @@ export class SalaryService {
         })),
       };
     });
+
+    let aiPartner: {
+      userId: string;
+      name: string;
+      dealEarningsUsd: number;
+      baseUsd: number;
+      totalAccrued: number;
+      paidUsd: number;
+      balance: number;
+      salaryConfig: null;
+      payments: Array<{
+        id: string;
+        amount: number;
+        currency: string;
+        amountUsd: number;
+        type: string;
+        note: string | null;
+        isPaid: boolean;
+        paidAt: Date | null;
+        createdAt: Date;
+      }>;
+      isAiPartner: true;
+    } | null = null;
+
+    if (aiPartnerRecord?.user) {
+      const aiPayments = await this.prisma.salaryPayment.findMany({
+        where: { organizationId, period, userId: aiPartnerRecord.userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      const cfg = await this.prisma.employeeSalaryConfig.findUnique({
+        where: { userId: aiPartnerRecord.userId },
+      });
+      const baseUsd = cfg ? toUsd(Number(cfg.baseAmount), cfg.currency, rates) : 0;
+      const totalAccrued = Math.round((baseUsd + aiDealEarningsUsd) * 100) / 100;
+      const paidUsd = aiPayments
+        .filter((p) => p.isPaid)
+        .reduce((s, p) => s + toUsd(Number(p.amount), p.currency, rates), 0);
+      aiPartner = {
+        userId: aiPartnerRecord.userId,
+        name: aiPartnerRecord.name,
+        dealEarningsUsd: aiDealEarningsUsd,
+        baseUsd: Math.round(baseUsd * 100) / 100,
+        totalAccrued,
+        paidUsd: Math.round(paidUsd * 100) / 100,
+        balance: Math.round((totalAccrued - paidUsd) * 100) / 100,
+        salaryConfig: null,
+        payments: aiPayments.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          currency: p.currency,
+          amountUsd: Math.round(toUsd(Number(p.amount), p.currency, rates) * 100) / 100,
+          type: p.type,
+          note: p.note,
+          isPaid: p.isPaid,
+          paidAt: p.paidAt,
+          createdAt: p.createdAt,
+        })),
+        isAiPartner: true,
+      };
+    }
+
+    return { employees, aiPartner };
   }
 
   /** Upsert salary config for a user */

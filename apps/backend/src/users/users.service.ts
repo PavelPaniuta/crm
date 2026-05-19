@@ -12,7 +12,7 @@ export class UsersService {
 
   list(organizationId: string) {
     return this.prisma.user.findMany({
-      where: { organizationId },
+      where: { organizationId, role: { not: Role.AI_PARTNER } },
       select: { id: true, email: true, name: true, role: true, position: true, organizationId: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -20,6 +20,7 @@ export class UsersService {
 
   listPublic() {
     return this.prisma.user.findMany({
+      where: { role: { not: Role.AI_PARTNER } },
       select: {
         id: true, email: true, name: true, role: true, position: true,
         organizationId: true, organization: { select: { name: true } },
@@ -35,7 +36,7 @@ export class UsersService {
 
     const [primary, extra] = await Promise.all([
       this.prisma.user.findMany({
-        where: { organizationId: orgId },
+        where: { organizationId: orgId, role: { not: Role.AI_PARTNER } },
         select: { id: true, email: true, name: true, role: true, position: true,
           organizationId: true, organization: { select: { name: true } } },
         orderBy: { createdAt: 'asc' },

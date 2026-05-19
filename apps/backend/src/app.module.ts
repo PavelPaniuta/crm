@@ -22,6 +22,8 @@ import { ChatModule } from './chat/chat.module';
 import { AuditModule } from './audit/audit.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { SalaryModule } from './salary/salary.module';
+import { MediatorsModule } from './mediators/mediators.module';
+import { OfficeAiModule } from './office-ai/office-ai.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { SalaryModule } from './salary/salary.module';
     AuditModule,
     ExchangeRatesModule,
     SalaryModule,
+    MediatorsModule,
+    OfficeAiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
