@@ -51,7 +51,9 @@ export default function LoginPage() {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => null);
-        throw new Error(j?.message ?? "Ошибка");
+        const msg = j?.message;
+        const text = Array.isArray(msg) ? msg.join(", ") : msg;
+        throw new Error(text ?? "Ошибка");
       }
       setForgotDone(true);
     } catch (err: any) {

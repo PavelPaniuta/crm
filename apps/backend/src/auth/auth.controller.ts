@@ -3,10 +3,12 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   NotFoundException,
   Post,
   Req,
   Res,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -20,6 +22,8 @@ import * as crypto from 'crypto';
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private auth: AuthService,
     private prisma: PrismaService,
@@ -52,7 +56,10 @@ export class AuthController {
       loginResult = await this.auth.login(body.email, body.password, ip, ua);
     } catch (err) {
       // Log failed login attempt (no userId available, use email as detail)
-      const user = await this.prisma.user.findFirst({ where: { email: body.email } });
+      const normalized = body.email?.trim().toLowerCase();
+      const user = await this.prisma.user.findFirst({
+        where: { email: { equals: normalized, mode: 'insensitive' } },
+      });
       if (user) {
         void this.audit.log({
           userId: user.id,
@@ -127,7 +134,9 @@ export class AuthController {
     const email = body.email?.trim().toLowerCase();
     if (!email) throw new BadRequestException('Email обязателен');
 
-    const user = await this.prisma.user.findFirst({ where: { email } });
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
     // Always return ok to avoid user enumeration
     if (!user) return { ok: true };
 
@@ -139,7 +148,7 @@ export class AuthController {
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
-    await this.prisma.passwordResetToken.create({
+    const resetRecord = await this.prisma.passwordResetToken.create({
       data: { userId: user.id, token, expiresAt },
     });
 
@@ -147,10 +156,16 @@ export class AuthController {
     const resetUrl = `${appUrl}/reset-password?token=${token}`;
 
     if (this.mail.isConfigured()) {
-      await this.mail.sendPasswordReset(user.email, resetUrl, appUrl);
+      const sent = await this.mail.sendPasswordReset(user.email, resetUrl, appUrl);
+      if (!sent.ok) {
+        await this.prisma.passwordResetToken.delete({ where: { id: resetRecord.id } }).catch(() => undefined);
+        this.logger.error(`Password reset email failed for ${user.email}: ${sent.message}`);
+        throw new ServiceUnavailableException(
+          'Не удалось отправить письмо на этот адрес. Попросите администратора сбросить пароль в разделе «Сотрудники», или напишите в поддержку.',
+        );
+      }
     } else {
-      // Log the reset URL so admin can share it manually
-      console.log(`[RESET] ${user.email} → ${resetUrl}`);
+      this.logger.warn(`[RESET] mail not configured — ${user.email} → ${resetUrl}`);
     }
 
     return { ok: true };

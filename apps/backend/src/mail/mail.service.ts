@@ -22,10 +22,10 @@ export class MailService {
     return !!this.resend;
   }
 
-  async sendPasswordReset(to: string, resetUrl: string, appUrl: string) {
+  async sendPasswordReset(to: string, resetUrl: string, appUrl: string): Promise<{ ok: true } | { ok: false; message: string }> {
     if (!this.resend) {
       this.logger.warn(`[MOCK] Reset email to ${to}: ${resetUrl}`);
-      return;
+      return { ok: true };
     }
 
     const { error } = await this.resend.emails.send({
@@ -51,9 +51,11 @@ export class MailService {
     });
 
     if (error) {
-      this.logger.error(`Failed to send reset email: ${JSON.stringify(error)}`);
-      throw new Error(`Email send failed: ${error.message}`);
+      const message = error.message || 'unknown Resend error';
+      this.logger.error(`Failed to send reset email to ${to}: ${JSON.stringify(error)}`);
+      return { ok: false, message };
     }
+    return { ok: true };
   }
 
   async sendTaskAssigned(

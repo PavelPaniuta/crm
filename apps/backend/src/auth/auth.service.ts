@@ -8,8 +8,9 @@ export class AuthService {
   constructor(private prisma: PrismaService) {}
 
   async login(email: string, password: string, ip?: string, userAgent?: string) {
+    const normalized = email?.trim().toLowerCase();
     const user = await this.prisma.user.findFirst({
-      where: { email },
+      where: { email: { equals: normalized, mode: 'insensitive' } },
     });
     if (!user) throw new BadRequestException('Invalid credentials');
     if (user.role === 'AI_PARTNER') throw new BadRequestException('Invalid credentials');
