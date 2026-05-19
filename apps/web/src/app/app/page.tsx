@@ -2080,6 +2080,58 @@ export default function AppPage() {
     };
   }
 
+  /** Ключ поля «% посредника» в данных шаблона (для расчёта). */
+  function mediatorPctFieldKey(tpl: DealTemplate | null | undefined): string | null {
+    if (!tpl) return null;
+    if (tpl.calcMediatorPctKey) return tpl.calcMediatorPctKey;
+    if (tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL) {
+      const f = tpl.fields.find(
+        (field) =>
+          field.type === "PERCENT" &&
+          (field.key.includes("посредник") || field.label.toLowerCase().includes("посредник")),
+      );
+      return f?.key ?? null;
+    }
+    const steps = tpl.calcSteps as CalcStep[] | null | undefined;
+    if (steps?.length) {
+      const step = steps.find(
+        (s) =>
+          s.label.toLowerCase().includes("посредник") ||
+          (s.deductFieldKey && s.deductFieldKey.includes("посредник")),
+      );
+      return step?.deductFieldKey ?? null;
+    }
+    return null;
+  }
+
+  /** Синхронизирует % посредника в блоке выбора и в данных строки шаблона (от этого считается выплата). */
+  function applyDealMediatorPct(pct: string, tplId?: string | null) {
+    setDealMediatorPct(pct);
+    const tpl = templates.find((t) => t.id === (tplId ?? dealTemplateId));
+    const mk = mediatorPctFieldKey(tpl);
+    if (!mk) return;
+    setDealDataRows((prev) => {
+      if (prev.length === 0) return [{ _id: crypto.randomUUID(), data: { [mk]: pct } }];
+      return prev.map((row, i) =>
+        i === 0 ? { ...row, data: { ...row.data, [mk]: pct } } : row,
+      );
+    });
+  }
+
+  function setDealMediatorSelection(mediatorId: string) {
+    setDealMediatorId(mediatorId);
+    if (!mediatorId) {
+      applyDealMediatorPct("");
+      return;
+    }
+    const m = mediators.find((x: { id: string; defaultPct?: number | string | null }) => x.id === mediatorId);
+    const pct =
+      m?.defaultPct != null && m.defaultPct !== ""
+        ? String(m.defaultPct)
+        : dealMediatorPct;
+    applyDealMediatorPct(pct);
+  }
+
   async function openDealModal() {
     const tRes = await fetch("/api/deal-templates", { credentials: "include" });
     if (!tRes.ok) {
@@ -2124,10 +2176,16 @@ export default function AppPage() {
     setDealComment(deal.comment ?? "");
     setDealTemplateId(deal.templateId ?? null);
     setDealTemplateStep("form");
+    const linkPct = deal.mediatorLink ? String(deal.mediatorLink.pct) : "";
+    const mk = deal.template?.calcMediatorPctKey ?? null;
     setDealDataRows(
       (deal.dataRows ?? []).length > 0
-        ? deal.dataRows!.map((r) => ({ _id: r.id, data: Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, String(v ?? "")])) }))
-        : [{ _id: crypto.randomUUID(), data: {} }]
+        ? deal.dataRows!.map((r, i) => {
+            const data = Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, String(v ?? "")]));
+            if (i === 0 && mk && linkPct && !data[mk]) data[mk] = linkPct;
+            return { _id: r.id, data };
+          })
+        : [{ _id: crypto.randomUUID(), data: mk && linkPct ? { [mk]: linkPct } : {} }],
     );
     setDealAmounts(
       (deal.amounts ?? []).map((a) => ({
@@ -2145,7 +2203,7 @@ export default function AppPage() {
       (deal.participants ?? []).map((p) => ({ id: p.id, userId: p.user.id, pct: String(p.pct) })),
     );
     setDealMediatorId(deal.mediatorLink?.mediatorId ?? "");
-    setDealMediatorPct(deal.mediatorLink ? String(deal.mediatorLink.pct) : "");
+    setDealMediatorPct(linkPct);
     fetchDealDropdowns();
   }
 
@@ -2239,7 +2297,12 @@ export default function AppPage() {
 
     if (activeTpl) {
       // Template-based deal
-      const rowsPayload = dealDataRows.map((r, i) => ({ data: r.data, order: i }));
+      const mk = mediatorPctFieldKey(activeTpl);
+      const rowsPayload = dealDataRows.map((r, i) => {
+        const data = { ...r.data };
+        if (i === 0 && mk && dealMediatorPct !== "") data[mk] = dealMediatorPct;
+        return { data, order: i };
+      });
       const mediatorPayload = {
         mediatorId: dealMediatorId || null,
         mediatorPct: dealMediatorPct ? Number(dealMediatorPct) : null,
@@ -3283,26 +3346,35 @@ export default function AppPage() {
                         const tplM = templates.find((t) => t.id === dealTemplateId);
                         const showMediator = tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL || (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
                         if (!showMediator) return null;
+                        const mediatorFieldKey = mediatorPctFieldKey(tplM);
                         return (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
                             <div>
                               <div className="form-label">Посредник</div>
-                              <select className="form-input" value={dealMediatorId} onChange={(e) => {
-                                const id = e.target.value;
-                                setDealMediatorId(id);
-                                const m = mediators.find((x: any) => x.id === id);
-                                if (m?.defaultPct != null && !dealMediatorPct) setDealMediatorPct(String(m.defaultPct));
-                              }}>
+                              <select className="form-input" value={dealMediatorId} onChange={(e) => setDealMediatorSelection(e.target.value)}>
                                 <option value="">— не выбран —</option>
                                 {mediators.filter((m: any) => m.isActive !== false).map((m: any) => (
-                                  <option key={m.id} value={m.id}>{m.name}{m.defaultPct != null ? ` (по умолч. ${m.defaultPct}%)` : ""}</option>
+                                  <option key={m.id} value={m.id}>{m.name}{m.defaultPct != null ? ` (${m.defaultPct}%)` : ""}</option>
                                 ))}
                               </select>
+                              {mediatorFieldKey && (
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>
+                                  % из справочника подставляется в расчёт{dealMediatorPct ? ` (сейчас ${dealMediatorPct}%)` : ""}
+                                </div>
+                              )}
                             </div>
                             <div>
                               <div className="form-label">% по сделке</div>
-                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealMediatorPct}
-                                onChange={(e) => setDealMediatorPct(e.target.value)} />
+                              <input
+                                className="form-input"
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                placeholder="%"
+                                value={dealMediatorPct}
+                                onChange={(e) => applyDealMediatorPct(e.target.value)}
+                              />
                             </div>
                           </div>
                         );
@@ -3332,6 +3404,13 @@ export default function AppPage() {
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
                                   {tpl.fields.map((f) => {
+                                    if (
+                                      (tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL ||
+                                        (tpl.calcSteps && (tpl.calcSteps as CalcStep[]).length > 0)) &&
+                                      mediatorPctFieldKey(tpl) === f.key
+                                    ) {
+                                      return null;
+                                    }
                                     const isGross = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcGrossFieldKey;
                                     const isMediator = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcMediatorPctKey;
                                     const isAi = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcAiPctKey;
