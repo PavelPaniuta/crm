@@ -83,6 +83,7 @@ export class DealsController {
       mediatorPct?: number | null;
       olxId?: string | null;
       olxPct?: number | null;
+      infoPct?: number | null;
     },
   ) {
     return this.deals.create(req.user.activeOrganizationId, body);
@@ -111,6 +112,7 @@ export class DealsController {
       mediatorPct?: number | null;
       olxId?: string | null;
       olxPct?: number | null;
+      infoPct?: number | null;
     },
   ) {
     return this.deals.update(req.user.activeOrganizationId, id, body);

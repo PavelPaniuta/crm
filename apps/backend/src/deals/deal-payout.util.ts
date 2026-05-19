@@ -141,14 +141,11 @@ export function payrollPoolPctFromTemplate(
   return 20;
 }
 
-function resolveInfoPct(deal: DealForPayout): number {
-  if (deal.infoPctOverride != null && Number.isFinite(deal.infoPctOverride)) {
-    return Math.max(0, Math.min(100, deal.infoPctOverride));
-  }
-  if (deal.organizationInfoPct != null && Number.isFinite(deal.organizationInfoPct)) {
-    return Math.max(0, Math.min(100, deal.organizationInfoPct));
-  }
-  return 0;
+/** % Инфо только из сделки (поле Deal.infoPct). */
+export function resolveInfoPct(deal: DealForPayout): number {
+  const raw = deal.infoPct ?? deal.infoPctOverride;
+  if (raw == null || !Number.isFinite(Number(raw))) return 0;
+  return Math.max(0, Math.min(100, Number(raw)));
 }
 
 /** ОЛХ/Инфо и пересчёт фонда после внешних ссылок (DealOlx, OrganizationInfoPartner). */
@@ -205,8 +202,8 @@ export type DealForPayout = {
   dataRows?: { data: unknown }[] | null;
   mediatorLink?: { pct: unknown } | null;
   olxLink?: { pct: unknown } | null;
+  infoPct?: unknown;
   infoPctOverride?: number | null;
-  organizationInfoPct?: number | null;
   template:
     | (MediatorAiPayrollKeys & {
         incomeFieldKey: string | null;

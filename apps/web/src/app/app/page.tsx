@@ -29,7 +29,6 @@ import {
 import { ClientsKanbanBoard } from "@/components/clients/ClientsKanbanBoard";
 import { ReportsTab } from "@/components/reports/ReportsTab";
 import { downloadAccountingExport, fetchWorkersReport, importAccountingXlsx, type WorkersReport } from "@/lib/reports";
-import { OfficeInfoSettingsCard } from "@/components/office-info/OfficeInfoSettingsCard";
 import { OlxFormModal } from "@/components/olx/OlxFormModal";
 import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
@@ -241,6 +240,7 @@ type Deal = {
   dataRows?: DealDataRow[];
   mediatorLink?: { mediatorId: string; pct: string | number; mediator: { id: string; name: string } } | null;
   olxLink?: { olxId: string; pct: string | number; olx: { id: string; name: string } } | null;
+  infoPct?: number | string | null;
   participants: Array<{
     id: string;
     pct: number;
@@ -420,8 +420,7 @@ export default function AppPage() {
   const [olxEditingId, setOlxEditingId] = useState<string | null>(null);
   const [dealOlxId, setDealOlxId] = useState<string>("");
   const [dealOlxPct, setDealOlxPct] = useState<string>("");
-  const [officeInfo, setOfficeInfo] = useState<{ name: string; defaultPct: number | null } | null>(null);
-  const [officeInfoPct, setOfficeInfoPct] = useState("");
+  const [dealInfoPct, setDealInfoPct] = useState<string>("");
   const [repWorkers, setRepWorkers] = useState<WorkersReport | null>(null);
 
   // --- Profile ---
@@ -636,13 +635,11 @@ export default function AppPage() {
       if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") {
         void loadAuditLog(0); void loadExchangeRates();
         void loadClientStatuses(); void loadClientFieldDefinitions();
-        void loadOfficeInfo();
       }
     }
     if (tab === "staff") loadStaff();
     if (tab === "mediators") { void loadMediators(); setSelectedMediator(null); setMediatorDetail(null); }
-    if (tab === "olx") { void loadOlxList(); void loadOfficeInfo(); setSelectedOlx(null); setOlxDetail(null); }
-    if (tab === "settings" && isManager) void loadOfficeInfo();
+    if (tab === "olx") { void loadOlxList(); setSelectedOlx(null); setOlxDetail(null); }
     if (tab === "salary") loadSalary();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if (tab === "assistant") void loadClientStatuses();
@@ -993,28 +990,6 @@ export default function AppPage() {
     if (!res.ok) return alert("Не удалось удалить");
     if (selectedOlx?.id === id) { setSelectedOlx(null); setOlxDetail(null); }
     await loadOlxList();
-  }
-
-  async function loadOfficeInfo() {
-    const res = await fetch("/api/office-info", { credentials: "include" });
-    if (!res.ok) return;
-    const j = await res.json();
-    setOfficeInfo(j);
-    setOfficeInfoPct(j?.defaultPct != null ? String(j.defaultPct) : "");
-  }
-
-  async function saveOfficeInfo() {
-    const res = await fetch("/api/office-info", {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: officeInfo?.name ?? "Инфо",
-        defaultPct: officeInfoPct ? Number(officeInfoPct) : null,
-      }),
-    });
-    if (!res.ok) return alert("Не удалось сохранить");
-    await loadOfficeInfo();
   }
 
   async function loadStaff() {
@@ -2301,6 +2276,7 @@ export default function AppPage() {
     setDealMediatorPct("");
     setDealOlxId("");
     setDealOlxPct("");
+    setDealInfoPct("");
     fetchDealDropdowns();
   }
 
@@ -2343,6 +2319,7 @@ export default function AppPage() {
     setDealMediatorPct(linkPct);
     setDealOlxId(deal.olxLink?.olxId ?? "");
     setDealOlxPct(deal.olxLink ? String(deal.olxLink.pct) : "");
+    setDealInfoPct(deal.infoPct != null && deal.infoPct !== "" ? String(deal.infoPct) : "");
     fetchDealDropdowns();
   }
 
@@ -2449,6 +2426,7 @@ export default function AppPage() {
         mediatorPct: dealMediatorPct ? Number(dealMediatorPct) : null,
         olxId: dealOlxId || null,
         olxPct: dealOlxPct ? Number(dealOlxPct) : null,
+        infoPct: dealInfoPct !== "" ? Number(dealInfoPct) : null,
       };
       const payload = { ...basePayload, templateId: activeTpl.id, dataRows: rowsPayload, ...mediatorPayload };
 
@@ -3520,6 +3498,33 @@ export default function AppPage() {
                             <div>
                               <div className="form-label">% по сделке</div>
                               <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealOlxPct} onChange={(e) => setDealOlxPct(e.target.value)} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {dealTemplateId && (() => {
+                        const tplM = templates.find((t) => t.id === dealTemplateId);
+                        const showPartner =
+                          tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL ||
+                          (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
+                        if (!showPartner) return null;
+                        return (
+                          <div
+                            style={{
+                              padding: "12px 14px",
+                              background: "rgba(100,116,139,0.08)",
+                              borderRadius: 10,
+                              border: "1px solid var(--border-light)",
+                            }}
+                          >
+                            <div className="form-label" style={{ fontWeight: 600 }}>Инфо</div>
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
+                              Процент от <b>зарплатного фонда</b> этой сделки (после посредника, ОЛХ и ИИ). У каждой сделки свой %.
+                            </div>
+                            <div style={{ maxWidth: 200 }}>
+                              <div className="form-label">% Инфо</div>
+                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="например 5" value={dealInfoPct} onChange={(e) => setDealInfoPct(e.target.value)} />
                             </div>
                           </div>
                         );
@@ -5387,13 +5392,6 @@ export default function AppPage() {
           {/* ===== MEDIATORS ===== */}
           {tab === "olx" ? (
             <OlxTab
-              infoSettings={{
-                infoName: officeInfo?.name ?? "Инфо",
-                infoPct: officeInfoPct,
-                onInfoNameChange: (v) => setOfficeInfo((x) => ({ name: v, defaultPct: x?.defaultPct ?? null })),
-                onInfoPctChange: setOfficeInfoPct,
-                onInfoSave: saveOfficeInfo,
-              }}
               olxList={olxList}
               olxLoading={olxLoading}
               selectedOlx={selectedOlx}
@@ -5860,27 +5858,6 @@ export default function AppPage() {
                           </tbody>
                         </table>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {isManager ? (
-                <div className="card">
-                  <div className="card-header">
-                    <span className="card-title">Партнёр «Инфо»</span>
-                  </div>
-                  <div className="card-body g2">
-                      <div>
-                      <div className="form-label">Название</div>
-                      <input className="form-input" value={officeInfo?.name ?? "Инфо"} onChange={(e) => setOfficeInfo((x) => ({ name: e.target.value, defaultPct: x?.defaultPct ?? null }))} />
-                    </div>
-                    <div>
-                      <div className="form-label">% от ЗП фонда по умолчанию</div>
-                      <input className="form-input" type="number" min={0} max={100} step="0.01" value={officeInfoPct} onChange={(e) => setOfficeInfoPct(e.target.value)} placeholder="например 5" />
-                    </div>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <button type="button" className="btn btn-primary" onClick={() => void saveOfficeInfo()}>Сохранить</button>
                     </div>
                   </div>
                 </div>

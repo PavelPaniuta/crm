@@ -1,7 +1,5 @@
 "use client";
 
-import { OfficeInfoSettingsCard } from "@/components/office-info/OfficeInfoSettingsCard";
-
 export type OlxListItem = {
   id: string;
   name: string;
@@ -25,16 +23,7 @@ export type OlxDetail = {
   deals?: OlxDealRow[];
 };
 
-type InfoSettingsProps = {
-  infoName: string;
-  infoPct: string;
-  onInfoNameChange: (v: string) => void;
-  onInfoPctChange: (v: string) => void;
-  onInfoSave: () => void | Promise<void>;
-};
-
 type Props = {
-  infoSettings?: InfoSettingsProps;
   olxList: OlxListItem[];
   olxLoading: boolean;
   selectedOlx: OlxListItem | null;
@@ -50,7 +39,6 @@ type Props = {
 };
 
 export function OlxTab({
-  infoSettings,
   olxList,
   olxLoading,
   selectedOlx,
@@ -68,15 +56,6 @@ export function OlxTab({
     <div style={{ display: "grid", gap: 16 }}>
       {!selectedOlx ? (
         <>
-          {infoSettings ? (
-            <OfficeInfoSettingsCard
-              name={infoSettings.infoName}
-              pct={infoSettings.infoPct}
-              onNameChange={infoSettings.onInfoNameChange}
-              onPctChange={infoSettings.onInfoPctChange}
-              onSave={infoSettings.onInfoSave}
-            />
-          ) : null}
           <div className="page-header">
             <div className="page-header-left">
               <div className="page-header-title">ОЛХ</div>

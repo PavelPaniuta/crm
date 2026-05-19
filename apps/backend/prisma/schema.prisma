@@ -250,6 +250,8 @@ model Deal {
 
   mediatorLink  DealMediator?
   olxLink       DealOlx?
+  /// % «Инфо» от ЗП фонда этой сделки (задаётся в карточке сделки)
+  infoPct       Decimal? @db.Decimal(5, 2)
 
   @@index([organizationId])
   @@index([clientId])

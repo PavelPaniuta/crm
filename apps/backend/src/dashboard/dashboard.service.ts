@@ -146,7 +146,7 @@ export class DashboardService {
     const toDate =
       parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
 
-    const [deals, rates, infoPartner] = await Promise.all([
+    const [deals, rates] = await Promise.all([
       this.prisma.deal.findMany({
         where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
         include: {
@@ -159,11 +159,7 @@ export class DashboardService {
         },
       }),
       this.loadRates(),
-      this.prisma.organizationInfoPartner.findUnique({ where: { organizationId } }),
     ]);
-
-    const orgInfoPct =
-      infoPartner?.defaultPct != null ? Number(infoPartner.defaultPct) : null;
 
     const dealsCount = deals.length;
     const dealsByStatus = deals.reduce(
@@ -193,20 +189,13 @@ export class DashboardService {
         totalAmountOut += gross;
         totalOfficeIncome += officeIncome;
 
-        const split = breakdownToUsd(
-          getDealPayoutBreakdown({ ...(d as any), organizationInfoPct: orgInfoPct }),
-          currency,
-          effectiveRates,
-        );
+        const split = breakdownToUsd(getDealPayoutBreakdown(d as any), currency, effectiveRates);
         totalMediatorUsd += split.mediator;
         totalAiUsd += split.ai;
         totalOlxUsd += split.olx;
         totalInfoUsd += split.info;
 
-        const { base: payrollBase } = getPayrollBaseForTemplateDeal({
-          ...(d as any),
-          organizationInfoPct: orgInfoPct,
-        });
+        const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
         for (const p of d.participants) {
           const pct = Number(p.pct);
           if (payrollBase > 0 && Number.isFinite(pct)) {

@@ -152,7 +152,7 @@ export class AccountingExportService {
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
     const toDate = to ? endOfDay(new Date(to)) : endOfDay(now);
 
-    const [deals, rateRows, infoPartner] = await Promise.all([
+    const [deals, rateRows] = await Promise.all([
       this.prisma.deal.findMany({
         where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
         include: {
@@ -169,18 +169,14 @@ export class AccountingExportService {
         orderBy: { dealDate: 'asc' },
       }),
       this.prisma.exchangeRate.findMany(),
-      this.prisma.organizationInfoPartner.findUnique({ where: { organizationId } }),
     ]);
-
-    const orgInfoPct =
-      infoPartner?.defaultPct != null ? Number(infoPartner.defaultPct) : null;
 
     const currentRates: Record<string, number> = {};
     for (const r of rateRows) currentRates[r.code] = Number(r.rateToUsd);
 
     const dataRows: unknown[][] = [HEADER_ROW_1, HEADER_ROW_2];
     for (const deal of deals) {
-      dataRows.push(this.dealToRow(deal as DealRow, currentRates, orgInfoPct));
+      dataRows.push(this.dealToRow(deal as DealRow, currentRates));
     }
 
     // Пустые строки как в шаблоне (до ~900 строк для привычного вида)
@@ -197,11 +193,7 @@ export class AccountingExportService {
     );
   }
 
-  private dealToRow(
-    deal: DealRow,
-    currentRates: Record<string, number>,
-    organizationInfoPct: number | null,
-  ): unknown[] {
+  private dealToRow(deal: DealRow & { infoPct?: unknown }, currentRates: Record<string, number>): unknown[] {
     const row: unknown[] = new Array(HEADER_ROW_1.length).fill(null);
     const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
     const tpl = deal.template;
@@ -209,10 +201,7 @@ export class AccountingExportService {
     const effectiveRates = getEffectiveRates(deal, currentRates);
     const rateToUsd = effectiveRates[currency] ?? currentRates[currency] ?? 1;
 
-    const breakdown = getDealPayoutBreakdown({
-      ...(deal as Parameters<typeof getDealPayoutBreakdown>[0]),
-      organizationInfoPct,
-    });
+    const breakdown = getDealPayoutBreakdown(deal as Parameters<typeof getDealPayoutBreakdown>[0]);
     const usd = breakdownToUsd(breakdown, currency, effectiveRates);
     const grossLocal = breakdown.gross;
     const grossUsd = usd.gross;

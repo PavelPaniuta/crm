@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DealStatus, OperationType } from '@prisma/client';
 
@@ -23,6 +24,14 @@ type AmountInput = {
 @Injectable()
 export class DealsService {
   constructor(private prisma: PrismaService) {}
+
+  private toInfoPctDecimal(pct: number | null | undefined): Prisma.Decimal | null {
+    if (pct == null || !Number.isFinite(pct)) return null;
+    if (pct < 0 || pct > 100) {
+      throw new BadRequestException('Процент Инфо должен быть от 0 до 100');
+    }
+    return new Prisma.Decimal(String(pct));
+  }
 
   private readonly dealInclude = {
     client: { include: { status: true } },
@@ -132,6 +141,7 @@ export class DealsService {
       mediatorPct?: number | null;
       olxId?: string | null;
       olxPct?: number | null;
+      infoPct?: number | null;
     },
   ) {
     const rateSnapshot = await loadRateSnapshot(this.prisma);
@@ -152,6 +162,8 @@ export class DealsService {
         comment: data.comment ?? null,
         templateId: data.templateId ?? null,
         rateSnapshot: Object.keys(rateSnapshot).length > 0 ? rateSnapshot : undefined,
+        infoPct:
+          data.infoPct !== undefined ? this.toInfoPctDecimal(data.infoPct) : undefined,
         dataRows: data.dataRows
           ? { create: data.dataRows.map((r, i) => ({ data: r.data as object, order: r.order ?? i })) }
           : undefined,
@@ -171,7 +183,9 @@ export class DealsService {
     if (data.olxId) {
       await this.upsertDealOlx(deal.id, organizationId, data.olxId, data.olxPct ?? null);
     }
-    if (data.mediatorId || data.olxId) return this.get(organizationId, deal.id);
+    if (data.mediatorId || data.olxId || data.infoPct !== undefined) {
+      return this.get(organizationId, deal.id);
+    }
     return deal;
   }
 
@@ -202,6 +216,7 @@ export class DealsService {
       mediatorPct?: number | null;
       olxId?: string | null;
       olxPct?: number | null;
+      infoPct?: number | null;
     },
   ) {
     const existing = await this.prisma.deal.findFirst({
@@ -228,6 +243,9 @@ export class DealsService {
         dealDate: data.dealDate ? new Date(data.dealDate) : undefined,
         comment: data.comment === undefined ? undefined : data.comment,
         templateId: data.templateId === undefined ? undefined : data.templateId,
+        ...(data.infoPct !== undefined && {
+          infoPct: this.toInfoPctDecimal(data.infoPct),
+        }),
       },
       include: this.dealInclude,
     });
@@ -253,6 +271,7 @@ export class DealsService {
       await this.upsertDealOlx(id, organizationId, data.olxId, data.olxPct ?? null);
       reload = true;
     }
+    if (data.infoPct !== undefined) reload = true;
     if (reload) return this.get(organizationId, id);
     return updated;
   }

@@ -104,14 +104,13 @@ export class AccountingImportService {
     });
     if (!template) throw new BadRequestException('Шаблон не найден');
 
-    const [users, mediators, olxList, infoPartner, rateRows] = await Promise.all([
+    const [users, mediators, olxList, rateRows] = await Promise.all([
       this.prisma.user.findMany({
         where: { organizationId },
         select: { id: true, name: true, email: true },
       }),
       this.prisma.mediator.findMany({ where: { organizationId } }),
       this.prisma.olx.findMany({ where: { organizationId } }),
-      this.prisma.organizationInfoPartner.findUnique({ where: { organizationId } }),
       this.prisma.exchangeRate.findMany(),
     ]);
 
@@ -214,6 +213,10 @@ export class AccountingImportService {
             status: DealStatus.CLOSED,
             templateId,
             rateSnapshot: Object.keys(rates).length > 0 ? rates : undefined,
+            infoPct:
+              infoPct != null && infoPct > 0
+                ? new Prisma.Decimal(String(infoPct))
+                : null,
             dataRows: { create: [{ data: data as object, order: 0 }] },
             participants: {
               create: participants.map((p) => ({ userId: p.userId, pct: p.pct })),
@@ -248,20 +251,6 @@ export class AccountingImportService {
           });
         }
 
-        if (infoPct > 0) {
-          await this.prisma.organizationInfoPartner.upsert({
-            where: { organizationId },
-            create: {
-              organizationId,
-              name: String(row[COL.infoLabel] ?? 'Инфо').trim() || 'Инфо',
-              defaultPct: new Prisma.Decimal(String(infoPct)),
-            },
-            update: {
-              defaultPct: new Prisma.Decimal(String(infoPct)),
-            },
-          });
-        }
-
         created++;
       } catch (e) {
         errors.push(
@@ -269,10 +258,6 @@ export class AccountingImportService {
         );
         skipped++;
       }
-    }
-
-    if (infoPartner && !opts?.dryRun) {
-      // no-op; upsert handled per row
     }
 
     return { created, skipped, errors: errors.slice(0, 50) };

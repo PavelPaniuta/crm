@@ -184,12 +184,6 @@ export class OlxService {
     const rates: Record<string, number> = {};
     for (const r of ratesRows) rates[r.code] = Number(r.rateToUsd);
 
-    const infoPartner = await this.prisma.organizationInfoPartner.findUnique({
-      where: { organizationId },
-    });
-    const orgInfoPct =
-      infoPartner?.defaultPct != null ? Number(infoPartner.defaultPct) : null;
-
     const links = await this.prisma.dealOlx.findMany({
       where: {
         deal: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
@@ -220,7 +214,6 @@ export class OlxService {
       const raw = getDealPayoutBreakdown({
         ...deal,
         olxLink: { pct: link.pct },
-        organizationInfoPct: orgInfoPct,
       } as any);
       const usd = breakdownToUsd(raw, currency, effectiveRates).olx;
 
