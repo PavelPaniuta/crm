@@ -393,6 +393,7 @@ export default function AppPage() {
   const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [dashTo, setDashTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [dashLoading, setDashLoading] = useState(false);
+  const [dashError, setDashError] = useState<string | null>(null);
   const [dash, setDash] = useState<any>(null);
 
   // --- Reports ---
@@ -548,7 +549,7 @@ export default function AppPage() {
   };
 
   const title = useMemo(() => {
-    if (tab === "dashboard") return "Dashboard";
+    if (tab === "dashboard") return isWorker ? "Мой кабинет" : "Дашборд";
     if (tab === "deals") return "Сделки";
     if (tab === "clients") return "Клиенты";
     if (tab === "expenses") return "Расходы";
@@ -562,7 +563,7 @@ export default function AppPage() {
     if (tab === "assistant") return "AI Ассистент";
     if (tab === "salary") return "Зарплата";
     return "MyCRM";
-  }, [tab]);
+  }, [tab, isWorker]);
 
   useEffect(() => {
     (async () => {
@@ -600,7 +601,11 @@ export default function AppPage() {
     }
     if (tab === "expenses") loadExpenses();
     if (tab === "deals") { loadDeals(); loadTemplates(); }
-    if (tab === "dashboard" && user?.role !== "WORKER") { loadDashboard(); loadDeals(); loadExpenses(); }
+    if (tab === "dashboard" && user && user.role !== "WORKER") {
+      void loadDashboard();
+      void loadDeals();
+      void loadExpenses();
+    }
     if (tab === "reports") loadReportsWorkers();
     if (tab === "profile") { loadProfile(); void loadSessions(); }
     if (tab === "settings") {
@@ -627,7 +632,11 @@ export default function AppPage() {
       if (chatPollRef.current) { clearInterval(chatPollRef.current); chatPollRef.current = null; }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, user?.role]);
+
+  useEffect(() => {
+    if (!isSuperAdmin && dashView === "global") setDashView("current");
+  }, [isSuperAdmin, dashView]);
 
   // ---- loaders ----
   async function loadClients() {
@@ -654,6 +663,16 @@ export default function AppPage() {
     if (res.status === 401) { router.replace("/login"); return; }
     if (res.ok) setClientFieldDefs(await res.json());
   }
+
+  const dashDealsInPeriod = useMemo(() => {
+    const fromTs = dashFrom ? new Date(dashFrom).getTime() : 0;
+    const toTs = dashTo ? new Date(dashTo + "T23:59:59").getTime() : Infinity;
+    return deals.filter((d) => {
+      if (!d.dealDate) return false;
+      const ts = new Date(d.dealDate).getTime();
+      return ts >= fromTs && ts <= toTs;
+    });
+  }, [deals, dashFrom, dashTo]);
 
   const clientsFiltered = useMemo(() => {
     if (clientStatusFilter === "all") return clients;
@@ -1688,13 +1707,22 @@ export default function AppPage() {
 
   async function loadDashboard(from?: string, to?: string) {
     setDashLoading(true);
+    setDashError(null);
     const f = from ?? dashFrom;
     const t = to ?? dashTo;
     try {
       const res = await fetch(`/api/dashboard?from=${f}&to=${t}`, { credentials: "include" });
       if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) return;
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setDash(null);
+        setDashError((j as { message?: string }).message ?? "Не удалось загрузить дашборд");
+        return;
+      }
       setDash(await res.json());
+    } catch {
+      setDash(null);
+      setDashError("Ошибка сети при загрузке дашборда");
     } finally { setDashLoading(false); }
   }
 
@@ -2507,7 +2535,13 @@ export default function AppPage() {
 
         <div className="content">
           {/* ===== WORKER CABINET ===== */}
-          {tab === "dashboard" && isWorker ? (
+          {tab === "dashboard" && !user ? (
+            <div className="card" style={{ padding: 32, textAlign: "center", color: "var(--text-secondary)" }}>
+              Загрузка…
+            </div>
+          ) : null}
+
+          {tab === "dashboard" && user && isWorker ? (
             <div style={{ display: "grid", gap: 20 }}>
               <div className="card">
                 <div className="card-header">
@@ -2541,7 +2575,7 @@ export default function AppPage() {
           ) : null}
 
           {/* ===== DASHBOARD ===== */}
-          {tab === "dashboard" && !isWorker ? (
+          {tab === "dashboard" && user && !isWorker ? (
             <div style={{ display: "grid", gap: 20 }}>
 
               {/* Period bar */}
@@ -2581,10 +2615,18 @@ export default function AppPage() {
 
               {dashView === "current" ? (
                 <>
-                  {/* 4 Metric cards — TailAdmin style */}
-                  {dashLoading || !dash ? (
+                  {/* Metric cards */}
+                  {dashError ? (
+                    <div className="card" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 8 }}>Не удалось показать дашборд</div>
+                      <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>{dashError}</div>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadDashboard()}>
+                        Повторить
+                      </button>
+                    </div>
+                  ) : dashLoading || !dash ? (
                     <div className="metric-grid">
-                      {[0,1,2,3].map(i => (
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
                         <div key={i} className="metric-card" style={{ minHeight: 110, animation: "pulse 1.5s ease infinite" }}>
                           <div style={{ height: 44, width: 44, borderRadius: 10, background: "var(--bg-metric)" }} />
                           <div style={{ height: 20, borderRadius: 6, background: "var(--bg-metric)", marginTop: 8 }} />
@@ -2825,9 +2867,9 @@ export default function AppPage() {
                         <table className="data-table">
                           <thead><tr><th>Клиент</th><th>Статус</th><th style={{ textAlign: "right" }}>Выход</th></tr></thead>
                           <tbody>
-                            {deals.length === 0 ? (
+                            {dashDealsInPeriod.length === 0 ? (
                               <tr><td colSpan={3} style={{ padding: "20px 18px", color: "var(--text-secondary)" }}>Нет сделок за период</td></tr>
-                            ) : deals.slice(0, 5).map((d) => {
+                            ) : dashDealsInPeriod.slice(0, 5).map((d) => {
                               const out = d.amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
                               return (
                                 <tr key={d.id} style={{ cursor: "pointer" }} onClick={() => { setTab("deals"); setTimeout(() => openDealEditModal(d), 50); }}>
