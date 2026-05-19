@@ -15,8 +15,18 @@ import {
 import { MediatorFormModal } from "@/components/mediators/MediatorFormModal";
 import { MediatorsTab, type MediatorListItem } from "@/components/mediators/MediatorsTab";
 import { ExchangeRatesModal } from "@/components/modals/ExchangeRatesModal";
+import { ExpenseDetailModal } from "@/components/expenses/ExpenseDetailModal";
+import { SalaryConfigModal } from "@/components/salary/SalaryConfigModal";
+import { SalaryPaymentModal } from "@/components/salary/SalaryPaymentModal";
 import { StaffTable } from "@/components/staff/StaffTable";
+import {
+  type ClientFormState,
+  clientFormSectionStyle,
+  emptyClientForm,
+  parseClientLeadPaste,
+} from "@/lib/clients";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
+import { SALARY_PAYMENT_TYPES } from "@/lib/salary-constants";
 
 const AreaChart = dynamic(() => import("../../components/charts/AreaChart"), { ssr: false });
 const DonutChart = dynamic(() => import("../../components/charts/DonutChart"), { ssr: false });
@@ -60,63 +70,6 @@ type ClientCommentEntry = {
   createdAt: string;
   user: { id: string; name: string | null; email: string };
 };
-
-type ClientFormState = {
-  name: string;
-  phone: string;
-  note: string;
-  statusId: string;
-  bank: string;
-  assistantName: string;
-  callSummary: string;
-  callStartedAt: string;
-};
-
-function emptyClientForm(): ClientFormState {
-  return {
-    name: "",
-    phone: "",
-    note: "",
-    statusId: "",
-    bank: "",
-    assistantName: "",
-    callSummary: "",
-    callStartedAt: "",
-  };
-}
-
-/** Разбор текста из бота / мессенджера (строки «Клиент:», «Телефон:», …). */
-function parseClientLeadPaste(text: string): Partial<ClientFormState> {
-  const norm = text.replace(/\r\n/g, "\n");
-  const pickLine = (re: RegExp) => {
-    const m = norm.match(re);
-    return m ? m[1].replace(/\s+$/u, "").trim() : "";
-  };
-  const out: Partial<ClientFormState> = {};
-  const assistant = pickLine(/[Аа]ссистент\s*[:：]\s*(.+)/im);
-  if (assistant) out.assistantName = assistant;
-  const bank = pickLine(/Банк\s*[:：]\s*(.+)/im);
-  if (bank) out.bank = bank;
-  const name = pickLine(/Клиент\s*[:：]\s*(.+)/im);
-  if (name) out.name = name;
-  const phone = pickLine(/Телефон\s*[:：]\s*(.+)/im);
-  if (phone) out.phone = phone;
-  const sumM = norm.match(/Summary\s*[:：]\s*([\s\S]+?)(?=\n\s*[⏰]|\n\s*Время\s+начала|$)/im);
-  if (sumM) out.callSummary = sumM[1].trim();
-  else {
-    const one = pickLine(/Summary\s*[:：]\s*(.+)/im);
-    if (one) out.callSummary = one;
-  }
-  const timeM = norm.match(/Время\s+начала\s+звонка\s*[:：]\s*(.+)/im);
-  if (timeM) {
-    const p = timeM[1].trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\s*,\s*(\d{1,2}):(\d{2})/);
-    if (p) {
-      const [, d, mo, y, h, mi] = p;
-      out.callStartedAt = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}`;
-    }
-  }
-  return out;
-}
 
 type Expense = {
   id: string;
@@ -213,17 +166,6 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
 
 const FIELD_TYPES_ALL: FieldType[] = ["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"];
 
-function clientFormSectionStyle(muted?: boolean): React.CSSProperties {
-  return {
-    border: "1px solid var(--border-light)",
-    borderRadius: 12,
-    padding: "16px 18px",
-    background: muted ? "var(--bg-metric)" : "var(--bg-card)",
-    display: "grid",
-    gap: 14,
-  };
-}
-
 type ClientFieldDef = {
   id: string;
   key: string;
@@ -317,14 +259,6 @@ const OP_LABELS: Record<OperationType, string> = {
   TRANSFER: "Перевод",
 };
 
-const SALARY_PAYMENT_TYPES: Record<string, string> = {
-  BASE: "Ставка",
-  DEAL_BONUS: "Бонус по сделкам",
-  AI_DEAL_SHARE: "Доля ИИ по сделкам",
-  ADVANCE: "Аванс",
-  MANUAL: "Ручная",
-};
-const SALARY_PAY_DAY_PRESETS = [1, 5, 10, 15, 25, 31] as const;
 export default function AppPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -367,11 +301,6 @@ export default function AppPage() {
   const [newExpensePayMethod, setNewExpensePayMethod] = useState("bank");
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseEditing, setExpenseEditing] = useState<Expense | null>(null);
-  const [expenseEditMode, setExpenseEditMode] = useState(false);
-  const [expenseEditTitle, setExpenseEditTitle] = useState("");
-  const [expenseEditAmount, setExpenseEditAmount] = useState("");
-  const [expenseEditCurrency, setExpenseEditCurrency] = useState("PLN");
-  const [expenseEditPayMethod, setExpenseEditPayMethod] = useState("bank");
 
   // --- Users ---
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -532,11 +461,7 @@ export default function AppPage() {
   const [salaryPeriod, setSalaryPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [selectedSalaryEmp, setSelectedSalaryEmp] = useState<any | null>(null);
   const [salaryConfigModal, setSalaryConfigModal] = useState<{ userId: string; name: string; config: any } | null>(null);
-  const [salaryPaymentModal, setSalaryPaymentModal] = useState<{ userId: string; name: string; orgId: string } | null>(null);
-  const [salaryConfigForm, setSalaryConfigForm] = useState({ baseAmount: "", currency: "USD", payDay: "1", note: "" });
-  const [salaryConfigSaving, setSalaryConfigSaving] = useState(false);
-  const [salaryPaymentForm, setSalaryPaymentForm] = useState({ amount: "", currency: "USD", type: "BASE", note: "", isPaid: false });
-  const [salaryPaymentSaving, setSalaryPaymentSaving] = useState(false);
+  const [salaryPaymentModal, setSalaryPaymentModal] = useState<{ userId: string; name: string; orgId: string; currency: string } | null>(null);
 
   // --- Tasks ---
   const [tasks, setTasks] = useState<CrmTask[]>([]);
@@ -1014,88 +939,10 @@ export default function AppPage() {
     config?: { baseAmount?: unknown; currency?: string; payDay?: number; note?: string | null } | null,
   ) {
     setSalaryConfigModal({ userId, name, config: config ?? null });
-    setSalaryConfigForm({
-      baseAmount: config?.baseAmount != null && config.baseAmount !== "" ? String(config.baseAmount) : "",
-      currency: config?.currency ?? "USD",
-      payDay: config?.payDay != null ? String(config.payDay) : "1",
-      note: config?.note ?? "",
-    });
   }
 
   function openSalaryPaymentModal(userId: string, name: string, orgId: string, currency = "USD") {
-    setSalaryPaymentModal({ userId, name, orgId });
-    setSalaryPaymentForm({ amount: "", currency, type: "BASE", note: "", isPaid: false });
-  }
-
-  async function saveSalaryConfig() {
-    if (!salaryConfigModal) return;
-    const baseAmount = Number(salaryConfigForm.baseAmount);
-    const payDay = Number(salaryConfigForm.payDay);
-    if (!Number.isFinite(baseAmount) || baseAmount < 0) {
-      alert("Укажите корректную базовую ставку");
-      return;
-    }
-    if (!Number.isFinite(payDay) || payDay < 1 || payDay > 31) {
-      alert("День выплаты должен быть от 1 до 31");
-      return;
-    }
-    setSalaryConfigSaving(true);
-    try {
-      const res = await fetch(`/api/salary/config/${salaryConfigModal.userId}`, {
-        method: "PUT", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseAmount,
-          currency: salaryConfigForm.currency,
-          payDay,
-          note: salaryConfigForm.note.trim() || undefined,
-        }),
-      });
-      if (res.ok) {
-        setSalaryConfigModal(null);
-        await loadSalary();
-      } else {
-        const j = await res.json().catch(() => null);
-        alert(j?.message || "Ошибка сохранения");
-      }
-    } finally {
-      setSalaryConfigSaving(false);
-    }
-  }
-
-  async function addSalaryPayment() {
-    if (!salaryPaymentModal) return;
-    const amount = Number(salaryPaymentForm.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert("Укажите сумму выплаты");
-      return;
-    }
-    setSalaryPaymentSaving(true);
-    try {
-      const res = await fetch("/api/salary/payments", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: salaryPaymentModal.userId,
-          organizationId: salaryPaymentModal.orgId,
-          amount,
-          currency: salaryPaymentForm.currency,
-          period: salaryPeriod,
-          type: salaryPaymentForm.type,
-          note: salaryPaymentForm.note.trim() || undefined,
-          isPaid: salaryPaymentForm.isPaid,
-        }),
-      });
-      if (res.ok) {
-        setSalaryPaymentModal(null);
-        await loadSalary();
-      } else {
-        const j = await res.json().catch(() => null);
-        alert(j?.message || "Ошибка");
-      }
-    } finally {
-      setSalaryPaymentSaving(false);
-    }
+    setSalaryPaymentModal({ userId, name, orgId, currency });
   }
 
   async function togglePaymentPaid(paymentId: string, isPaid: boolean) {
@@ -2109,31 +1956,6 @@ export default function AppPage() {
     if (!res.ok) return alert("Не удалось создать расход");
     setNewExpenseTitle(""); setNewExpenseAmount("");
     await loadExpenses();
-  }
-
-  async function expenseAction(action: "submit" | "approve" | "reject") {
-    if (!expenseEditing) return;
-    const res = await fetch(`/api/expenses/${expenseEditing.id}/${action}`, { method: "POST", credentials: "include" });
-    if (!res.ok) return alert("Не удалось изменить статус");
-    const list = await fetch("/api/expenses", { credentials: "include" }).then((r) => r.json());
-    setExpenses(list);
-    setExpenseEditing(list.find((e: Expense) => e.id === expenseEditing.id) ?? null);
-  }
-
-  async function saveExpenseEdit() {
-    if (!expenseEditing) return;
-    const amount = Number(expenseEditAmount);
-    if (!Number.isFinite(amount) || !expenseEditTitle.trim()) return alert("Проверьте поля");
-    const res = await fetch(`/api/expenses/${expenseEditing.id}`, {
-      method: "PATCH", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: expenseEditTitle, amount, currency: expenseEditCurrency, payMethod: expenseEditPayMethod }),
-    });
-    if (!res.ok) return alert("Не удалось сохранить расход");
-    const updated: Expense = await res.json();
-    setExpenses((prev) => prev.map((e) => e.id === updated.id ? updated : e));
-    setExpenseEditing(updated);
-    setExpenseEditMode(false);
   }
 
   async function deleteExpense(id: string) {
@@ -4437,7 +4259,7 @@ export default function AppPage() {
                         </td></tr>
                       ) : (
                         expenses.map((e) => (
-                          <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseEditMode(false); setExpenseModalOpen(true); }}>
+                          <tr key={e.id} style={{ cursor: "pointer" }} onClick={() => { setExpenseEditing(e); setExpenseModalOpen(true); }}>
                             <td style={{ fontWeight: 500 }}>{e.title}</td>
                             <td>
                               <span className={`badge ${e.status === "APPROVED" ? "badge-green" : e.status === "SUBMITTED" ? "badge-blue" : e.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
@@ -4465,96 +4287,21 @@ export default function AppPage() {
                 </div>
               </div>
 
-              {expenseModalOpen && expenseEditing ? (
-                <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 50 }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) { setExpenseModalOpen(false); setExpenseEditMode(false); } }}>
-                  <div className="card" style={{ width: 520, maxWidth: "100%" }}>
-                    <div className="card-header">
-                      <span className="card-title">{expenseEditMode ? "Редактировать расход" : "Расход"}</span>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {!expenseEditMode && isAdmin && (
-                          <button className="btn btn-secondary" style={{ color: "var(--red)" }} onClick={() => deleteExpense(expenseEditing.id)}>Удалить</button>
-                        )}
-                        {!expenseEditMode && expenseEditing.status === "DRAFT" && (
-                          <button className="btn btn-secondary" onClick={() => {
-                            setExpenseEditTitle(expenseEditing.title);
-                            setExpenseEditAmount(String(expenseEditing.amount));
-                            setExpenseEditCurrency(expenseEditing.currency);
-                            setExpenseEditPayMethod(expenseEditing.payMethod);
-                            setExpenseEditMode(true);
-                          }}>Редактировать</button>
-                        )}
-                        <button className="btn btn-secondary" onClick={() => { setExpenseModalOpen(false); setExpenseEditMode(false); }}>Закрыть</button>
-                      </div>
-                    </div>
-                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                      {expenseEditMode ? (
-                        <>
-                          <div>
-                            <div className="form-label">Название</div>
-                            <input className="form-input" value={expenseEditTitle} onChange={(e) => setExpenseEditTitle(e.target.value)} />
-                          </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 140px", gap: 12 }}>
-                            <div>
-                              <div className="form-label">Сумма</div>
-                              <input className="form-input" value={expenseEditAmount} onChange={(e) => setExpenseEditAmount(e.target.value)} style={{ fontFamily: "'JetBrains Mono', monospace" }} />
-                            </div>
-                            <div>
-                              <div className="form-label">Валюта</div>
-                              <select className="form-input" value={expenseEditCurrency} onChange={(e) => setExpenseEditCurrency(e.target.value)}>
-                                {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="form-label">Оплата</div>
-                              <select className="form-input" value={expenseEditPayMethod} onChange={(e) => setExpenseEditPayMethod(e.target.value)}>
-                                <option value="bank">Банк</option>
-                                <option value="usdt">USDT</option>
-                                <option value="cash">Кэш</option>
-                              </select>
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                            <button className="btn btn-secondary" onClick={() => setExpenseEditMode(false)}>Отмена</button>
-                            <button className="btn btn-primary" onClick={saveExpenseEdit}>Сохранить</button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div><div className="form-label">Название</div><div style={{ fontWeight: 600 }}>{expenseEditing.title}</div></div>
-                          <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr 1fr" }}>
-                            <div>
-                              <div className="form-label">Сумма</div>
-                              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{Number(expenseEditing.amount).toLocaleString()} {expenseEditing.currency}</div>
-                            </div>
-                            <div>
-                              <div className="form-label">Оплата</div>
-                              <div style={{ color: "var(--text-secondary)" }}>{expenseEditing.payMethod}</div>
-                            </div>
-                            <div>
-                              <div className="form-label">Статус</div>
-                              <span className={`badge ${expenseEditing.status === "APPROVED" ? "badge-green" : expenseEditing.status === "SUBMITTED" ? "badge-blue" : expenseEditing.status === "REJECTED" ? "badge-red" : "badge-amber"}`}>
-                                {expenseEditing.status === "APPROVED" ? "Одобрен" : expenseEditing.status === "SUBMITTED" ? "На проверке" : expenseEditing.status === "REJECTED" ? "Отклонён" : "Черновик"}
-                              </span>
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
-                            {expenseEditing.status === "DRAFT" ? (
-                              <button className="btn btn-primary" onClick={() => expenseAction("submit")}>Отправить на одобрение</button>
-                            ) : null}
-                            {isAdmin && expenseEditing.status === "SUBMITTED" ? (
-                              <>
-                                <button className="btn btn-secondary" onClick={() => expenseAction("reject")}>Отклонить</button>
-                                <button className="btn btn-primary" onClick={() => expenseAction("approve")}>Одобрить</button>
-                              </>
-                            ) : null}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              <ExpenseDetailModal
+                open={expenseModalOpen && !!expenseEditing}
+                expense={expenseEditing}
+                isAdmin={isAdmin}
+                onClose={() => setExpenseModalOpen(false)}
+                onDelete={deleteExpense}
+                onExpenseUpdated={(e) => {
+                  setExpenses((prev) => prev.map((x) => (x.id === e.id ? e : x)));
+                  setExpenseEditing(e);
+                }}
+                onExpensesRefresh={(list) => {
+                  setExpenses(list);
+                  setExpenseEditing((prev) => (prev ? list.find((e) => e.id === prev.id) ?? prev : null));
+                }}
+              />
               {/* ===== AI ANALYTICS CHAT ===== */}
               <div className="card" style={{ padding: "20px 24px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
@@ -6592,164 +6339,24 @@ export default function AppPage() {
         onSave={saveMediator}
       />
 
-            {/* ===== SALARY CONFIG MODAL ===== */}
-      {salaryConfigModal && (
-        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
-          onMouseDown={(e) => { if (e.target === e.currentTarget && !salaryConfigSaving) setSalaryConfigModal(null); }}>
-          <div className="card" style={{ width: 500, maxWidth: "100%", maxHeight: "min(92vh, 720px)", overflow: "auto" }}
-            onMouseDown={(e) => e.stopPropagation()}>
-            <div className="card-header" style={{ alignItems: "flex-start" }}>
-              <div>
-                <div className="card-title">Настройка зарплаты</div>
-                <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 4, fontWeight: 500 }}>{salaryConfigModal.name}</div>
-              </div>
-              <button type="button" className="btn btn-ghost" disabled={salaryConfigSaving} onClick={() => setSalaryConfigModal(null)} aria-label="Закрыть">✕</button>
-            </div>
-            <div className="card-body" style={{ display: "grid", gap: 20 }}>
-              <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--bg-metric)", border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                Укажите фиксированную ставку в месяц и день выплаты. Бонусы по сделкам начисляются отдельно в разделе «Зарплата».
-              </div>
-
-              <div>
-                <div className="form-label">Базовая ставка в месяц *</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
-                  <input
-                    className="form-input"
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="Например, 1500"
-                    value={salaryConfigForm.baseAmount}
-                    onChange={(e) => setSalaryConfigForm((f) => ({ ...f, baseAmount: e.target.value }))}
-                    style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 16, fontWeight: 600 }}
-                    autoFocus
-                  />
-                  <select className="form-input" value={salaryConfigForm.currency} onChange={(e) => setSalaryConfigForm((f) => ({ ...f, currency: e.target.value }))}>
-                    {CURRENCIES.map((c) => (
-                      <option key={c} value={c}>{c} {CURRENCY_META[c]?.symbol ? `(${CURRENCY_META[c].symbol})` : ""}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <div className="form-label">День выплаты зарплаты *</div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <input
-                    className="form-input"
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={salaryConfigForm.payDay}
-                    onChange={(e) => setSalaryConfigForm((f) => ({ ...f, payDay: e.target.value }))}
-                    style={{ width: 88, textAlign: "center", fontWeight: 700 }}
-                  />
-                  <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>число месяца (1–31)</span>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                  {SALARY_PAY_DAY_PRESETS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{
-                        padding: "4px 12px",
-                        fontSize: 12,
-                        borderColor: String(salaryConfigForm.payDay) === String(d) ? "var(--accent)" : undefined,
-                        background: String(salaryConfigForm.payDay) === String(d) ? "var(--accent-light)" : undefined,
-                        color: String(salaryConfigForm.payDay) === String(d) ? "var(--accent)" : undefined,
-                      }}
-                      onClick={() => setSalaryConfigForm((f) => ({ ...f, payDay: String(d) }))}
-                    >
-                      {d === 31 ? "31 (конец)" : `${d}-е`}
-                    </button>
-                  ))}
-                </div>
-                {Number(salaryConfigForm.payDay) >= 1 && Number(salaryConfigForm.payDay) <= 31 && (
-                  <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 8, fontWeight: 500 }}>
-                    Выплата каждый месяц {salaryConfigForm.payDay}-го числа
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <div className="form-label">Примечание</div>
-                <textarea
-                  className="form-input"
-                  rows={2}
-                  placeholder="Необязательно: условия, график, комментарий для бухгалтерии"
-                  value={salaryConfigForm.note}
-                  onChange={(e) => setSalaryConfigForm((f) => ({ ...f, note: e.target.value }))}
-                  style={{ resize: "vertical", minHeight: 64 }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4, borderTop: "1px solid var(--border-light)" }}>
-                <button type="button" className="btn btn-secondary" disabled={salaryConfigSaving} onClick={() => setSalaryConfigModal(null)}>Отмена</button>
-                <button type="button" className="btn btn-primary" disabled={salaryConfigSaving} onClick={() => void saveSalaryConfig()}>
-                  {salaryConfigSaving ? "Сохранение…" : "Сохранить ставку"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== SALARY PAYMENT MODAL ===== */}
-      {salaryPaymentModal && (
-        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
-          onMouseDown={(e) => { if (e.target === e.currentTarget && !salaryPaymentSaving) setSalaryPaymentModal(null); }}>
-          <div className="card" style={{ width: 460, maxWidth: "100%" }} onMouseDown={(e) => e.stopPropagation()}>
-            <div className="card-header" style={{ alignItems: "flex-start" }}>
-              <div>
-                <div className="card-title">Добавить выплату</div>
-                <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 4 }}>{salaryPaymentModal.name} · {salaryPeriod}</div>
-              </div>
-              <button type="button" className="btn btn-ghost" disabled={salaryPaymentSaving} onClick={() => setSalaryPaymentModal(null)}>✕</button>
-            </div>
-            <div className="card-body" style={{ display: "grid", gap: 16 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 10 }}>
-                <div>
-                  <div className="form-label">Сумма *</div>
-                  <input className="form-input" type="number" min="0" step="any" placeholder="0" value={salaryPaymentForm.amount}
-                    onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, amount: e.target.value }))}
-                    style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} autoFocus />
-                </div>
-                <div>
-                  <div className="form-label">Валюта</div>
-                  <select className="form-input" value={salaryPaymentForm.currency} onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, currency: e.target.value }))}>
-                    {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <div className="form-label">Тип выплаты</div>
-                <select className="form-input" value={salaryPaymentForm.type} onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, type: e.target.value }))}>
-                  {Object.entries(SALARY_PAYMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <div className="form-label">Примечание</div>
-                <input className="form-input" type="text" placeholder="Необязательно" value={salaryPaymentForm.note}
-                  onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, note: e.target.value }))} />
-              </div>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: "12px 14px", borderRadius: 10, background: salaryPaymentForm.isPaid ? "rgba(5,150,105,0.08)" : "var(--bg-metric)", border: `1px solid ${salaryPaymentForm.isPaid ? "rgba(5,150,105,0.25)" : "var(--border-light)"}` }}>
-                <input type="checkbox" style={{ marginTop: 3 }} checked={salaryPaymentForm.isPaid} onChange={(e) => setSalaryPaymentForm((f) => ({ ...f, isPaid: e.target.checked }))} />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>Уже выплачено</div>
-                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>Отметьте, если деньги уже переданы сотруднику</div>
-                </div>
-              </label>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button type="button" className="btn btn-secondary" disabled={salaryPaymentSaving} onClick={() => setSalaryPaymentModal(null)}>Отмена</button>
-                <button type="button" className="btn btn-primary" disabled={salaryPaymentSaving} onClick={() => void addSalaryPayment()}>
-                  {salaryPaymentSaving ? "Добавление…" : "Добавить выплату"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SalaryConfigModal
+        open={!!salaryConfigModal}
+        userId={salaryConfigModal?.userId ?? null}
+        employeeName={salaryConfigModal?.name ?? ""}
+        initialConfig={salaryConfigModal?.config ?? null}
+        onClose={() => setSalaryConfigModal(null)}
+        onSaved={() => loadSalary()}
+      />
+      <SalaryPaymentModal
+        open={!!salaryPaymentModal}
+        userId={salaryPaymentModal?.userId ?? null}
+        employeeName={salaryPaymentModal?.name ?? ""}
+        orgId={salaryPaymentModal?.orgId ?? ""}
+        period={salaryPeriod}
+        defaultCurrency={salaryPaymentModal?.currency ?? "USD"}
+        onClose={() => setSalaryPaymentModal(null)}
+        onSaved={() => loadSalary()}
+      />
 
       <ExchangeRatesModal
         open={ratesModalOpen}

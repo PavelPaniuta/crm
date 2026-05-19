@@ -12,14 +12,15 @@
 | Сотрудники (таблица) | `components/staff/StaffTable.tsx` |
 | Курсы (модалка) | `components/modals/ExchangeRatesModal.tsx` |
 | Тесты payout | `apps/backend/src/deals/deal-payout.util.spec.ts` |
+| Зарплата (модалки) | `components/salary/SalaryConfigModal.tsx`, `SalaryPaymentModal.tsx`, `lib/salary-constants.ts` |
+| Клиенты (утилиты форм) | `lib/clients.ts` |
+| Расходы (модалка) | `components/expenses/ExpenseDetailModal.tsx` |
 
 ## Дальше (по одному PR/коммиту)
 
-1. `SalaryConfigModal` + `SalaryPaymentModal` → `components/salary/`
-2. `parseClientLeadPaste` + формы клиента → `lib/clients.ts`
-3. Вкладка **Expenses** или **Profile** (меньше связей)
-4. **Deals** / **Dashboard** (крупные, в конце)
-5. Шаблон сделок (wizard) — отдельно, самый большой блок
+1. Вкладка **Clients** (модалки создания/редактирования) — крупный блок
+2. **Deals** / **Dashboard** (крупные, в конце)
+3. Шаблон сделок (wizard) — отдельно, самый большой блок
 
 ## VPS
 
