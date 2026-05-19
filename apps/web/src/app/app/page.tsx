@@ -42,12 +42,17 @@ import { OlxFormModal } from "@/components/olx/OlxFormModal";
 import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
 import { DealFormModal } from "@/components/deals/DealFormModal";
 import { DealsTab } from "@/components/deals/DealsTab";
+import { DealTemplatesSettingsCard } from "@/components/deal-templates/DealTemplatesSettingsCard";
+import { TemplateWizardModal } from "@/components/deal-templates/TemplateWizardModal";
+import { deleteDealTemplate, fetchDealTemplates } from "@/lib/deal-templates";
+import { FIELD_TYPE_LABELS, FIELD_TYPES_ALL, type FieldType } from "@/lib/field-types";
 import {
   mediatorPctFieldKey,
   type Deal,
   type DealAmtRow,
   type DealParticipantRow,
   type DealStatus,
+  type DealTemplate,
   type DealWorker,
 } from "@/lib/deals";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
@@ -124,55 +129,6 @@ type ChatConversation = {
 
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "mediators" | "olx" | "tasks" | "assistant" | "chat" | "salary";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
-type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
-
-const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  TEXT: "Текст",
-  NUMBER: "Число",
-  SELECT: "Список",
-  DATE: "Дата",
-  PERCENT: "Процент",
-  CHECKBOX: "Да / нет",
-  CURRENCY: "Сумма",
-};
-
-const FIELD_TYPES_ALL: FieldType[] = ["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"];
-
-type TemplateField = {
-  id: string;
-  key: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-  order: number;
-  options?: string | null;
-};
-
-function slugifyFieldKey(label: string, i: number): string {
-  return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`;
-}
-
-// ─── Template type ────────────────────────────────────────────────────────────
-type DealTemplate = {
-  id: string;
-  name: string;
-  hasWorkers: boolean;
-  incomeFieldKey?: string | null;
-  fields: TemplateField[];
-  calcPreset?: string | null;
-  payrollPoolPct?: string | number | null;
-  calcGrossFieldKey?: string | null;
-  calcMediatorPctKey?: string | null;
-  calcAiPctKey?: string | null;
-  calcSteps?: CalcStep[] | null;
-};
-
-type DealDataRow = {
-  id: string;
-  data: Record<string, unknown>;
-  order: number;
-};
-
 
 const OP_LABELS: Record<OperationType, string> = {
   PURCHASE: "Покупка",
@@ -280,17 +236,6 @@ export default function AppPage() {
   const [templates, setTemplates] = useState<DealTemplate[]>([]);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateEditing, setTemplateEditing] = useState<DealTemplate | null>(null);
-  const [tplName, setTplName] = useState("");
-  const [tplHasWorkers, setTplHasWorkers] = useState(true);
-  const [tplIncomeFieldKey, setTplIncomeFieldKey] = useState("");
-  const [tplFields, setTplFields] = useState<Array<{ _id: string; key?: string; label: string; type: FieldType; required: boolean; options: string }>>([]);
-  const [tplCalcPreset, setTplCalcPreset] = useState<"" | typeof CALC_MEDIATOR_AI_PAYROLL>("");
-  const [tplPayrollPoolPct, setTplPayrollPoolPct] = useState("20");
-  const [tplCalcGrossKey, setTplCalcGrossKey] = useState("");
-  const [tplCalcMediatorKey, setTplCalcMediatorKey] = useState("");
-  const [tplCalcAiKey, setTplCalcAiKey] = useState("");
-  const [tplWizardStep, setTplWizardStep] = useState<"type" | "fields">("type");
-  const [tplCalcSteps, setTplCalcSteps] = useState<CalcStep[]>([]);
 
   // --- Dashboard ---
   const [dashFrom, setDashFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
@@ -346,12 +291,6 @@ export default function AppPage() {
 
   // --- AI ---
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
-  // AI template parser (inside template modal)
-  const [aiParseOpen, setAiParseOpen] = useState(false);
-  const [aiParseSample, setAiParseSample] = useState("");
-  const [aiParsing, setAiParsing] = useState(false);
-  const [aiParseError, setAiParseError] = useState<string | null>(null);
-
   // --- Staff ---
   const [staffData, setStaffData] = useState<any>(null);
   const [staffLoading, setStaffLoading] = useState(false);
@@ -1307,37 +1246,19 @@ export default function AppPage() {
     rec.start();
   }
 
-  async function aiParseTemplate() {
-    if (!aiParseSample.trim()) return;
-    setAiParsing(true);
-    setAiParseError(null);
-    try {
-      const res = await fetch("/api/ai/parse-template", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sampleRows: aiParseSample }),
-      });
-      const j = await res.json();
-      if (j.error) { setAiParseError(j.error); return; }
-      // Fill template fields from AI response
-      setTplName(j.name ?? "");
-      setTplHasWorkers(j.hasWorkers ?? false);
-      setTplIncomeFieldKey(j.incomeFieldKey ?? "");
-      setTplFields((j.fields ?? []).map((f: any, i: number) => ({
-        _id: crypto.randomUUID(),
-        label: f.label ?? `Поле ${i + 1}`,
-        type: (f.type as FieldType) ?? "TEXT",
-        required: f.required ?? false,
-        options: f.options ?? "",
-      })));
-      setAiParseOpen(false);
-      setAiParseSample("");
-    } finally { setAiParsing(false); }
+  async function loadTemplates() {
+    setTemplates(await fetchDealTemplates());
   }
 
-  async function loadTemplates() {
-    const res = await fetch("/api/deal-templates", { credentials: "include" });
-    if (res.ok) setTemplates(await res.json());
+  function openTemplateModal(tpl?: DealTemplate) {
+    setTemplateEditing(tpl ?? null);
+    setTemplateModalOpen(true);
+  }
+
+  async function handleDeleteTemplate(id: string, name: string) {
+    if (!confirm(`Удалить шаблон «${name}»? Это действие нельзя отменить.`)) return;
+    await deleteDealTemplate(id);
+    loadTemplates();
   }
 
   async function loadProfile() {
@@ -1433,180 +1354,6 @@ export default function AppPage() {
       setAuditTotal(j.total);
       setAuditOffset(offset);
     } finally { setAuditLoading(false); }
-  }
-
-  function openTemplateModal(tpl?: DealTemplate) {
-    setTemplateEditing(tpl ?? null);
-    setTplName(tpl?.name ?? "");
-    setTplHasWorkers(tpl?.hasWorkers ?? true);
-    setTplIncomeFieldKey(tpl?.incomeFieldKey ?? "");
-    const preset = tpl?.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? CALC_MEDIATOR_AI_PAYROLL : ("" as const);
-    setTplCalcPreset(preset);
-    setTplPayrollPoolPct(
-      tpl?.calcPreset === CALC_MEDIATOR_AI_PAYROLL && tpl.payrollPoolPct != null
-        ? String(Number(tpl.payrollPoolPct as number))
-        : "20",
-    );
-    setTplCalcGrossKey(tpl?.calcGrossFieldKey ?? "");
-    setTplCalcMediatorKey(tpl?.calcMediatorPctKey ?? "");
-    setTplCalcAiKey(tpl?.calcAiPctKey ?? "");
-    setTplFields(
-      tpl?.fields.map((f) => ({
-        _id: f.id,
-        key: f.key,
-        label: f.label,
-        type: f.type,
-        required: f.required,
-        options: f.options ?? "",
-      })) ?? []
-    );
-    setTplCalcSteps(Array.isArray(tpl?.calcSteps) ? (tpl!.calcSteps as CalcStep[]) : []);
-    setTplWizardStep(tpl ? "fields" : "type");
-    setTemplateModalOpen(true);
-  }
-
-  /** Инициализирует поля и цепочку для схемы посредник → AI → ЗП фонд */
-  function applyMediatorAiPresetFields() {
-    const fixed: Array<{ _id: string; key: string; label: string; type: FieldType; required: boolean; options: string }> = [
-      { _id: "fixed_gross",    key: "сумма_завода",       label: "Сумма завода",          type: "NUMBER",  required: true,  options: "" },
-      { _id: "fixed_mediator", key: "процент_посредника", label: "% посредника",          type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_ai",       key: "процент_аи",         label: "% AI",                  type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_payroll",  key: "процент_зп_фонда",   label: "% зарплатного фонда",   type: "PERCENT", required: true,  options: "" },
-    ];
-    const presetSteps: CalcStep[] = [
-      {
-        id: "step_mediator",
-        label: "Выплата посредника",
-        sourceType: "field",
-        sourceId: "сумма_завода",
-        deductType: "percent",
-        deductFieldKey: "процент_посредника",
-        resultLabel: "После посредника (R1)",
-        isMediatorShare: true,
-        isPayrollPool: false,
-      },
-      {
-        id: "step_ai",
-        label: "Доля AI",
-        sourceType: "step",
-        sourceId: "step_mediator",
-        deductType: "percent",
-        deductFieldKey: "процент_аи",
-        resultLabel: "После AI (R2)",
-        isAiShare: true,
-        isPayrollPool: false,
-      },
-      {
-        id: "step_payroll",
-        label: "Зарплатный фонд",
-        sourceType: "step",
-        sourceId: "step_ai",
-        deductType: "percent",
-        deductFieldKey: "процент_зп_фонда",
-        resultLabel: "Прибыль офиса",
-        isPayrollPool: true,
-      },
-    ];
-    setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
-    setTplCalcSteps(presetSteps);
-    setTplHasWorkers(true);
-    setTplCalcGrossKey("сумма_завода");
-    setTplCalcMediatorKey("процент_посредника");
-    setTplCalcAiKey("процент_аи");
-    setTplIncomeFieldKey("сумма_завода");
-    setTplFields((prev) => {
-      const existing = prev.filter((f) => !["fixed_gross","fixed_mediator","fixed_ai","fixed_payroll"].includes(f._id));
-      return [...fixed, ...existing];
-    });
-  }
-
-  function addTplField() {
-    setTplFields((prev) => [...prev, { _id: crypto.randomUUID(), label: "", type: "TEXT", required: false, options: "" }]);
-  }
-
-  async function saveTemplate() {
-    if (!tplName.trim()) return alert("Введите название шаблона");
-    if (tplFields.length === 0) return alert("Добавьте хотя бы одно поле");
-    for (const f of tplFields) {
-      if (!f.label.trim()) return alert("У всех полей должно быть название");
-    }
-
-    // Validate calc chain if configured
-    if (tplCalcSteps.length > 0) {
-      const fields2 = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
-      const fieldKeys = new Set(fields2.map(x => x.key));
-      for (const step of tplCalcSteps) {
-        if (!step.label.trim()) return alert("У каждого шага цепочки должно быть название");
-        if (!step.deductFieldKey) return alert(`Шаг «${step.label}»: укажите поле для вычитания`);
-        if (!fieldKeys.has(step.deductFieldKey)) return alert(`Шаг «${step.label}»: поле «${step.deductFieldKey}» не найдено в полях шаблона`);
-        if (step.sourceType === "field" && step.sourceId && !fieldKeys.has(step.sourceId))
-          return alert(`Шаг «${step.label}»: поле-источник «${step.sourceId}» не найдено`);
-      }
-    }
-
-    // Legacy validation for old preset (when no calcSteps)
-    if (tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0) {
-      if (!tplCalcGrossKey || !tplCalcMediatorKey || !tplCalcAiKey) {
-        return alert("Для цепочки «Посредник → ИИ → фонд» укажите поля: сумма завода, % посредника, % ИИ");
-      }
-    }
-
-    const fields = tplFields.map((f, i) => ({
-      key: f.key || slugifyFieldKey(f.label, i),
-      label: f.label,
-      type: f.type,
-      required: f.required,
-      order: i,
-      options: f.options.trim() || null,
-    }));
-
-    const hasChain = tplCalcSteps.length > 0;
-    const payload: Record<string, unknown> = {
-      name: tplName,
-      hasWorkers: (hasChain || tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) ? true : tplHasWorkers,
-      incomeFieldKey: tplIncomeFieldKey || null,
-      fields,
-      calcSteps: hasChain ? tplCalcSteps : null,
-    };
-
-    if (!hasChain && tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL) {
-      payload.calcPreset = CALC_MEDIATOR_AI_PAYROLL;
-      payload.calcGrossFieldKey = tplCalcGrossKey;
-      payload.calcMediatorPctKey = tplCalcMediatorKey;
-      payload.calcAiPctKey = tplCalcAiKey;
-    } else {
-      payload.calcPreset = hasChain ? null : null;
-    }
-
-    if (templateEditing) {
-      const res = await fetch(`/api/deal-templates/${templateEditing.id}`, {
-        method: "PATCH", credentials: "include",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
-        return alert(`Ошибка сохранения шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
-      }
-    } else {
-      const res = await fetch("/api/deal-templates", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
-        return alert(`Ошибка создания шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
-      }
-    }
-    setTemplateModalOpen(false);
-    loadTemplates();
-  }
-
-  async function deleteTemplate(id: string, name: string) {
-    if (!confirm("Удалить сделку? Это действие нельзя отменить.")) return;
-    await fetch(`/api/deal-templates/${id}`, { method: "DELETE", credentials: "include" });
-    loadTemplates();
   }
 
   async function loadDashboard(from?: string, to?: string) {
@@ -3821,44 +3568,12 @@ export default function AppPage() {
                 </div>
               )}
 
-              {/* Deal Templates */}
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Шаблоны сделок</span>
-                  <button className="btn btn-primary" onClick={() => openTemplateModal()}>+ Новый шаблон</button>
-                </div>
-                <div className="card-body" style={{ display: "grid", gap: 10 }}>
-                  {templates.length === 0 ? (
-                    <div style={{ color: "var(--text-secondary)", fontSize: 13, padding: "8px 0" }}>
-                      Нет шаблонов. Создайте свой первый шаблон чтобы использовать кастомные поля в сделках.
-                    </div>
-                  ) : (
-                    <div className="card" style={{ border: "1px solid var(--border-light)" }}>
-                      <div className="table-scroll" style={{ padding: 0 }}>
-                        <table className="data-table">
-                          <thead><tr><th>Название</th><th>Полей</th><th>Воркеры</th><th style={{ width: 160 }}></th></tr></thead>
-                          <tbody>
-                            {templates.map((t) => (
-                              <tr key={t.id}>
-                                <td style={{ fontWeight: 600 }}>{t.name}</td>
-                                <td style={{ color: "var(--text-secondary)" }}>{t.fields.length}</td>
-                                <td>{t.hasWorkers ? <span className="badge badge-green">Да</span> : <span className="badge badge-amber">Нет</span>}</td>
-                                <td>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openTemplateModal(t)}>Редактировать</button>
-                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteTemplate(t.id, t.name)}>Удалить</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+              <DealTemplatesSettingsCard
+                templates={templates}
+                onCreate={() => openTemplateModal()}
+                onEdit={(t) => openTemplateModal(t)}
+                onDelete={handleDeleteTemplate}
+              />
               {isAdmin ? (
                 <>
                   <div className="card">
@@ -4514,438 +4229,19 @@ export default function AppPage() {
         onSaved={() => loadExchangeRates()}
       />
 
-      {/* ===== TEMPLATE MODAL (WIZARD) ===== */}
-      {templateModalOpen ? (
-        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 60 }}
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setTemplateModalOpen(false); }}>
-          <div className="card" style={{ width: 700, maxWidth: "100%", maxHeight: "92vh", overflow: "auto" }}>
-            <div className="card-header">
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="card-title">{templateEditing ? "Редактировать шаблон" : "Новый шаблон сделки"}</span>
-                {!templateEditing && (
-                  <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500 }}>
-                    Шаг {tplWizardStep === "type" ? "1" : "2"} из 2
-                  </span>
-                )}
-              </div>
-              <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>Отмена</button>
-            </div>
-
-            {/* ── ШАГ 1: выбор типа схемы ── */}
-            {tplWizardStep === "type" && !templateEditing && (
-              <div className="card-body" style={{ display: "grid", gap: 20 }}>
-                <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-                  Выберите, как будут считаться деньги в сделках по этому шаблону:
-                </div>
-
-                {/* Карточка 1: схема посредника */}
-                <div
-                  onClick={() => {
-                    setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
-                    applyMediatorAiPresetFields();
-                    setTplWizardStep("fields");
-                  }}
-                  style={{
-                    display: "grid", gridTemplateColumns: "56px 1fr", gap: 16,
-                    padding: "18px 20px", borderRadius: 14, cursor: "pointer",
-                    border: "2px solid var(--accent)", background: "var(--accent)08",
-                    transition: "box-shadow 0.15s",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent)33")}
-                  onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}
-                >
-                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>💸</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Схема с посредником, AI и сотрудниками</div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                      Подходит если деньги идут по цепочке:
-                    </div>
-                    <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {["Сумма завода", "→ вычет посредника %", "→ вычет AI %", "→ зарплатный фонд %", "→ прибыль офиса"].map((s, i) => (
-                        <span key={i} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 20, background: i === 0 ? "var(--accent)" : "var(--bg-metric)", color: i === 0 ? "#fff" : "var(--text-secondary)", fontWeight: i === 0 ? 700 : 400 }}>{s}</span>
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      Система сама считает сколько кому достаётся. Вам остаётся только вводить суммы и проценты.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Карточка 2: простая схема */}
-                <div
-                  onClick={() => {
-                    setTplCalcPreset("");
-                    setTplCalcGrossKey(""); setTplCalcMediatorKey(""); setTplCalcAiKey("");
-                    setTplCalcSteps([]);
-                    setTplFields([]);
-                    setTplWizardStep("fields");
-                  }}
-                  style={{
-                    display: "grid", gridTemplateColumns: "56px 1fr", gap: 16,
-                    padding: "18px 20px", borderRadius: 14, cursor: "pointer",
-                    border: "2px solid var(--border)", background: "var(--bg-card)",
-                    transition: "box-shadow 0.15s",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent)22")}
-                  onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}
-                >
-                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--bg-metric)", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>📋</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Произвольная форма</div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                      Вы сами добавляете нужные поля — текст, числа, списки, флажки. Подходит для любой структуры данных.
-                    </div>
-                    <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      Расчёт зарплаты сотрудников по одному выбранному числовому полю.
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ paddingTop: 4, textAlign: "center", fontSize: 12, color: "var(--text-tertiary)" }}>
-                  Нажмите на карточку чтобы продолжить
-                </div>
-              </div>
-            )}
-
-            {/* ── ШАГ 2: настройка полей ── */}
-            {(tplWizardStep === "fields" || templateEditing) && (
-              <div className="card-body" style={{ display: "grid", gap: 18 }}>
-
-                {/* Название */}
-                <div>
-                  <div className="form-label">Название шаблона *</div>
-                  <input className="form-input" value={tplName} onChange={(e) => setTplName(e.target.value)}
-                    placeholder="Например: Обменник PLN, Крипто-схема…" autoFocus />
-                </div>
-
-                {/* Схема — краткий блок, только если MEDIATOR_AI */}
-                {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
-                  <div style={{ display: "grid", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid var(--accent)33" }}>
-                    <div style={{ background: "var(--accent)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>💸</span>
-                      <span style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>Схема: посредник → AI → зарплатный фонд → прибыль</span>
-                    </div>
-                    <div style={{ padding: "12px 16px", background: "var(--accent)06", display: "grid", gap: 10 }}>
-                      <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                        Три поля расчёта уже добавлены (выделены цветом и заблокированы). Вам нужно только задать <strong>% зарплатного фонда</strong> — сколько процентов от оставшейся суммы идёт на зарплаты сотрудников.
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>% зарплатного фонда</div>
-                        <input
-                          className="form-input"
-                          value={tplPayrollPoolPct}
-                          onChange={(e) => setTplPayrollPoolPct(e.target.value)}
-                          type="number" min={0} max={100} step="1"
-                          style={{ width: 90, fontFamily: "'JetBrains Mono', monospace" }}
-                        />
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                          Пример: при 20% — если осталось 70, то 14 идёт сотрудникам, 56 — прибыль офиса
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* AI-парсер */}
-                <div>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setAiParseOpen(p => !p)}
-                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, width: "100%", justifyContent: "center" }}
-                  >
-                    <span>🤖</span> {aiParseOpen ? "Скрыть AI-помощника" : "Создать поля через AI (вставить строки из таблицы)"}
-                  </button>
-                  {aiParseOpen && (
-                    <div style={{ marginTop: 10, border: "1px solid var(--accent)44", borderRadius: 12, padding: 16, background: "var(--accent)08" }}>
-                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
-                        Вставьте 2–5 строк из вашей таблицы. AI сам определит колонки и типы полей.
-                      </div>
-                      <textarea
-                        className="form-input"
-                        value={aiParseSample}
-                        onChange={e => setAiParseSample(e.target.value)}
-                        style={{ height: 90, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", paddingTop: 10 }}
-                        placeholder={"21,04  Ди+олх(Н)  75/25  DP  eurocom  6838\n22.04  Ди+Вл+Бо  45/30/25  DP  eurocom  5809"}
-                      />
-                      {aiParseError && <div style={{ marginTop: 6, fontSize: 12, color: "var(--red)" }}>{aiParseError}</div>}
-                      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={() => { setAiParseOpen(false); setAiParseSample(""); setAiParseError(null); }}>Отмена</button>
-                        <button className="btn btn-primary" onClick={aiParseTemplate} disabled={aiParsing || !aiParseSample.trim()}>
-                          {aiParsing ? "Анализирую..." : "Определить поля →"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Список полей */}
-                <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>Поля сделки</span>
-                      {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>Первые 3 поля — расчётные (нельзя удалить)</span>
-                      )}
-                      {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplHasWorkers && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>Нажмите 💰 у числового поля — на его основе будет считаться зарплата</span>
-                      )}
-                    </div>
-                    <button className="btn btn-secondary" onClick={addTplField}>+ Добавить поле</button>
-                  </div>
-
-                  {tplFields.length === 0 ? (
-                    <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
-                      Нажмите «+ Добавить поле» — например: ФИО, Телефон, Банк, Валюта, Метод
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid" }}>
-                      {tplFields.map((f, i) => {
-                        const fieldKey = f.key || slugifyFieldKey(f.label, i);
-                        const isIncomeField = tplIncomeFieldKey === fieldKey;
-                        const canBeIncome = f.type === "NUMBER" || f.type === "PERCENT";
-                        const isFixed = ["fixed_gross", "fixed_mediator", "fixed_ai"].includes(f._id);
-                        const fixedLabel: Record<string, string> = {
-                          fixed_gross: "Сумма завода — число, сколько денег зашло",
-                          fixed_mediator: "% посредника — сколько % забирает посредник",
-                          fixed_ai: "% AI — сколько % уходит на AI (от суммы после посредника)",
-                        };
-                        return (
-                          <div key={f._id} style={{
-                            padding: "12px 16px",
-                            borderTop: i > 0 ? "1px solid var(--border-light)" : undefined,
-                            background: isFixed ? "var(--accent)06" : isIncomeField ? "var(--accent)08" : undefined,
-                          }}>
-                            {isFixed ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <span style={{ fontSize: 16 }}>{f._id === "fixed_gross" ? "💰" : f._id === "fixed_mediator" ? "🏦" : "🤖"}</span>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontWeight: 600, fontSize: 13 }}>{f.label}</div>
-                                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{fixedLabel[f._id]}</div>
-                                </div>
-                                <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 600 }}>зафиксировано</span>
-                              </div>
-                            ) : (
-                              <>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 160px auto 32px", gap: 10, alignItems: "end" }}>
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Название поля</div>
-                                    <input className="form-input" value={f.label} placeholder="ФИО, Телефон, Банк, Метод…"
-                                      onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
-                                  </div>
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип ввода</div>
-                                    <select className="form-input" value={f.type}
-                                      onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, type: e.target.value as FieldType } : x))}>
-                                      <option value="TEXT">Текст (любой)</option>
-                                      <option value="NUMBER">Число / сумма</option>
-                                      <option value="PERCENT">Процент (0–100)</option>
-                                      <option value="CURRENCY">Валюта (USD/EUR/UAH…)</option>
-                                      <option value="SELECT">Список вариантов</option>
-                                      <option value="DATE">Дата</option>
-                                      <option value="CHECKBOX">Да / Нет</option>
-                                    </select>
-                                  </div>
-                                  <div style={{ display: "flex", alignItems: "flex-end", gap: 6, paddingBottom: 1 }}>
-                                    {tplHasWorkers && canBeIncome && tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
-                                      <button
-                                        title="Зарплата считается от этого поля"
-                                        onClick={() => setTplIncomeFieldKey(isIncomeField ? "" : fieldKey)}
-                                        style={{ height: 38, width: 38, borderRadius: 8, border: isIncomeField ? "2px solid var(--accent)" : "1px solid var(--border)", background: isIncomeField ? "var(--accent)" : "var(--bg-card)", cursor: "pointer", fontSize: 18, transition: "all 0.15s" }}
-                                      >💰</button>
-                                    )}
-                                  </div>
-                                  <div style={{ height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 20, borderRadius: 8 }}
-                                    onClick={() => { setTplFields(p => p.filter((_, xi) => xi !== i)); if (isIncomeField) setTplIncomeFieldKey(""); }}>×</div>
-                                </div>
-                                {f.type === "SELECT" && (
-                                  <div style={{ marginTop: 8 }}>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Варианты для выбора (через запятую)</div>
-                                    <input className="form-input" value={f.options} placeholder="Нал, Безнал, Карта, USDT…"
-                                      onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, options: e.target.value } : x))} />
-                                  </div>
-                                )}
-                                {isIncomeField && (
-                                  <div style={{ marginTop: 6, fontSize: 11, color: "var(--accent)" }}>
-                                    💰 Зарплата сотрудников считается как % от этого поля
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Расчётная цепочка ── */}
-                {(() => {
-                  const numericFields = tplFields.filter(f => f.type === "NUMBER" || f.type === "PERCENT");
-                  const allFieldKeys = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
-
-                  return (
-                    <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                      <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: tplCalcSteps.length > 0 ? "1px solid var(--border)" : undefined, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>📊 Расчётная цепочка</span>
-                          <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
-                            {tplCalcSteps.length > 0 ? `${tplCalcSteps.length} шаг(ов)` : "необязательно — для автоматического распределения денег"}
-                          </span>
-                        </div>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => setTplCalcSteps(prev => [...prev, {
-                            id: `step_${Date.now()}`,
-                            label: "",
-                            sourceType: "field" as const,
-                            sourceId: numericFields[0] ? (numericFields[0].key || slugifyFieldKey(numericFields[0].label, 0)) : "",
-                            deductType: "percent" as const,
-                            deductFieldKey: "",
-                            resultLabel: "",
-                            isPayrollPool: false,
-                          }])}
-                        >+ Добавить шаг</button>
-                      </div>
-
-                      {tplCalcSteps.length === 0 ? (
-                        <div style={{ padding: "16px", fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                          Цепочка позволяет описать как деньги делятся по шагам: каждый шаг берёт сумму из предыдущего остатка или из поля, и вычитает % или фиксированную сумму. Один шаг можно пометить как «зарплатный фонд» — он будет распределяться между сотрудниками.
-                        </div>
-                      ) : (
-                        <div style={{ display: "grid", gap: 0 }}>
-                          {tplCalcSteps.map((step, si) => {
-                            const prevSteps = tplCalcSteps.slice(0, si);
-                            return (
-                              <div key={step.id} style={{ padding: "14px 16px", borderTop: si > 0 ? "1px solid var(--border-light)" : undefined, background: step.isPayrollPool ? "var(--amber)08" : undefined }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: step.isPayrollPool ? "var(--amber)" : "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{si + 1}</span>
-                                  <input
-                                    className="form-input"
-                                    value={step.label}
-                                    onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, label: e.target.value } : s))}
-                                    placeholder="Название шага (кому идут деньги)"
-                                    style={{ flex: 1, fontWeight: 600 }}
-                                  />
-                                  <button
-                                    style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", fontSize: 16, color: "var(--text-tertiary)" }}
-                                    onClick={() => setTplCalcSteps(p => p.filter(s => s.id !== step.id))}
-                                  >×</button>
-                                </div>
-
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                                  {/* Source */}
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Взять сумму из</div>
-                                    <select
-                                      className="form-input"
-                                      value={`${step.sourceType}:${step.sourceId}`}
-                                      onChange={e => {
-                                        const [type, ...rest] = e.target.value.split(":");
-                                        setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, sourceType: type as "field"|"step", sourceId: rest.join(":") } : s));
-                                      }}
-                                    >
-                                      {allFieldKeys.filter(f => {
-                                        const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
-                                        return fDef?.type === "NUMBER" || fDef?.type === "PERCENT";
-                                      }).map(f => (
-                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>📋 {f.label}</option>
-                                      ))}
-                                      {prevSteps.map(ps => (
-                                        <option key={`step:${ps.id}`} value={`step:${ps.id}`}>↩ Остаток: {ps.resultLabel || ps.label || `Шаг ${tplCalcSteps.indexOf(ps) + 1}`}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  {/* Deduct field */}
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Вычесть поле</div>
-                                    <select
-                                      className="form-input"
-                                      value={step.deductFieldKey}
-                                      onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductFieldKey: e.target.value } : s))}
-                                    >
-                                      <option value="">— выберите поле —</option>
-                                      {allFieldKeys.filter(f => {
-                                        const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
-                                        return fDef?.type === "PERCENT" || fDef?.type === "NUMBER";
-                                      }).map(f => (
-                                        <option key={f.key} value={f.key}>{f.label}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  {/* Deduct type */}
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип вычитания</div>
-                                    <select
-                                      className="form-input"
-                                      value={step.deductType}
-                                      onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductType: e.target.value as "percent"|"fixed" } : s))}
-                                    >
-                                      <option value="percent">% от источника</option>
-                                      <option value="fixed">Фиксированная сумма</option>
-                                    </select>
-                                  </div>
-                                  {/* Result label */}
-                                  <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Название остатка</div>
-                                    <input
-                                      className="form-input"
-                                      value={step.resultLabel}
-                                      onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, resultLabel: e.target.value } : s))}
-                                      placeholder="Например: После посредника (R1)"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* isPayrollPool */}
-                                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 10 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={step.isPayrollPool}
-                                    onChange={e => setTplCalcSteps(p => p.map(s =>
-                                      s.id === step.id ? { ...s, isPayrollPool: e.target.checked } :
-                                      e.target.checked ? { ...s, isPayrollPool: false } : s
-                                    ))}
-                                    style={{ width: 15, height: 15, accentColor: "var(--amber)" }}
-                                  />
-                                  <span style={{ fontSize: 12, color: "var(--amber)", fontWeight: step.isPayrollPool ? 700 : 400 }}>
-                                    👥 Это зарплатный фонд — вычитаемая сумма распределяется между сотрудниками
-                                  </span>
-                                </label>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Для простой схемы — есть ли воркеры */}
-                {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0 && (
-                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                    <input type="checkbox" checked={tplHasWorkers} onChange={(e) => setTplHasWorkers(e.target.checked)}
-                      style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>Распределять зарплату сотрудникам по этой сделке</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Если включено — при создании сделки нужно будет указать кому и сколько %</div>
-                    </div>
-                  </label>
-                )}
-
-                {/* Кнопки */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
-                  {!templateEditing ? (
-                    <button className="btn btn-secondary" onClick={() => setTplWizardStep("type")}>← Назад</button>
-                  ) : <div />}
-                  <button className="btn btn-primary" onClick={saveTemplate}>
-                    {templateEditing ? "Сохранить изменения" : "Создать шаблон →"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+      <TemplateWizardModal
+        open={templateModalOpen}
+        editing={templateEditing}
+        onClose={() => {
+          setTemplateModalOpen(false);
+          setTemplateEditing(null);
+        }}
+        onSaved={() => {
+          setTemplateModalOpen(false);
+          setTemplateEditing(null);
+          loadTemplates();
+        }}
+      />
 
       {/* ===== TASK DETAIL DRAWER ===== */}
       {taskDetail && (

@@ -23,11 +23,12 @@
 | Клиенты (вкладка + модалки) | `ClientsTab`, `ClientViewModal`, `ClientCreateModal`, `ClientEditModal`, `lib/clients.ts` |
 | Дашборд | `DashboardTab`, `DashboardCurrentView`, `DashboardGlobalView`, `WorkerDashboard`, `lib/dashboard.ts` |
 | Сделки (вкладка) | `DealsTab`, `DealFormModal`, `lib/deals.ts` |
+| Шаблоны сделок | `DealTemplatesSettingsCard`, `TemplateWizardModal`, `lib/deal-templates.ts`, `lib/field-types.ts` |
 
 ## Дальше (по одному PR/коммиту)
 
-1. Шаблон сделок (wizard в настройках) — вынести из `page.tsx`
-2. Задачи / чат / ассистент — по мере необходимости
+1. Задачи / чат / ассистент — по мере необходимости
+2. Опционально: хук `useDealForm` — вынести state модалки сделки из `page.tsx`
 
 ## VPS
 
