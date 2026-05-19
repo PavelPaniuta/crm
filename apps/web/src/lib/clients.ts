@@ -57,6 +57,67 @@ export function parseClientLeadPaste(text: string): Partial<ClientFormState> {
   return out;
 }
 
+export type ClientPipelineStatus = {
+  id: string;
+  slug: string;
+  label: string;
+  color?: string | null;
+  sortOrder: number;
+  isTerminal: boolean;
+};
+
+export type ClientListItem = {
+  id: string;
+  name: string;
+  phone: string;
+  note?: string | null;
+  statusId?: string | null;
+  status?: ClientPipelineStatus | null;
+  bank?: string | null;
+  assistantName?: string | null;
+  callSummary?: string | null;
+  callStartedAt?: string | null;
+  customData?: Record<string, unknown>;
+};
+
+export type ClientKanbanColumn = {
+  key: string;
+  label: string;
+  color: string | null | undefined;
+  clients: ClientListItem[];
+};
+
+/** Колонки канбана: порядок статусов из настроек; «Без статуса» — в конце. */
+export function buildClientKanbanColumns(
+  clientsFiltered: ClientListItem[],
+  clientStatuses: ClientPipelineStatus[],
+  clientStatusFilter: string,
+): ClientKanbanColumn[] {
+  const sorted = [...clientStatuses].sort((a, b) => a.sortOrder - b.sortOrder);
+  const statusIds = new Set(sorted.map((s) => s.id));
+  const byKey = new Map<string, ClientListItem[]>();
+  for (const c of clientsFiltered) {
+    const raw = (c.status?.id ?? c.statusId) || "__none__";
+    const key = raw === "__none__" || !statusIds.has(raw) ? "__none__" : raw;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(c);
+  }
+  if (clientStatusFilter !== "all") {
+    const s = sorted.find((x) => x.id === clientStatusFilter);
+    if (s) return [{ key: s.id, label: s.label, color: s.color, clients: byKey.get(s.id) ?? [] }];
+    return [{ key: clientStatusFilter, label: "Клиенты", color: null, clients: clientsFiltered }];
+  }
+  const cols: ClientKanbanColumn[] = sorted.map((s) => ({
+    key: s.id,
+    label: s.label,
+    color: s.color,
+    clients: byKey.get(s.id) ?? [],
+  }));
+  const none = byKey.get("__none__") ?? [];
+  if (none.length) cols.push({ key: "__none__", label: "Без статуса", color: null, clients: none });
+  return cols;
+}
+
 export function clientFormSectionStyle(muted?: boolean): CSSProperties {
   return {
     border: "1px solid var(--border-light)",

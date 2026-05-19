@@ -21,10 +21,14 @@ import { SalaryPaymentModal } from "@/components/salary/SalaryPaymentModal";
 import { StaffTable } from "@/components/staff/StaffTable";
 import {
   type ClientFormState,
+  buildClientKanbanColumns,
   clientFormSectionStyle,
   emptyClientForm,
   parseClientLeadPaste,
 } from "@/lib/clients";
+import { ClientsKanbanBoard } from "@/components/clients/ClientsKanbanBoard";
+import { ReportsTab } from "@/components/reports/ReportsTab";
+import { downloadAccountingExport, fetchWorkersReport, type WorkersReport } from "@/lib/reports";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
 import { SALARY_PAYMENT_TYPES } from "@/lib/salary-constants";
 
@@ -401,7 +405,7 @@ export default function AppPage() {
   const [repTo, setRepTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [repLoading, setRepLoading] = useState(false);
   const [accountingExporting, setAccountingExporting] = useState(false);
-  const [repWorkers, setRepWorkers] = useState<any>(null);
+  const [repWorkers, setRepWorkers] = useState<WorkersReport | null>(null);
 
   // --- Profile ---
   const [profile, setProfile] = useState<any>(null);
@@ -680,28 +684,10 @@ export default function AppPage() {
     return clients.filter((c) => (c.status?.id ?? c.statusId) === clientStatusFilter);
   }, [clients, clientStatusFilter]);
 
-  /** Колонки канбана: порядок статусов из настроек; «Без статуса» — в конце. При фильтре одного статуса — одна колонка. */
-  const clientKanbanColumns = useMemo(() => {
-    type Col = { key: string; label: string; color: string | null | undefined; clients: Client[] };
-    const sorted = [...clientStatuses].sort((a, b) => a.sortOrder - b.sortOrder);
-    const statusIds = new Set(sorted.map((s) => s.id));
-    const byKey = new Map<string, Client[]>();
-    for (const c of clientsFiltered) {
-      const raw = (c.status?.id ?? c.statusId) || "__none__";
-      const key = raw === "__none__" || !statusIds.has(raw) ? "__none__" : raw;
-      if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key)!.push(c);
-    }
-    if (clientStatusFilter !== "all") {
-      const s = sorted.find((x) => x.id === clientStatusFilter);
-      if (s) return [{ key: s.id, label: s.label, color: s.color, clients: byKey.get(s.id) ?? [] }];
-      return [{ key: clientStatusFilter, label: "Клиенты", color: null, clients: clientsFiltered }];
-    }
-    const cols: Col[] = sorted.map((s) => ({ key: s.id, label: s.label, color: s.color, clients: byKey.get(s.id) ?? [] }));
-    const none = byKey.get("__none__") ?? [];
-    if (none.length) cols.push({ key: "__none__", label: "Без статуса", color: null, clients: none });
-    return cols;
-  }, [clientsFiltered, clientStatuses, clientStatusFilter]);
+  const clientKanbanColumns = useMemo(
+    () => buildClientKanbanColumns(clientsFiltered, clientStatuses, clientStatusFilter),
+    [clientsFiltered, clientStatuses, clientStatusFilter],
+  );
 
   useEffect(() => {
     if (!clientViewOpen) {
@@ -1732,36 +1718,20 @@ export default function AppPage() {
   async function loadReportsWorkers() {
     setRepLoading(true);
     try {
-      const res = await fetch(`/api/reports/workers?from=${repFrom}&to=${repTo}`, { credentials: "include" });
-      if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) return;
-      setRepWorkers(await res.json());
+      const data = await fetchWorkersReport(repFrom, repTo);
+      if (data === null) { router.replace("/login"); return; }
+      setRepWorkers(data);
     } finally { setRepLoading(false); }
   }
 
-  async function downloadAccountingExport() {
+  async function handleAccountingExport() {
     setAccountingExporting(true);
     try {
-      const res = await fetch(
-        `/api/reports/accounting/export?from=${encodeURIComponent(repFrom)}&to=${encodeURIComponent(repTo)}`,
-        { credentials: "include" },
-      );
-      if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        alert((j as { message?: string }).message ?? "Не удалось сформировать отчёт");
-        return;
+      const result = await downloadAccountingExport(repFrom, repTo);
+      if (!result.ok) {
+        if (result.unauthorized) { router.replace("/login"); return; }
+        alert(result.message);
       }
-      const blob = await res.blob();
-      const disp = res.headers.get("Content-Disposition");
-      const match = disp?.match(/filename="?([^";]+)"?/);
-      const filename = match?.[1] ?? `uchet-sdelok_${repFrom}_${repTo}.xlsx`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
     } finally {
       setAccountingExporting(false);
     }
@@ -3073,74 +3043,21 @@ export default function AppPage() {
 
           {/* ===== REPORTS ===== */}
           {tab === "reports" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div className="page-header">
-                <div className="page-header-left">
-                  <div className="page-header-title">Отчёты</div>
-                  <div className="page-header-sub">Аналитика выплат и статистика по воркерам</div>
-                </div>
-                <div className="page-header-actions">
-                  <button className="btn btn-secondary" onClick={loadReportsWorkers}>↻ Обновить</button>
-                  {isManager ? (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={accountingExporting}
-                      onClick={() => void downloadAccountingExport()}
-                    >
-                      {accountingExporting ? "Формируем…" : "Скачать Excel (учёт сделок)"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Период</span>
-                </div>
-                <div className="card-body g2">
-                  <div>
-                    <div className="form-label">От</div>
-                    <input className="form-input" type="date" value={repFrom} onChange={(e) => setRepFrom(e.target.value)} />
-                  </div>
-                  <div>
-                    <div className="form-label">До</div>
-                    <input className="form-input" type="date" value={repTo} onChange={(e) => setRepTo(e.target.value)} />
-                  </div>
-                </div>
-              </div>
-              <div className="card">
-                <div className="card-header"><span className="card-title">Выплаты воркерам</span></div>
-                <div className="card-body">
-                  {repLoading || !repWorkers ? (
-                    <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
-                  ) : (
-                    <div className="table-scroll"><table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Воркер</th><th>Роль</th><th>Сделок</th>
-                          <th style={{ textAlign: "right" }}>Заработок</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(repWorkers.rows ?? []).length === 0 ? (
-                          <tr><td colSpan={4} style={{ color: "var(--text-secondary)" }}>Нет данных за период</td></tr>
-                        ) : (repWorkers.rows ?? []).map((r: any) => (
-                          <tr key={r.userId}>
-                            <td>{r.email}</td><td>{r.role}</td><td>{r.dealsCount}</td>
-                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
-                              {Number(r.payoutUsdt ?? 0).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table></div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <ReportsTab
+              repFrom={repFrom}
+              repTo={repTo}
+              onRepFromChange={setRepFrom}
+              onRepToChange={setRepTo}
+              repLoading={repLoading}
+              repWorkers={repWorkers}
+              accountingExporting={accountingExporting}
+              showAccountingExport={isManager}
+              onRefresh={loadReportsWorkers}
+              onExportAccounting={() => void handleAccountingExport()}
+            />
           ) : null}
 
-          {/* ===== DEALS ===== */}
+          {/* ===== DEALS ===== */}          {/* ===== DEALS ===== */}
           {tab === "deals" ? (
             <div style={{ display: "grid", gap: 16 }}>
               {/* Page header */}
@@ -3906,88 +3823,10 @@ export default function AppPage() {
                       <div className="empty-state-desc">Измените фильтр или нажмите «Добавить клиента» / создайте карточку через AI ассистента</div>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", gap: 12, alignItems: "stretch", overflowX: "auto", paddingBottom: 6, maxHeight: "calc(100vh - 240px)", minHeight: 280 }}>
-                      {clientKanbanColumns.map((col) => {
-                        const accent = col.color || "var(--accent)";
-                        const tint = col.color ? `${col.color}12` : "var(--bg-metric)";
-                        return (
-                          <div
-                            key={col.key}
-                            style={{
-                              flex: "0 0 268px",
-                              display: "flex",
-                              flexDirection: "column",
-                              minHeight: 0,
-                              maxHeight: "100%",
-                              borderRadius: 12,
-                              border: "1px solid var(--border-light)",
-                              background: "var(--bg-card)",
-                              overflow: "hidden",
-                              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                            }}
-                          >
-                            <div style={{
-                              flexShrink: 0,
-                              padding: "8px 12px",
-                              background: tint,
-                              borderBottom: "1px solid var(--border-light)",
-                              borderLeft: `3px solid ${accent}`,
-                            }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)", lineHeight: 1.3 }}>{col.label}</div>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{col.clients.length} шт.</div>
-                            </div>
-                            <div role="list" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-                              {col.clients.length === 0 ? (
-                                <div style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "16px 8px", textAlign: "center", lineHeight: 1.45 }}>Нет клиентов</div>
-                              ) : (
-                                col.clients.map((c) => (
-                                  <div
-                                    key={c.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => setClientViewOpen(c)}
-                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setClientViewOpen(c); } }}
-                                    style={{
-                                      padding: "8px 10px",
-                                      borderRadius: 10,
-                                      border: "1px solid var(--border-light)",
-                                      background: "var(--bg-card)",
-                                      cursor: "pointer",
-                                      transition: "box-shadow 0.12s ease, border-color 0.12s ease",
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
-                                      (e.currentTarget as HTMLDivElement).style.borderColor = "var(--accent)";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
-                                      (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-light)";
-                                    }}
-                                  >
-                                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                      <div style={{
-                                        width: 28, height: 28, borderRadius: 8, background: "var(--green-bg)", color: "var(--green-text)",
-                                        fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                      }}>{(c.name || "?")[0].toUpperCase()}</div>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-                                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-tertiary)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.phone}</div>
-                                      </div>
-                                    </div>
-                                    {(c.bank || c.assistantName) ? (
-                                      <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={[c.bank, c.assistantName].filter(Boolean).join(" · ")}>
-                                        {[c.bank, c.assistantName].filter(Boolean).join(" · ")}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                    <ClientsKanbanBoard
+                      columns={clientKanbanColumns}
+                      onSelectClient={(c) => setClientViewOpen(c as Client)}
+                    />)}
                 </div>
               </div>
 

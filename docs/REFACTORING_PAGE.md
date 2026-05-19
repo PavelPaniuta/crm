@@ -15,12 +15,17 @@
 | Зарплата (модалки) | `components/salary/SalaryConfigModal.tsx`, `SalaryPaymentModal.tsx`, `lib/salary-constants.ts` |
 | Клиенты (утилиты форм) | `lib/clients.ts` |
 | Расходы (модалка) | `components/expenses/ExpenseDetailModal.tsx` |
+| Отчёты (вкладка) | `components/reports/ReportsTab.tsx`, `lib/reports.ts` |
+| Excel «Учет сделок» | `apps/backend/src/reports/accounting-export.service.ts` |
+| Клиенты (канбан) | `components/clients/ClientsKanbanBoard.tsx`, `buildClientKanbanColumns` в `lib/clients.ts` |
 
 ## Дальше (по одному PR/коммиту)
 
-1. Вкладка **Clients** (модалки создания/редактирования) — крупный блок
-2. **Deals** / **Dashboard** (крупные, в конце)
-3. Шаблон сделок (wizard) — отдельно, самый большой блок
+1. Вкладка **Clients** — модалки создания/просмотра/редактирования
+2. **Импорт** Excel «Учет сделок» (зеркало экспорта)
+3. Сущность **ОЛХ** (как посредники) + **Инфо** (% от ЗП фонда)
+4. **Deals** / **Dashboard** (крупные, в конце)
+5. Шаблон сделок (wizard) — отдельно, самый большой блок
 
 ## VPS
 
