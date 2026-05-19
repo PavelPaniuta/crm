@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   getPayrollBaseForTemplateDeal,
   getEffectiveRates,
   getDealPayoutBreakdown,
   breakdownToUsd,
-  CalcStep,
+  parseCalcSteps,
   computeChain,
   computeMediatorAiPayroll,
   MEDIATOR_AI_PAYROLL,
@@ -40,8 +41,12 @@ const TEMPLATE_SELECT = {
   fields: { select: { key: true, type: true } },
 } as const;
 
+const EMPTY_MEDIATORS_SUMMARY = { totalUsd: 0, rows: [] as Array<{ mediatorId: string; name: string; totalUsd: number; dealsCount: number }>, dealsWithMediator: 0 };
+
 @Injectable()
 export class DashboardService {
+  private readonly log = new Logger(DashboardService.name);
+
   constructor(
     private prisma: PrismaService,
     private mediators: MediatorsService,
@@ -92,8 +97,9 @@ export class DashboardService {
     if (tpl && first) {
       const currency = this.getDealCurrency(tpl, first);
 
-      if (Array.isArray(tpl.calcSteps) && tpl.calcSteps.length > 0) {
-        const chain = computeChain(first, tpl.calcSteps as CalcStep[]);
+      const steps = parseCalcSteps(tpl.calcSteps);
+      if (steps.length > 0) {
+        const chain = computeChain(first, steps);
         if (chain.length > 0) {
           const grossRaw = chain[0].source;
           const officeRaw = Math.max(0, chain[chain.length - 1].result);
@@ -167,30 +173,48 @@ export class DashboardService {
     let totalAiUsd = 0;
 
     for (const d of deals) {
-      const tpl = d.template as any;
-      const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
-      const currency = this.getDealCurrency(tpl, first);
-      // Use deal's historical rate snapshot when available
-      const effectiveRates = getEffectiveRates(d, rates);
+      try {
+        const tpl = d.template as any;
+        const first = d.dataRows[0]?.data as Record<string, unknown> | undefined;
+        const currency = this.getDealCurrency(tpl, first);
+        const effectiveRates = getEffectiveRates(d, rates);
 
-      const { gross, officeIncome } = this.calcDealAmounts(d as any, rates);
-      totalAmountOut += gross;
-      totalOfficeIncome += officeIncome;
+        const { gross, officeIncome } = this.calcDealAmounts(d as any, rates);
+        totalAmountOut += gross;
+        totalOfficeIncome += officeIncome;
 
-      const split = breakdownToUsd(getDealPayoutBreakdown(d as any), currency, effectiveRates);
-      totalMediatorUsd += split.mediator;
-      totalAiUsd += split.ai;
+        const split = breakdownToUsd(getDealPayoutBreakdown(d as any), currency, effectiveRates);
+        totalMediatorUsd += split.mediator;
+        totalAiUsd += split.ai;
 
-      // Worker payroll base in deal currency → USD (using historical rates)
-      const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
-      for (const p of d.participants) {
-        if (payrollBase > 0) {
-          totalWorkersPayoutUsdt += toUsd((payrollBase * p.pct) / 100, currency, effectiveRates);
+        const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
+        for (const p of d.participants) {
+          const pct = Number(p.pct);
+          if (payrollBase > 0 && Number.isFinite(pct)) {
+            totalWorkersPayoutUsdt += toUsd((payrollBase * pct) / 100, currency, effectiveRates);
+          }
         }
+      } catch (err) {
+        this.log.warn(`Dashboard: skip deal ${d.id}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
-    const mediatorsSummary = await this.mediators.getOrgSummary(organizationId, fromDate, toDate);
+    let mediatorsSummary = EMPTY_MEDIATORS_SUMMARY;
+    try {
+      mediatorsSummary = await this.mediators.getOrgSummary(organizationId, fromDate, toDate);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        (err.code === 'P2021' || err.code === 'P2022')
+      ) {
+        this.log.warn(
+          'Dashboard: DealMediator/Mediator tables missing — run prisma migrate deploy on the server',
+        );
+      } else {
+        this.log.error('Dashboard: getOrgSummary failed', err instanceof Error ? err.stack : err);
+        throw err;
+      }
+    }
 
     const expenses = await this.prisma.expense.findMany({
       where: { organizationId, createdAt: { gte: fromDate, lte: toDate } },

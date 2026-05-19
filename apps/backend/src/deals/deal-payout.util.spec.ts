@@ -7,6 +7,7 @@ import {
   getDealPayoutBreakdown,
   getEffectiveRates,
   getPayrollBaseFromChain,
+  parseCalcSteps,
   type CalcStep,
 } from './deal-payout.util';
 
@@ -34,6 +35,22 @@ describe('computeMediatorAiPayroll', () => {
   it('returns null for wrong preset or missing keys', () => {
     expect(computeMediatorAiPayroll({ gross: 100 }, { ...tpl, calcPreset: null })).toBeNull();
     expect(computeMediatorAiPayroll({ gross: 100 }, { ...tpl, calcGrossFieldKey: null })).toBeNull();
+  });
+});
+
+describe('parseCalcSteps', () => {
+  it('filters invalid entries and non-arrays', () => {
+    const valid: CalcStep = {
+      id: 's1',
+      label: 'x',
+      sourceType: 'field',
+      sourceId: 'gross',
+      deductType: 'percent',
+      deductFieldKey: 'pct',
+      resultLabel: 'r',
+    };
+    expect(parseCalcSteps(null)).toEqual([]);
+    expect(parseCalcSteps([null, 'bad', valid])).toEqual([valid]);
   });
 });
 
@@ -69,6 +86,11 @@ describe('computeChain', () => {
       isPayrollPool: true,
     },
   ];
+
+  it('ignores malformed steps without throwing', () => {
+    const chain = computeChain({ gross: 100 }, [null, { bad: true }, ...steps]);
+    expect(chain).toHaveLength(3);
+  });
 
   it('chains percent steps and marks AI / payroll pool', () => {
     const chain = computeChain({ gross: 1000, pctM: 10, pctAi: 5, poolPct: 20 }, steps);

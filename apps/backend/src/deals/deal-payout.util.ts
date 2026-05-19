@@ -16,6 +16,25 @@ export type CalcStep = {
   isAiShare?: boolean;      // deductAmt of this step = office AI share
 };
 
+function isCalcStep(v: unknown): v is CalcStep {
+  if (!v || typeof v !== 'object') return false;
+  const s = v as Record<string, unknown>;
+  return (
+    typeof s.id === 'string' &&
+    s.id.length > 0 &&
+    (s.sourceType === 'field' || s.sourceType === 'step') &&
+    typeof s.sourceId === 'string' &&
+    (s.deductType === 'percent' || s.deductType === 'fixed') &&
+    typeof s.deductFieldKey === 'string'
+  );
+}
+
+/** Нормализует calcSteps из Prisma Json — отбрасывает битые элементы. */
+export function parseCalcSteps(raw: unknown): CalcStep[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isCalcStep);
+}
+
 export type CalcStepResult = {
   step: CalcStep;
   source: number;
@@ -25,10 +44,11 @@ export type CalcStepResult = {
 
 export function computeChain(
   data: Record<string, unknown>,
-  steps: CalcStep[],
+  steps: CalcStep[] | unknown,
 ): CalcStepResult[] {
+  const safeSteps = Array.isArray(steps) ? parseCalcSteps(steps) : [];
   const results: Record<string, number> = {};
-  return steps.map((step) => {
+  return safeSteps.map((step) => {
     const source =
       step.sourceType === 'field'
         ? Number(data[step.sourceId]) || 0
@@ -95,8 +115,9 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
   const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
   if (!first) return empty;
 
-  if (Array.isArray(t.calcSteps) && (t.calcSteps as CalcStep[]).length > 0) {
-    const chain = computeChain(first, t.calcSteps as CalcStep[]);
+  const steps = parseCalcSteps(t.calcSteps);
+  if (steps.length > 0) {
+    const chain = computeChain(first, steps);
     const gross = chain[0]?.source ?? 0;
     const office = chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
     return {
@@ -241,8 +262,9 @@ export function getPayrollBaseForTemplateDeal(
   if (!first) return { base: 0, mode: 'incomeField' };
 
   // New: universal calcSteps chain takes priority
-  if (Array.isArray(t.calcSteps) && (t.calcSteps as CalcStep[]).length > 0) {
-    const chain = computeChain(first, t.calcSteps as CalcStep[]);
+  const steps = parseCalcSteps(t.calcSteps);
+  if (steps.length > 0) {
+    const chain = computeChain(first, steps);
     return { base: getPayrollBaseFromChain(chain), mode: 'calcChain' };
   }
 

@@ -212,7 +212,7 @@ export class MediatorsService {
       const key = link.mediatorId;
       const prev = byMediator.get(key) ?? {
         mediatorId: key,
-        name: link.mediator.name,
+        name: link.mediator?.name ?? '—',
         totalUsd: 0,
         dealsCount: 0,
       };
