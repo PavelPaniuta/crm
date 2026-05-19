@@ -1580,6 +1580,7 @@ export default function AppPage() {
         deductType: "percent",
         deductFieldKey: "процент_посредника",
         resultLabel: "После посредника (R1)",
+        isMediatorShare: true,
         isPayrollPool: false,
       },
       {
@@ -1590,6 +1591,7 @@ export default function AppPage() {
         deductType: "percent",
         deductFieldKey: "процент_аи",
         resultLabel: "После AI (R2)",
+        isAiShare: true,
         isPayrollPool: false,
       },
       {

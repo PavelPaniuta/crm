@@ -13,8 +13,24 @@ export type CalcStep = {
   deductFieldKey: string;   // field that holds the % or fixed amount
   resultLabel: string;
   isPayrollPool?: boolean;  // deductAmt of this step = payroll fund
+  isMediatorShare?: boolean; // deductAmt of this step = mediator share
   isAiShare?: boolean;      // deductAmt of this step = office AI share
 };
+
+function stepTextHints(step: CalcStep): { mediator: boolean; ai: boolean } {
+  const label = step.label.toLowerCase();
+  const key = step.deductFieldKey.toLowerCase();
+  return {
+    mediator: label.includes('посредник') || key.includes('посредник'),
+    ai:
+      label.includes('ai') ||
+      label.includes('аи') ||
+      label.includes('ии') ||
+      key.includes('аи') ||
+      key.includes('_ai') ||
+      key.endsWith('_ai'),
+  };
+}
 
 function isCalcStep(v: unknown): v is CalcStep {
   if (!v || typeof v !== 'object') return false;
@@ -68,10 +84,32 @@ export function getPayrollBaseFromChain(chain: CalcStepResult[]): number {
   return last ? Math.max(0, last.result) : 0;
 }
 
+export function getMediatorShareFromChain(chain: CalcStepResult[]): number {
+  const marked = chain.find((c) => c.step.isMediatorShare);
+  if (marked) return Math.max(0, marked.deductAmt);
+  const byHint = chain.find((c) => stepTextHints(c.step).mediator);
+  if (byHint) return Math.max(0, byHint.deductAmt);
+  const first = chain[0];
+  if (first?.step.sourceType === 'field') return Math.max(0, first.deductAmt);
+  return 0;
+}
+
 export function getAiShareFromChain(chain: CalcStepResult[]): number {
   const aiStep = chain.find((c) => c.step.isAiShare);
   if (aiStep) return Math.max(0, aiStep.deductAmt);
+  const byHint = chain.find((c) => stepTextHints(c.step).ai);
+  if (byHint) return Math.max(0, byHint.deductAmt);
   return 0;
+}
+
+function withMediatorLink(
+  deal: DealForPayout,
+  breakdown: DealPayoutBreakdown,
+): DealPayoutBreakdown {
+  if (breakdown.mediator > 0 || breakdown.gross <= 0 || !deal.mediatorLink) return breakdown;
+  const pct = Number(deal.mediatorLink.pct);
+  if (!Number.isFinite(pct) || pct <= 0) return breakdown;
+  return { ...breakdown, mediator: (breakdown.gross * pct) / 100 };
 }
 
 export type DealPayoutBreakdown = {
@@ -94,6 +132,7 @@ function dealDataRows(deal: { dataRows?: { data: unknown }[] | null }) {
 export type DealForPayout = {
   amounts?: { amountOut: unknown }[] | null;
   dataRows?: { data: unknown }[] | null;
+  mediatorLink?: { pct: unknown } | null;
   template:
     | (MediatorAiPayrollKeys & {
         incomeFieldKey: string | null;
@@ -118,38 +157,45 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
   const dataRows = dealDataRows(deal);
   if (amounts.length > 0) {
     const gross = amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-    return { gross, mediator: 0, ai: 0, payrollPool: gross, office: 0, mode: 'classic' };
+    return withMediatorLink(deal, {
+      gross,
+      mediator: 0,
+      ai: 0,
+      payrollPool: gross,
+      office: 0,
+      mode: 'classic',
+    });
   }
   const t = deal.template;
-  if (!t || dataRows.length === 0) return empty;
+  if (!t || dataRows.length === 0) return withMediatorLink(deal, empty);
   const first = dataRows[0]?.data as Record<string, unknown> | undefined;
-  if (!first) return empty;
+  if (!first) return withMediatorLink(deal, empty);
 
   const steps = parseCalcSteps(t.calcSteps);
   if (steps.length > 0) {
     const chain = computeChain(first, steps);
     const gross = chain[0]?.source ?? 0;
     const office = chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
-    return {
+    return withMediatorLink(deal, {
       gross,
-      mediator: 0,
+      mediator: getMediatorShareFromChain(chain),
       ai: getAiShareFromChain(chain),
       payrollPool: getPayrollBaseFromChain(chain),
       office,
       mode: 'calcChain',
-    };
+    });
   }
 
   const calc = computeMediatorAiPayroll(first, t);
   if (calc) {
-    return {
+    return withMediatorLink(deal, {
       gross: calc.G,
       mediator: calc.M,
       ai: calc.A,
       payrollPool: calc.F,
       office: calc.P,
       mode: 'mediatorAiPayroll',
-    };
+    });
   }
 
   if (t.incomeFieldKey) {
@@ -157,9 +203,16 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
       const d = r.data as Record<string, unknown>;
       return s + (Number(d[t.incomeFieldKey!]) || 0);
     }, 0);
-    return { gross, mediator: 0, ai: 0, payrollPool: gross, office: 0, mode: 'incomeField' };
+    return withMediatorLink(deal, {
+      gross,
+      mediator: 0,
+      ai: 0,
+      payrollPool: gross,
+      office: 0,
+      mode: 'incomeField',
+    });
   }
-  return empty;
+  return withMediatorLink(deal, empty);
 }
 
 export function breakdownToUsd(

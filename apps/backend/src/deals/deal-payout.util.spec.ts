@@ -4,6 +4,7 @@ import {
   computeChain,
   computeMediatorAiPayroll,
   getAiShareFromChain,
+  getMediatorShareFromChain,
   getDealPayoutBreakdown,
   getEffectiveRates,
   getPayrollBaseFromChain,
@@ -130,6 +131,83 @@ describe('getDealPayoutBreakdown', () => {
     } as Parameters<typeof getDealPayoutBreakdown>[0]);
     expect(b.mode).toBe('mediatorAiPayroll');
     expect(b.gross).toBe(1000);
+  });
+
+  it('extracts mediator and AI from calcChain without explicit flags (RU preset)', () => {
+    const presetSteps: CalcStep[] = [
+      {
+        id: 'step_mediator',
+        label: 'Выплата посредника',
+        sourceType: 'field',
+        sourceId: 'сумма_завода',
+        deductType: 'percent',
+        deductFieldKey: 'процент_посредника',
+        resultLabel: 'R1',
+      },
+      {
+        id: 'step_ai',
+        label: 'Доля AI',
+        sourceType: 'step',
+        sourceId: 'step_mediator',
+        deductType: 'percent',
+        deductFieldKey: 'процент_аи',
+        resultLabel: 'R2',
+      },
+      {
+        id: 'step_payroll',
+        label: 'Зарплатный фонд',
+        sourceType: 'step',
+        sourceId: 'step_ai',
+        deductType: 'percent',
+        deductFieldKey: 'процент_зп_фонда',
+        resultLabel: 'Office',
+        isPayrollPool: true,
+      },
+    ];
+    const b = getDealPayoutBreakdown({
+      amounts: [],
+      dataRows: [
+        {
+          data: {
+            сумма_завода: 1000,
+            процент_посредника: 10,
+            процент_аи: 5,
+            процент_зп_фонда: 20,
+          },
+        },
+      ],
+      template: {
+        calcPreset: null,
+        payrollPoolPct: null,
+        calcGrossFieldKey: null,
+        calcMediatorPctKey: null,
+        calcAiPctKey: null,
+        incomeFieldKey: 'сумма_завода',
+        calcSteps: presetSteps,
+      },
+    });
+    expect(b.mode).toBe('calcChain');
+    expect(b.mediator).toBe(100);
+    expect(b.ai).toBe(45);
+    expect(b.payrollPool).toBe(171);
+  });
+
+  it('uses DealMediator pct when chain mediator is zero', () => {
+    const b = getDealPayoutBreakdown({
+      amounts: [],
+      dataRows: [{ data: { сумма_завода: 2000 } }],
+      mediatorLink: { pct: 15 },
+      template: {
+        calcPreset: null,
+        payrollPoolPct: null,
+        calcGrossFieldKey: null,
+        calcMediatorPctKey: null,
+        calcAiPctKey: null,
+        incomeFieldKey: 'сумма_завода',
+        calcSteps: null,
+      },
+    });
+    expect(b.mediator).toBe(300);
   });
 
   it('uses mediatorAiPayroll preset', () => {

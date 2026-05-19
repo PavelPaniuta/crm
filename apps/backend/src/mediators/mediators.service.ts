@@ -143,12 +143,8 @@ export class MediatorsService {
       const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
       const currency = getDealCurrency(deal.template as any, first);
       const effectiveRates = getEffectiveRates(deal, rates);
-      const raw = getDealPayoutBreakdown(deal as any);
-      const usd = breakdownToUsd(
-        { ...raw, mediator: raw.mediator > 0 ? raw.mediator : Number(link.pct) ? (raw.gross * Number(link.pct)) / 100 : 0 },
-        currency,
-        effectiveRates,
-      );
+      const raw = getDealPayoutBreakdown({ ...deal, mediatorLink: { pct: link.pct } } as any);
+      const usd = breakdownToUsd(raw, currency, effectiveRates);
       const amountUsd = Math.round(usd.mediator * 100) / 100;
       totalUsd += amountUsd;
       return {
@@ -204,10 +200,8 @@ export class MediatorsService {
       const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
       const currency = getDealCurrency(deal.template as any, first);
       const effectiveRates = getEffectiveRates(deal, rates);
-      const raw = getDealPayoutBreakdown(deal as any);
-      const mediatorAmt =
-        raw.mediator > 0 ? raw.mediator : raw.gross > 0 ? (raw.gross * Number(link.pct)) / 100 : 0;
-      const usd = breakdownToUsd({ ...raw, mediator: mediatorAmt }, currency, effectiveRates).mediator;
+      const raw = getDealPayoutBreakdown({ ...deal, mediatorLink: { pct: link.pct } } as any);
+      const usd = breakdownToUsd(raw, currency, effectiveRates).mediator;
 
       const key = link.mediatorId;
       const prev = byMediator.get(key) ?? {

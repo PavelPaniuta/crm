@@ -151,6 +151,7 @@ export class DashboardService {
           dataRows: { select: { data: true } },
           template: { select: TEMPLATE_SELECT },
           participants: true,
+          mediatorLink: { select: { pct: true } },
           // rateSnapshot is a scalar Json field — included automatically
         },
       }),
@@ -248,7 +249,8 @@ export class DashboardService {
         totalAmount: Math.round(totalExpenses * 100) / 100,
       },
       partners: {
-        totalMediatorUsd: Math.round(totalMediatorUsd * 100) / 100,
+        totalMediatorUsd:
+          Math.round(Math.max(totalMediatorUsd, mediatorsSummary.totalUsd) * 100) / 100,
         totalAiUsd: Math.round(totalAiUsd * 100) / 100,
         mediators: mediatorsSummary.rows,
         dealsWithMediator: mediatorsSummary.dealsWithMediator,
