@@ -43,6 +43,8 @@ import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
 import { DealFormModal } from "@/components/deals/DealFormModal";
 import { DealsTab } from "@/components/deals/DealsTab";
 import { DealTemplatesSettingsCard } from "@/components/deal-templates/DealTemplatesSettingsCard";
+import { ExpenseCategoriesSettingsCard } from "@/components/expenses/ExpenseCategoriesSettingsCard";
+import { ExpenseSuppliersSettingsCard } from "@/components/expenses/ExpenseSuppliersSettingsCard";
 import { TemplateWizardModal } from "@/components/deal-templates/TemplateWizardModal";
 import { ChatTab } from "@/components/chat/ChatTab";
 import { AssistantTab } from "@/components/assistant/AssistantTab";
@@ -2322,6 +2324,8 @@ export default function AppPage() {
                 onEdit={(t) => openTemplateModal(t)}
                 onDelete={handleDeleteTemplate}
               />
+              <ExpenseCategoriesSettingsCard />
+              <ExpenseSuppliersSettingsCard />
               {isAdmin ? (
                 <>
                   <div className="card">

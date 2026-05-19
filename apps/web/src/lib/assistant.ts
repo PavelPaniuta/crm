@@ -103,6 +103,20 @@ export async function executeAgentPendingAction(
 
   if (action.type === "create_expense") {
     const p = action.params;
+    let categoryId = "";
+    try {
+      const { resolveDefaultCategoryId } = await import("@/lib/expense-settings");
+      categoryId = await resolveDefaultCategoryId();
+    } catch {
+      return "❌ Сначала настройте категории расходов в разделе «Настройки».";
+    }
+    const payRaw = String(p.payMethod ?? "cash").toLowerCase();
+    const payMethod =
+      payRaw.includes("usdt") || payRaw.includes("крипт")
+        ? "usdt"
+        : payRaw.includes("банк") || payRaw.includes("bank")
+          ? "bank"
+          : "cash";
     const res = await fetch("/api/expenses", {
       method: "POST",
       credentials: "include",
@@ -111,7 +125,8 @@ export async function executeAgentPendingAction(
         title: p.title || p.description || "Расход",
         amount: p.amount,
         currency: p.currency ?? "USD",
-        payMethod: p.payMethod ?? "Наличные",
+        payMethod,
+        categoryId,
       }),
     });
     if (res.ok) return "✅ Расход записан!";

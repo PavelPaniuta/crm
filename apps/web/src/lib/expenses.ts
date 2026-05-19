@@ -15,7 +15,10 @@ export async function createExpenseApi(payload: {
   amount: number;
   currency: string;
   payMethod: string;
-}): Promise<void> {
+  categoryId: string;
+  supplierId?: string | null;
+  comment?: string | null;
+}): Promise<ExpenseRow> {
   const res = await fetch("/api/expenses", {
     method: "POST",
     credentials: "include",
@@ -23,6 +26,7 @@ export async function createExpenseApi(payload: {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("create_failed");
+  return res.json();
 }
 
 export async function deleteExpenseApi(id: string): Promise<void> {
@@ -30,7 +34,36 @@ export async function deleteExpenseApi(id: string): Promise<void> {
   if (!res.ok) throw new Error("delete_failed");
 }
 
+export async function uploadExpenseFileApi(expenseId: string, file: File): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`/api/expenses/${expenseId}/files`, {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) throw new Error("upload_failed");
+}
+
+export async function deleteExpenseFileApi(expenseId: string, fileId: string): Promise<void> {
+  const res = await fetch(`/api/expenses/${expenseId}/files/${fileId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("delete_file_failed");
+}
+
+export function expenseFileDownloadUrl(expenseId: string, fileId: string): string {
+  return `/api/expenses/${expenseId}/files/${fileId}`;
+}
+
 export function amountToUsd(amount: number, currency: string, exchangeRates: Record<string, number>): number {
   const rate = exchangeRates[currency] ?? 1;
   return rate > 0 ? amount / rate : amount;
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

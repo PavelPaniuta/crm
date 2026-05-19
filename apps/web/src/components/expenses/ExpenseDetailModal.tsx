@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CURRENCIES } from "@/lib/currencies";
+import { ExpenseCategoryBadge } from "@/components/expenses/ExpenseCategoryBadge";
+import {
+  ExpenseFormFields,
+  flushPendingExpenseFiles,
+  type ExpenseFormValues,
+} from "@/components/expenses/ExpenseFormFields";
+import type { ExpenseCategoryRow } from "@/lib/expense-settings";
+import { fetchExpenses } from "@/lib/expenses";
+
+export type ExpenseFileRow = {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  createdAt?: string;
+};
 
 export type ExpenseRow = {
   id: string;
@@ -10,16 +25,22 @@ export type ExpenseRow = {
   currency: string;
   payMethod: string;
   status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+  comment?: string | null;
+  category?: { id: string; name: string; color?: string | null; isActive?: boolean };
+  supplier?: { id: string; name: string } | null;
+  files?: ExpenseFileRow[];
 };
 
 type Props = {
   open: boolean;
   expense: ExpenseRow | null;
+  categories: ExpenseCategoryRow[];
   isAdmin: boolean;
   onClose: () => void;
   onDelete: (id: string) => void | Promise<void>;
   onExpenseUpdated: (expense: ExpenseRow) => void;
   onExpensesRefresh: (expenses: ExpenseRow[]) => void;
+  onCategoriesRefresh?: () => void | Promise<void>;
 };
 
 function statusBadge(status: ExpenseRow["status"]) {
@@ -42,20 +63,32 @@ function statusBadge(status: ExpenseRow["status"]) {
   return <span className={`badge ${cls}`}>{label}</span>;
 }
 
+function rowToForm(e: ExpenseRow): ExpenseFormValues {
+  return {
+    categoryId: e.category?.id ?? "",
+    supplierId: e.supplier?.id ?? "",
+    title: e.title,
+    amount: String(e.amount),
+    currency: e.currency,
+    payMethod: e.payMethod,
+    comment: e.comment ?? "",
+  };
+}
+
 export function ExpenseDetailModal({
   open,
   expense,
+  categories,
   isAdmin,
   onClose,
   onDelete,
   onExpenseUpdated,
   onExpensesRefresh,
+  onCategoriesRefresh,
 }: Props) {
   const [editMode, setEditMode] = useState(false);
-  const [title, setTitle] = useState("");
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("PLN");
-  const [payMethod, setPayMethod] = useState("bank");
+  const [form, setForm] = useState<ExpenseFormValues>(rowToForm(expense ?? ({} as ExpenseRow)));
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (!open || !expense) {
@@ -63,14 +96,20 @@ export function ExpenseDetailModal({
       return;
     }
     setEditMode(false);
-    setTitle(expense.title);
-    setAmount(String(expense.amount));
-    setCurrency(expense.currency);
-    setPayMethod(expense.payMethod);
+    setForm(rowToForm(expense));
+    setPendingFiles([]);
   }, [open, expense?.id]);
 
   if (!open || !expense) return null;
   const current = expense;
+  const isDraft = expense.status === "DRAFT";
+
+  async function refreshList() {
+    const list = await fetchExpenses();
+    onExpensesRefresh(list);
+    const updated = list.find((e) => e.id === current.id) ?? null;
+    if (updated) onExpenseUpdated(updated);
+  }
 
   async function runAction(action: "submit" | "approve" | "reject") {
     const res = await fetch(`/api/expenses/${current.id}/${action}`, { method: "POST", credentials: "include" });
@@ -78,15 +117,12 @@ export function ExpenseDetailModal({
       alert("Не удалось изменить статус");
       return;
     }
-    const list: ExpenseRow[] = await fetch("/api/expenses", { credentials: "include" }).then((r) => r.json());
-    onExpensesRefresh(list);
-    const updated = list.find((e) => e.id === current.id) ?? null;
-    if (updated) onExpenseUpdated(updated);
+    await refreshList();
   }
 
   async function handleSave() {
-    const num = Number(amount);
-    if (!Number.isFinite(num) || !title.trim()) {
+    const num = Number(form.amount);
+    if (!form.categoryId || !form.title.trim() || !Number.isFinite(num)) {
       alert("Проверьте поля");
       return;
     }
@@ -94,24 +130,37 @@ export function ExpenseDetailModal({
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, amount: num, currency, payMethod }),
+      body: JSON.stringify({
+        title: form.title,
+        amount: num,
+        currency: form.currency,
+        payMethod: form.payMethod,
+        categoryId: form.categoryId,
+        supplierId: form.supplierId || null,
+        comment: form.comment.trim() || null,
+      }),
     });
     if (!res.ok) {
       alert("Не удалось сохранить расход");
       return;
     }
+    if (pendingFiles.length > 0) {
+      await flushPendingExpenseFiles(current.id, pendingFiles);
+      setPendingFiles([]);
+    }
     const updated: ExpenseRow = await res.json();
     onExpenseUpdated(updated);
     setEditMode(false);
+    await refreshList();
+    await onCategoriesRefresh?.();
   }
 
   function startEdit() {
-    setTitle(current.title);
-    setAmount(String(current.amount));
-    setCurrency(current.currency);
-    setPayMethod(current.payMethod);
+    setForm(rowToForm(current));
     setEditMode(true);
   }
+
+  const payLabels: Record<string, string> = { bank: "Банк", usdt: "USDT", cash: "Кэш" };
 
   return (
     <div
@@ -133,7 +182,7 @@ export function ExpenseDetailModal({
         }
       }}
     >
-      <div className="card" style={{ width: 520, maxWidth: "100%" }}>
+      <div className="card" style={{ width: 560, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
         <div className="card-header">
           <span className="card-title">{editMode ? "Редактировать расход" : "Расход"}</span>
           <div style={{ display: "flex", gap: 8 }}>
@@ -142,7 +191,7 @@ export function ExpenseDetailModal({
                 Удалить
               </button>
             )}
-            {!editMode && expense.status === "DRAFT" && (
+            {!editMode && isDraft && (
               <button className="btn btn-secondary" onClick={startEdit}>
                 Редактировать
               </button>
@@ -161,39 +210,16 @@ export function ExpenseDetailModal({
         <div className="card-body" style={{ display: "grid", gap: 14 }}>
           {editMode ? (
             <>
-              <div>
-                <div className="form-label">Название</div>
-                <input className="form-input" value={title} onChange={(e) => setTitle(e.target.value)} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 140px", gap: 12 }}>
-                <div>
-                  <div className="form-label">Сумма</div>
-                  <input
-                    className="form-input"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  />
-                </div>
-                <div>
-                  <div className="form-label">Валюта</div>
-                  <select className="form-input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                    {CURRENCIES.map((c) => (
-                      <option key={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <div className="form-label">Оплата</div>
-                  <select className="form-input" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                    <option value="bank">Банк</option>
-                    <option value="usdt">USDT</option>
-                    <option value="cash">Кэш</option>
-                  </select>
-                </div>
-              </div>
+              <ExpenseFormFields
+                categories={categories}
+                values={form}
+                onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+                expenseId={current.id}
+                existingFiles={current.files ?? []}
+                canEditFiles={isDraft}
+                onFilesChange={() => void refreshList()}
+                onPendingFilesChange={setPendingFiles}
+              />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                 <button className="btn btn-secondary" onClick={() => setEditMode(false)}>
                   Отмена
@@ -205,6 +231,18 @@ export function ExpenseDetailModal({
             </>
           ) : (
             <>
+              {expense.category ? (
+                <div>
+                  <div className="form-label">Категория</div>
+                  <ExpenseCategoryBadge name={expense.category.name} color={expense.category.color} />
+                </div>
+              ) : null}
+              {expense.supplier ? (
+                <div>
+                  <div className="form-label">Поставщик</div>
+                  <div style={{ fontWeight: 500 }}>{expense.supplier.name}</div>
+                </div>
+              ) : null}
               <div>
                 <div className="form-label">Название</div>
                 <div style={{ fontWeight: 600 }}>{expense.title}</div>
@@ -218,15 +256,37 @@ export function ExpenseDetailModal({
                 </div>
                 <div>
                   <div className="form-label">Оплата</div>
-                  <div style={{ color: "var(--text-secondary)" }}>{expense.payMethod}</div>
+                  <div style={{ color: "var(--text-secondary)" }}>{payLabels[expense.payMethod] ?? expense.payMethod}</div>
                 </div>
                 <div>
                   <div className="form-label">Статус</div>
                   {statusBadge(expense.status)}
                 </div>
               </div>
+              {expense.comment ? (
+                <div>
+                  <div className="form-label">Комментарий</div>
+                  <div style={{ whiteSpace: "pre-wrap", color: "var(--text-secondary)", fontSize: 14 }}>{expense.comment}</div>
+                </div>
+              ) : null}
+              {(expense.files?.length ?? 0) > 0 ? (
+                <div>
+                  <div className="form-label">Файлы</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {expense.files!.map((f) => (
+                      <a
+                        key={f.id}
+                        href={`/api/expenses/${expense.id}/files/${f.id}`}
+                        style={{ fontSize: 13, color: "var(--accent)" }}
+                      >
+                        {f.fileName}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
-                {expense.status === "DRAFT" ? (
+                {isDraft ? (
                   <button className="btn btn-primary" onClick={() => void runAction("submit")}>
                     Отправить на одобрение
                   </button>

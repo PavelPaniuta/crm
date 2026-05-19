@@ -73,6 +73,7 @@ model Organization {
   olxPartners            Olx[]
   aiPartner              OrganizationAiPartner?
   infoPartner            OrganizationInfoPartner?
+  expenseCategories      ExpenseCategory[]
 }
 
 model User {
@@ -107,6 +108,7 @@ model User {
   salaryPayments    SalaryPayment[]
   clientComments    ClientComment[]
   aiPartnerForOrg   OrganizationAiPartner?
+  expenseFilesUploaded ExpenseFile[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -457,6 +459,55 @@ model UserMembership {
   @@index([organizationId])
 }
 
+model ExpenseCategory {
+  id             String   @id @default(cuid())
+  name           String
+  color          String?
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  suppliers      ExpenseSupplier[]
+  expenses       Expense[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model ExpenseSupplier {
+  id        String   @id @default(cuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categoryId String
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  expenses   Expense[]
+
+  @@unique([categoryId, name])
+  @@index([categoryId])
+}
+
+model ExpenseFile {
+  id         String   @id @default(cuid())
+  fileUrl    String
+  fileName   String
+  fileSize   Int
+  mimeType   String
+  createdAt  DateTime @default(now())
+
+  expenseId    String
+  expense      Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+}
+
 model Expense {
   id        String   @id @default(cuid())
   title     String
@@ -464,13 +515,21 @@ model Expense {
   currency  String
   payMethod String
   status    ExpenseStatus @default(DRAFT)
+  comment   String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  categoryId String
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  supplierId String?
+  supplier   ExpenseSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  files      ExpenseFile[]
+
   @@index([organizationId])
+  @@index([categoryId])
 }
 
 model Task {

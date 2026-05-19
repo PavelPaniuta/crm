@@ -21,8 +21,11 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
     container_name: biscrm-backend
+    volumes:
+      - ./docker-data/uploads:/app/uploads
     environment:
       DATABASE_URL: postgresql://biscrm:biscrm_password@db:5432/biscrm?schema=public
+      UPLOAD_DIR: /app/uploads
       PORT: "4000"
       COOKIE_SECURE: "true"
       COOKIE_DOMAIN: "my-crm.live"

@@ -1,15 +1,31 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../auth/auth.guard';
 import { ExpensesService } from './expenses.service';
-import { ExpenseStatus } from '@prisma/client';
+import { ExpenseFilesService } from './expense-files.service';
+import { ExpenseStatus, Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { Role } from '@prisma/client';
 
 @Controller('expenses')
 @UseGuards(AuthGuard, RolesGuard)
 export class ExpensesController {
-  constructor(private expenses: ExpensesService) {}
+  constructor(
+    private expenses: ExpensesService,
+    private files: ExpenseFilesService,
+  ) {}
 
   @Get()
   list(@Req() req: any) {
@@ -19,7 +35,16 @@ export class ExpensesController {
   @Post()
   create(
     @Req() req: any,
-    @Body() body: { title: string; amount: number; currency: string; payMethod: string },
+    @Body()
+    body: {
+      title: string;
+      amount: number;
+      currency: string;
+      payMethod: string;
+      categoryId: string;
+      supplierId?: string | null;
+      comment?: string | null;
+    },
   ) {
     return this.expenses.create(req.user.activeOrganizationId, body);
   }
@@ -35,6 +60,9 @@ export class ExpensesController {
       currency: string;
       payMethod: string;
       status: ExpenseStatus;
+      categoryId: string;
+      supplierId: string | null;
+      comment: string | null;
     }>,
   ) {
     return this.expenses.update(req.user.activeOrganizationId, id, body);
@@ -51,7 +79,7 @@ export class ExpensesController {
   }
 
   @Post(':id/approve')
-  @Roles(Role.ADMIN)  // ADMIN + SUPER_ADMIN via hierarchy
+  @Roles(Role.ADMIN)
   approve(@Req() req: any, @Param('id') id: string) {
     return this.expenses.update(req.user.activeOrganizationId, id, { status: ExpenseStatus.APPROVED });
   }
@@ -61,5 +89,24 @@ export class ExpensesController {
   reject(@Req() req: any, @Param('id') id: string) {
     return this.expenses.update(req.user.activeOrganizationId, id, { status: ExpenseStatus.REJECTED });
   }
-}
 
+  @Post(':id/files')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadFile(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    return this.files.upload(req.user.activeOrganizationId, id, req.user.id, file);
+  }
+
+  @Get(':id/files/:fileId')
+  downloadFile(@Req() req: any, @Param('id') id: string, @Param('fileId') fileId: string) {
+    return this.files.download(req.user.activeOrganizationId, id, fileId);
+  }
+
+  @Delete(':id/files/:fileId')
+  deleteFile(@Req() req: any, @Param('id') id: string, @Param('fileId') fileId: string) {
+    return this.files.remove(req.user.activeOrganizationId, id, fileId);
+  }
+}
