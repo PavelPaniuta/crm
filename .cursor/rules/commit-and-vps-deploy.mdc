@@ -17,10 +17,15 @@ docker compose build
 docker compose up -d
 ```
 
-Если в `pull` попали **новые Prisma-миграции**, добавь строку:
+Если в `pull` попали **новые Prisma-миграции** (новые папки в `apps/backend/prisma/migrations/`):
 
 ```bash
+# по желанию перед первой migrate или крупной миграцией:
+docker compose exec db pg_dump -U biscrm biscrm > backup_$(date +%Y%m%d_%H%M).sql
+
 docker compose exec backend npx prisma migrate deploy
 ```
+
+**Не** предлагать на VPS: `prisma migrate reset`, `prisma db push`, `docker compose down -v`. Подробности — правило `database-safety.mdc`.
 
 Кратко напомни: полная перезагрузка страницы (**Ctrl+F5**) после обновления фронта.

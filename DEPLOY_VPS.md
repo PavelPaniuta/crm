@@ -8,8 +8,10 @@
 cd ~/crm
 git pull
 
-# Обновить схему БД (ОБЯЗАТЕЛЬНО перед рестартом если менялась Prisma схема)
-docker compose exec backend sh -lc "npx prisma@6 db push --schema /app/apps/backend/prisma/schema.prisma"
+# Схема БД — только если в pull есть новые папки в apps/backend/prisma/migrations/
+# (не использовать db push / migrate reset на проде — см. .cursor/rules/database-safety.mdc)
+# docker compose exec db pg_dump -U biscrm biscrm > backup_$(date +%Y%m%d_%H%M).sql
+docker compose exec backend npx prisma migrate deploy
 
 # Пересобрать и перезапустить только изменённые сервисы
 docker compose build --parallel backend web

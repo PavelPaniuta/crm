@@ -1,0 +1,52 @@
+---
+description: Безопасная работа с PostgreSQL/Prisma — не удалять прод-данные
+alwaysApply: true
+---
+
+# База данных: не убивать прод
+
+Данные живут в Docker-томе Postgres (`docker-data/postgres`). Код и миграции **дополняют** схему, не пересоздают БД с нуля.
+
+## Запрещено на проде (VPS) без явной просьбы пользователя
+
+- `prisma migrate reset`
+- `prisma db push` как основной способ обновления прод-схемы
+- `docker compose down -v` или удаление тома `docker-data/postgres`
+- `DROP DATABASE` / `DROP TABLE` / массовое `DELETE` без бэкапа
+- Повторный `seed` «на всякий случай» после каждого деплоя
+- Деструктивные миграции (удаление колонок/таблиц) без бэкапа и плана отката
+
+## Как менять схему (schema.prisma)
+
+1. **Локально:** `npm run db:migrate:dev -w @biscrm/backend` (или `npx prisma migrate dev --name ...` из `apps/backend`).
+2. Проверить SQL в `apps/backend/prisma/migrations/*/migration.sql` — предпочитать `CREATE`, `ALTER ... ADD`, значения по умолчанию; избегать `DROP` без необходимости.
+3. Закоммитить папку миграции вместе с изменением `schema.prisma`.
+4. **На VPS** — только после `git pull`:
+   - сначала бэкап (если миграция нетривиальная или первый раз применяете migrate на старом проде):
+     ```bash
+     docker compose exec db pg_dump -U biscrm biscrm > backup_$(date +%Y%m%d_%H%M).sql
+     ```
+   - затем: `docker compose exec backend npx prisma migrate deploy`
+5. Пересборка контейнеров — **после** успешного `migrate deploy`.
+
+Если только UI/бэкенд без изменений `schema.prisma` и без новых файлов в `prisma/migrations/` — **БД не трогать**.
+
+## Если прод поднимали через db push (история миграций расходится)
+
+При ошибке P3005 на `migrate deploy` — не делать reset. Использовать baseline:
+
+```bash
+docker compose exec backend sh /app/apps/backend/scripts/resolve-first-n-migrations-applied.sh N
+```
+
+`N` — число **первых** папок в `prisma/migrations`, которые уже отражены в текущей БД. Перед baseline — обязательно `pg_dump`.
+
+## Безопасные изменения схемы
+
+| Обычно OK | Осторожно |
+|-----------|-----------|
+| Новая таблица | Удаление колонки/таблицы |
+| Nullable колонка или с `@default` | Переименование (Prisma = drop+add) |
+| Новый индекс, значение enum | `NOT NULL` на колонке с NULL |
+
+`seed` идемпотентен (создаёт admin только если нет) — на проде не запускать без запроса.
