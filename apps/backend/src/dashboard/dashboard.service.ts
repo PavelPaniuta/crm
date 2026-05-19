@@ -237,22 +237,35 @@ export class DashboardService {
       }
     }
 
-    const expenses = await this.prisma.expense.findMany({
-      where: { organizationId, createdAt: { gte: fromDate, lte: toDate } },
-    });
-
-    const expensesCount = expenses.length;
-    const expensesByStatus = expenses.reduce(
-      (acc, e) => {
-        acc[e.status] = (acc[e.status] ?? 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-    const totalExpenses = expenses.reduce(
-      (s, e) => s + toUsd(Number(e.amount), e.currency, rates),
-      0,
-    );
+    let expensesCount = 0;
+    let expensesByStatus: Record<string, number> = {};
+    let totalExpenses = 0;
+    try {
+      const expenses = await this.prisma.expense.findMany({
+        where: { organizationId, createdAt: { gte: fromDate, lte: toDate } },
+      });
+      expensesCount = expenses.length;
+      expensesByStatus = expenses.reduce(
+        (acc, e) => {
+          acc[e.status] = (acc[e.status] ?? 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
+      totalExpenses = expenses.reduce((s, e) => s + toUsd(Number(e.amount), e.currency, rates), 0);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        (err.code === 'P2021' || err.code === 'P2022')
+      ) {
+        this.log.warn(
+          'Dashboard: Expense tables/columns missing — run prisma migrate deploy on the server',
+        );
+      } else {
+        this.log.error('Dashboard: expense query failed', err instanceof Error ? err.stack : err);
+        throw err;
+      }
+    }
 
     return {
       range: { from: fromDate.toISOString(), to: toDate.toISOString() },
@@ -332,13 +345,25 @@ export class DashboardService {
           }
         }
 
-        const expenses = await this.prisma.expense.findMany({
-          where: { organizationId: org.id, createdAt: { gte: fromDate, lte: toDate } },
-        });
-        const totalExpenses = expenses.reduce(
-          (s, e) => s + toUsd(Number(e.amount), e.currency, rates),
-          0,
-        );
+        let expensesCount = 0;
+        let totalExpenses = 0;
+        try {
+          const expenses = await this.prisma.expense.findMany({
+            where: { organizationId: org.id, createdAt: { gte: fromDate, lte: toDate } },
+          });
+          expensesCount = expenses.length;
+          totalExpenses = expenses.reduce(
+            (s, e) => s + toUsd(Number(e.amount), e.currency, rates),
+            0,
+          );
+        } catch (err) {
+          if (
+            !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+            (err.code !== 'P2021' && err.code !== 'P2022')
+          ) {
+            throw err;
+          }
+        }
 
         return {
           orgId: org.id,
@@ -347,7 +372,7 @@ export class DashboardService {
           totalAmountOut: Math.round(totalAmountOut * 100) / 100,
           totalOfficeIncome: Math.round(totalOfficeIncome * 100) / 100,
           totalWorkersPayoutUsdt: Math.round(totalWorkersPayoutUsdt * 100) / 100,
-          expensesCount: expenses.length,
+          expensesCount,
           totalExpenses: Math.round(totalExpenses * 100) / 100,
         };
       }),
