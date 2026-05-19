@@ -128,13 +128,13 @@ type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
 
 const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  TEXT: "РўРµРєСЃС‚",
-  NUMBER: "Р§РёСЃР»Рѕ",
-  SELECT: "РЎРїРёСЃРѕРє",
-  DATE: "Р”Р°С‚Р°",
-  PERCENT: "РџСЂРѕС†РµРЅС‚",
-  CHECKBOX: "Р”Р° / РЅРµС‚",
-  CURRENCY: "РЎСѓРјРјР°",
+  TEXT: "Текст",
+  NUMBER: "Число",
+  SELECT: "Список",
+  DATE: "Дата",
+  PERCENT: "Процент",
+  CHECKBOX: "Да / нет",
+  CURRENCY: "Сумма",
 };
 
 const FIELD_TYPES_ALL: FieldType[] = ["TEXT", "NUMBER", "SELECT", "DATE", "PERCENT", "CHECKBOX", "CURRENCY"];
@@ -150,10 +150,10 @@ type TemplateField = {
 };
 
 function slugifyFieldKey(label: string, i: number): string {
-  return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_Р°-СЏС‘]/gi, "") || `field_${i}`;
+  return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`;
 }
 
-// в”Ђв”Ђв”Ђ Template type в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Template type ────────────────────────────────────────────────────────────
 type DealTemplate = {
   id: string;
   name: string;
@@ -219,9 +219,9 @@ type DealAmtRow = {
 type DealParticipantRow = { id: string; userId: string; pct: string };
 
 const OP_LABELS: Record<OperationType, string> = {
-  PURCHASE: "РџРѕРєСѓРїРєР°",
-  ATM: "Р‘Р°РЅРєРѕРјР°С‚",
-  TRANSFER: "РџРµСЂРµРІРѕРґ",
+  PURCHASE: "Покупка",
+  ATM: "Банкомат",
+  TRANSFER: "Перевод",
 };
 
 export default function AppPage() {
@@ -461,7 +461,7 @@ export default function AppPage() {
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   // Ref keeps the latest chatActiveUser for the polling interval (avoids stale closure)
   const chatActiveUserRef = useRef<ChatContact | null>(null);
-  // AbortController for task comment loading вЂ” cancels previous request on rapid clicks
+  // AbortController for task comment loading — cancels previous request on rapid clicks
   const taskCommentAbortRef = useRef<AbortController | null>(null);
 
   // --- Sessions & Audit ---
@@ -499,27 +499,27 @@ export default function AppPage() {
   const isWorker = user?.role === "WORKER";
 
   const ROLE_LABELS: Record<Role, string> = {
-    SUPER_ADMIN: "РЎСѓРїРµСЂ РђРґРјРёРЅ",
-    ADMIN: "РђРґРјРёРЅ РѕС„РёСЃР°",
-    MANAGER: "РњРµРЅРµРґР¶РµСЂ",
-    WORKER: "Р Р°Р±РѕС‚РЅРёРє",
+    SUPER_ADMIN: "Супер Админ",
+    ADMIN: "Админ офиса",
+    MANAGER: "Менеджер",
+    WORKER: "Работник",
   };
 
   const title = useMemo(() => {
-    if (tab === "dashboard") return isWorker ? "РњРѕР№ РєР°Р±РёРЅРµС‚" : "Р”Р°С€Р±РѕСЂРґ";
-    if (tab === "deals") return "РЎРґРµР»РєРё";
-    if (tab === "clients") return "РљР»РёРµРЅС‚С‹";
-    if (tab === "expenses") return "Р Р°СЃС…РѕРґС‹";
-    if (tab === "reports") return "РћС‚С‡С‘С‚С‹";
-    if (tab === "settings") return "РќР°СЃС‚СЂРѕР№РєРё";
-    if (tab === "profile") return "РњРѕР№ РїСЂРѕС„РёР»СЊ";
-    if (tab === "staff") return "РЎРѕС‚СЂСѓРґРЅРёРєРё";
-    if (tab === "mediators") return "РџРѕСЃСЂРµРґРЅРёРєРё";
-    if (tab === "olx") return "РћР›РҐ";
-    if (tab === "tasks") return "Р—Р°РґР°С‡Рё";
-    if (tab === "chat") return "Р§Р°С‚";
-    if (tab === "assistant") return "AI РђСЃСЃРёСЃС‚РµРЅС‚";
-    if (tab === "salary") return "Р—Р°СЂРїР»Р°С‚Р°";
+    if (tab === "dashboard") return isWorker ? "Мой кабинет" : "Дашборд";
+    if (tab === "deals") return "Сделки";
+    if (tab === "clients") return "Клиенты";
+    if (tab === "expenses") return "Расходы";
+    if (tab === "reports") return "Отчёты";
+    if (tab === "settings") return "Настройки";
+    if (tab === "profile") return "Мой профиль";
+    if (tab === "staff") return "Сотрудники";
+    if (tab === "mediators") return "Посредники";
+    if (tab === "olx") return "ОЛХ";
+    if (tab === "tasks") return "Задачи";
+    if (tab === "chat") return "Чат";
+    if (tab === "assistant") return "AI Ассистент";
+    if (tab === "salary") return "Зарплата";
     return "MyCRM";
   }, [tab, isWorker]);
 
@@ -689,7 +689,7 @@ export default function AppPage() {
         await loadExchangeRates();
       } else {
         const j = await res.json().catch(() => ({}));
-        alert(j.message || "РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РєСѓСЂСЃС‹");
+        alert(j.message || "Не удалось обновить курсы");
       }
     } finally { setRatesSyncing(false); }
   }
@@ -713,12 +713,12 @@ export default function AppPage() {
   }
 
   async function deleteDeal(id: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ СЃРґРµР»РєСѓ? Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.")) return;
+    if (!confirm("Удалить сделку? Это действие нельзя отменить.")) return;
     const res = await fetch(`/api/deals/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok || res.status === 204) {
       setDeals(ds => ds.filter(d => d.id !== id));
     } else {
-      alert("РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ СЃРґРµР»РєСѓ");
+      alert("Не удалось удалить сделку");
     }
   }
 
@@ -735,7 +735,7 @@ export default function AppPage() {
 
   async function importLegacyDeals(file: File) {
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
-      alert("РќСѓР¶РµРЅ С„Р°Р№Р» .xlsx");
+      alert("Нужен файл .xlsx");
       return;
     }
     setLegacyImporting(true);
@@ -750,13 +750,13 @@ export default function AppPage() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(j.message || "РћС€РёР±РєР° РёРјРїРѕСЂС‚Р°");
+        alert(j.message || "Ошибка импорта");
         return;
       }
       const withParts = Array.isArray(j.deals) ? j.deals.filter((d: { participantsAssigned?: boolean }) => d.participantsAssigned).length : 0;
-      const msg = [`РЎРѕР·РґР°РЅРѕ СЃРґРµР»РѕРє: ${j.created ?? 0}`, withParts ? `РЎ РІРѕСЂРєРµСЂР°РјРё (%): ${withParts}` : ""].filter(Boolean);
-      if (j.errors?.length) msg.push(`РЎС‚СЂРѕРєРё СЃ Р·Р°РјРµС‡Р°РЅРёСЏРјРё:\n${j.errors.slice(0, 8).join("\n")}`);
-      if (j.templateId) msg.push(`РЁР°Р±Р»РѕРЅ: В«Р›РµРіР°СЃРё (РёРјРїРѕСЂС‚)В»`);
+      const msg = [`Создано сделок: ${j.created ?? 0}`, withParts ? `С воркерами (%): ${withParts}` : ""].filter(Boolean);
+      if (j.errors?.length) msg.push(`Строки с замечаниями:\n${j.errors.slice(0, 8).join("\n")}`);
+      if (j.templateId) msg.push(`Шаблон: «Легаси (импорт)»`);
       alert(msg.join("\n\n"));
       await loadDeals();
     } finally {
@@ -783,7 +783,7 @@ export default function AppPage() {
   }
 
   async function saveMediator() {
-    if (!mediatorForm.name.trim()) return alert("РЈРєР°Р¶РёС‚Рµ РёРјСЏ");
+    if (!mediatorForm.name.trim()) return alert("Укажите имя");
     const body = {
       name: mediatorForm.name.trim(),
       phone: mediatorForm.phone.trim() || undefined,
@@ -796,7 +796,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ");
+    if (!res.ok) return alert("Не удалось сохранить");
     setMediatorFormOpen(false);
     setMediatorEditingId(null);
     await loadMediators();
@@ -820,9 +820,9 @@ export default function AppPage() {
   }
 
   async function deleteMediator(id: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ РїРѕСЃСЂРµРґРЅРёРєР°? Р•СЃР»Рё РµСЃС‚СЊ СЃРґРµР»РєРё вЂ” Р±СѓРґРµС‚ РґРµР°РєС‚РёРІРёСЂРѕРІР°РЅ.")) return;
+    if (!confirm("Удалить посредника? Если есть сделки — будет деактивирован.")) return;
     const res = await fetch(`/api/mediators/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ");
+    if (!res.ok) return alert("Не удалось удалить");
     if (selectedMediator?.id === id) { setSelectedMediator(null); setMediatorDetail(null); }
     await loadMediators();
   }
@@ -845,7 +845,7 @@ export default function AppPage() {
   }
 
   async function saveOlx() {
-    if (!olxForm.name.trim()) return alert("РЈРєР°Р¶РёС‚Рµ РёРјСЏ");
+    if (!olxForm.name.trim()) return alert("Укажите имя");
     const body = {
       name: olxForm.name.trim(),
       phone: olxForm.phone.trim() || undefined,
@@ -858,7 +858,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ");
+    if (!res.ok) return alert("Не удалось сохранить");
     setOlxFormOpen(false);
     setOlxEditingId(null);
     await loadOlxList();
@@ -882,9 +882,9 @@ export default function AppPage() {
   }
 
   async function deleteOlx(id: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ РћР›РҐ? Р•СЃР»Рё РµСЃС‚СЊ СЃРґРµР»РєРё вЂ” Р±СѓРґРµС‚ РґРµР°РєС‚РёРІРёСЂРѕРІР°РЅ.")) return;
+    if (!confirm("Удалить ОЛХ? Если есть сделки — будет деактивирован.")) return;
     const res = await fetch(`/api/olx/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ");
+    if (!res.ok) return alert("Не удалось удалить");
     if (selectedOlx?.id === id) { setSelectedOlx(null); setOlxDetail(null); }
     await loadOlxList();
   }
@@ -938,7 +938,7 @@ export default function AppPage() {
   }
 
   async function deleteSalaryPayment(paymentId: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ Р·Р°РїРёСЃСЊ Рѕ РІС‹РїР»Р°С‚Рµ?")) return;
+    if (!confirm("Удалить запись о выплате?")) return;
     await fetch(`/api/salary/payments/${paymentId}`, { method: "DELETE", credentials: "include" });
     loadSalary();
   }
@@ -986,7 +986,7 @@ export default function AppPage() {
 
   async function loadTaskUserOptions() {
     if (!isManager) return;
-    // MANAGER РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє GET /api/users вЂ” РёСЃРїРѕР»СЊР·СѓРµРј public (С‚РѕС‚ Р¶Рµ org, С‡С‚Рѕ РІ activeOrganization)
+    // MANAGER нет доступа к GET /api/users — используем public (тот же org, что в activeOrganization)
     const res = await fetch("/api/users/public", { credentials: "include" });
     if (res.ok) {
       const j = await res.json();
@@ -1010,7 +1010,7 @@ export default function AppPage() {
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      return alert((e as { message?: string }).message ?? "РћС€РёР±РєР°");
+      return alert((e as { message?: string }).message ?? "Ошибка");
     }
     setTaskModalOpen(false);
     setTaskFormTitle(""); setTaskFormDesc(""); setTaskFormAssigneeId("");
@@ -1034,12 +1034,12 @@ export default function AppPage() {
       return true;
     }
     const e = await res.json().catch(() => ({}));
-    alert((e as { message?: string }).message ?? "РћС€РёР±РєР°");
+    alert((e as { message?: string }).message ?? "Ошибка");
     return false;
   }
 
   async function deleteTaskById(id: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ Р·Р°РґР°С‡Сѓ?")) return;
+    if (!confirm("Удалить задачу?")) return;
     const res = await fetch(`/api/tasks/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) { if (taskDetail?.id === id) setTaskDetail(null); await loadTasks(); }
   }
@@ -1129,7 +1129,7 @@ export default function AppPage() {
   }
 
   async function pollChatMessages() {
-    // Read from ref вЂ” always current even inside a stale setInterval closure
+    // Read from ref — always current even inside a stale setInterval closure
     const active = chatActiveUserRef.current;
     if (!active) return;
     try {
@@ -1187,7 +1187,7 @@ export default function AppPage() {
       body: JSON.stringify({ userId, organizationId }),
     });
     if (res.ok) loadStaffMember(userId);
-    else { const e = await res.json().catch(() => ({})); alert(e.message ?? "РћС€РёР±РєР°"); }
+    else { const e = await res.json().catch(() => ({})); alert(e.message ?? "Ошибка"); }
   }
 
   async function removeMembership(userId: string, orgId: string) {
@@ -1214,16 +1214,16 @@ export default function AppPage() {
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => `HTTP ${res.status}`);
-        setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° СЃРµСЂРІРµСЂР° (${res.status}): ${errText.slice(0, 200)}` }]);
+        setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сервера (${res.status}): ${errText.slice(0, 200)}` }]);
         return;
       }
       const j = await res.json();
-      const content = j.text || j.answer || j.message || j.error || "РќРµС‚ РѕС‚РІРµС‚Р° РѕС‚ AI";
+      const content = j.text || j.answer || j.message || j.error || "Нет ответа от AI";
       const assistantMsg = { role: "assistant" as const, content, pendingAction: j.pendingAction };
       setAgentHistory(h => [...h, assistantMsg]);
       if (j.pendingAction) setAgentPending(j.pendingAction);
     } catch (e: any) {
-      setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° СЃРµС‚Рё: ${e.message}` }]);
+      setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сети: ${e.message}` }]);
     } finally { setAgentLoading(false); }
   }
 
@@ -1248,7 +1248,7 @@ export default function AppPage() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ СЃРґРµР»РєРё: ${err.message ?? res.status}` }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка создания сделки: ${err.message ?? res.status}` }]);
           return;
         }
         const deal = await res.json();
@@ -1276,24 +1276,24 @@ export default function AppPage() {
         }
         const wMap = agentPending.workersMap ?? {};
         const partsText = parts.map((x: any) => `${wMap[x.userId] ?? x.userId} (${x.pct}%)`).join(" + ");
-        setAgentHistory(h => [...h, { role: "assistant", content: `вњ… РЎРґРµР»РєР° СЃРѕР·РґР°РЅР°!\n${partsText ? `рџ‘Ґ ${partsText}` : ""}\nРћС‚РєСЂРѕР№С‚Рµ РІРєР»Р°РґРєСѓ В«РЎРґРµР»РєРёВ» С‡С‚РѕР±С‹ РїРѕСЃРјРѕС‚СЂРµС‚СЊ.` }]);
+        setAgentHistory(h => [...h, { role: "assistant", content: `✅ Сделка создана!\n${partsText ? `👥 ${partsText}` : ""}\nОткройте вкладку «Сделки» чтобы посмотреть.` }]);
       } else if (agentPending.type === "create_expense") {
         const p = agentPending.params;
         const res = await fetch("/api/expenses", {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: p.title || p.description || "Р Р°СЃС…РѕРґ",
+            title: p.title || p.description || "Расход",
             amount: p.amount,
             currency: p.currency ?? "USD",
-            payMethod: p.payMethod ?? "РќР°Р»РёС‡РЅС‹Рµ",
+            payMethod: p.payMethod ?? "Наличные",
           }),
         });
         if (res.ok) {
-          setAgentHistory(h => [...h, { role: "assistant", content: "вњ… Р Р°СЃС…РѕРґ Р·Р°РїРёСЃР°РЅ!" }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: "✅ Расход записан!" }]);
         } else {
           const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ РћС€РёР±РєР° Р·Р°РїРёСЃРё СЂР°СЃС…РѕРґР°: ${err.message ?? res.status}` }]);
+          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка записи расхода: ${err.message ?? res.status}` }]);
         }
       } else if (agentPending.type === "create_client") {
         const p = agentPending.params;
@@ -1319,18 +1319,18 @@ export default function AppPage() {
           void loadClients();
           setAgentHistory((h) => [
             ...h,
-            { role: "assistant", content: `вњ… РљР°СЂС‚РѕС‡РєР° РєР»РёРµРЅС‚Р° СЃРѕР·РґР°РЅР°${name ? `: ${name}` : ""}.\nРЎРїРёСЃРѕРє РІРѕ РІРєР»Р°РґРєРµ В«РљР»РёРµРЅС‚С‹В» РѕР±РЅРѕРІР»С‘РЅ; РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕС‚РєСЂРѕР№С‚Рµ РµС‘ РёР»Рё В«Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊВ» РІ РєР°СЂС‚РѕС‡РєРµ.` },
+            { role: "assistant", content: `✅ Карточка клиента создана${name ? `: ${name}` : ""}.\nСписок во вкладке «Клиенты» обновлён; при необходимости откройте её или «Редактировать» в карточке.` },
           ]);
         } else {
           const err = await res.json().catch(() => ({}));
           setAgentHistory((h) => [
             ...h,
-            { role: "assistant", content: `вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РєР»РёРµРЅС‚Р°: ${err.message ?? res.status}` },
+            { role: "assistant", content: `❌ Не удалось создать клиента: ${err.message ?? res.status}` },
           ]);
         }
       }
     } catch (e: any) {
-      setAgentHistory(h => [...h, { role: "assistant", content: `вќЊ ${e.message}` }]);
+      setAgentHistory(h => [...h, { role: "assistant", content: `❌ ${e.message}` }]);
     }
   }
 
@@ -1369,7 +1369,7 @@ export default function AppPage() {
       setTplIncomeFieldKey(j.incomeFieldKey ?? "");
       setTplFields((j.fields ?? []).map((f: any, i: number) => ({
         _id: crypto.randomUUID(),
-        label: f.label ?? `РџРѕР»Рµ ${i + 1}`,
+        label: f.label ?? `Поле ${i + 1}`,
         type: (f.type as FieldType) ?? "TEXT",
         required: f.required ?? false,
         options: f.options ?? "",
@@ -1414,19 +1414,19 @@ export default function AppPage() {
         }),
       });
       const j = await res.json();
-      if (!res.ok) { setProfileError(j?.message ?? "РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ"); return; }
+      if (!res.ok) { setProfileError(j?.message ?? "Ошибка сохранения"); return; }
       setProfile(j);
-      setProfileSuccess("РџСЂРѕС„РёР»СЊ СЃРѕС…СЂР°РЅС‘РЅ");
+      setProfileSuccess("Профиль сохранён");
       setTimeout(() => setProfileSuccess(null), 3000);
     } finally { setProfileSaving(false); }
   }
 
   async function changePassword() {
     setPwdError(null); setPwdSuccess(null);
-    if (!pwdOld) return setPwdError("Р’РІРµРґРёС‚Рµ С‚РµРєСѓС‰РёР№ РїР°СЂРѕР»СЊ");
-    if (!pwdNew) return setPwdError("Р’РІРµРґРёС‚Рµ РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ");
-    if (pwdNew.length < 6) return setPwdError("РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ РјРёРЅРёРјСѓРј 6 СЃРёРјРІРѕР»РѕРІ");
-    if (pwdNew !== pwdConfirm) return setPwdError("РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚");
+    if (!pwdOld) return setPwdError("Введите текущий пароль");
+    if (!pwdNew) return setPwdError("Введите новый пароль");
+    if (pwdNew.length < 6) return setPwdError("Новый пароль минимум 6 символов");
+    if (pwdNew !== pwdConfirm) return setPwdError("Пароли не совпадают");
     setPwdSaving(true);
     try {
       const res = await fetch("/api/profile/password", {
@@ -1435,8 +1435,8 @@ export default function AppPage() {
         body: JSON.stringify({ oldPassword: pwdOld, newPassword: pwdNew }),
       });
       const j = await res.json();
-      if (!res.ok) { setPwdError(j?.message ?? "РћС€РёР±РєР°"); return; }
-      setPwdSuccess("РџР°СЂРѕР»СЊ РёР·РјРµРЅС‘РЅ");
+      if (!res.ok) { setPwdError(j?.message ?? "Ошибка"); return; }
+      setPwdSuccess("Пароль изменён");
       setPwdOld(""); setPwdNew(""); setPwdConfirm("");
       setTimeout(() => setPwdSuccess(null), 3000);
     } finally { setPwdSaving(false); }
@@ -1461,7 +1461,7 @@ export default function AppPage() {
   }
 
   async function revokeAllSessions() {
-    if (!confirm("Р—Р°РІРµСЂС€РёС‚СЊ РІСЃРµ РґСЂСѓРіРёРµ СЃРµСЃСЃРёРё?")) return;
+    if (!confirm("Завершить все другие сессии?")) return;
     await fetch("/api/sessions/revoke-all", { method: "POST", credentials: "include" });
     await loadSessions();
   }
@@ -1512,52 +1512,52 @@ export default function AppPage() {
   /** РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РїРѕР»СЏ Рё С†РµРїРѕС‡РєСѓ РґР»СЏ СЃС…РµРјС‹ РїРѕСЃСЂРµРґРЅРёРє в†’ AI в†’ Р—Рџ С„РѕРЅРґ */
   function applyMediatorAiPresetFields() {
     const fixed: Array<{ _id: string; key: string; label: string; type: FieldType; required: boolean; options: string }> = [
-      { _id: "fixed_gross",    key: "СЃСѓРјРјР°_Р·Р°РІРѕРґР°",       label: "РЎСѓРјРјР° Р·Р°РІРѕРґР°",          type: "NUMBER",  required: true,  options: "" },
-      { _id: "fixed_mediator", key: "РїСЂРѕС†РµРЅС‚_РїРѕСЃСЂРµРґРЅРёРєР°", label: "% РїРѕСЃСЂРµРґРЅРёРєР°",          type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_ai",       key: "РїСЂРѕС†РµРЅС‚_Р°Рё",         label: "% AI",                  type: "PERCENT", required: true,  options: "" },
-      { _id: "fixed_payroll",  key: "РїСЂРѕС†РµРЅС‚_Р·Рї_С„РѕРЅРґР°",   label: "% Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°",   type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_gross",    key: "сумма_завода",       label: "Сумма завода",          type: "NUMBER",  required: true,  options: "" },
+      { _id: "fixed_mediator", key: "процент_посредника", label: "% посредника",          type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_ai",       key: "процент_аи",         label: "% AI",                  type: "PERCENT", required: true,  options: "" },
+      { _id: "fixed_payroll",  key: "процент_зп_фонда",   label: "% зарплатного фонда",   type: "PERCENT", required: true,  options: "" },
     ];
     const presetSteps: CalcStep[] = [
       {
         id: "step_mediator",
-        label: "Р’С‹РїР»Р°С‚Р° РїРѕСЃСЂРµРґРЅРёРєР°",
+        label: "Выплата посредника",
         sourceType: "field",
-        sourceId: "СЃСѓРјРјР°_Р·Р°РІРѕРґР°",
+        sourceId: "сумма_завода",
         deductType: "percent",
-        deductFieldKey: "РїСЂРѕС†РµРЅС‚_РїРѕСЃСЂРµРґРЅРёРєР°",
-        resultLabel: "РџРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР° (R1)",
+        deductFieldKey: "процент_посредника",
+        resultLabel: "После посредника (R1)",
         isMediatorShare: true,
         isPayrollPool: false,
       },
       {
         id: "step_ai",
-        label: "Р”РѕР»СЏ AI",
+        label: "Доля AI",
         sourceType: "step",
         sourceId: "step_mediator",
         deductType: "percent",
-        deductFieldKey: "РїСЂРѕС†РµРЅС‚_Р°Рё",
-        resultLabel: "РџРѕСЃР»Рµ AI (R2)",
+        deductFieldKey: "процент_аи",
+        resultLabel: "После AI (R2)",
         isAiShare: true,
         isPayrollPool: false,
       },
       {
         id: "step_payroll",
-        label: "Р—Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ",
+        label: "Зарплатный фонд",
         sourceType: "step",
         sourceId: "step_ai",
         deductType: "percent",
-        deductFieldKey: "РїСЂРѕС†РµРЅС‚_Р·Рї_С„РѕРЅРґР°",
-        resultLabel: "РџСЂРёР±С‹Р»СЊ РѕС„РёСЃР°",
+        deductFieldKey: "процент_зп_фонда",
+        resultLabel: "Прибыль офиса",
         isPayrollPool: true,
       },
     ];
     setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
     setTplCalcSteps(presetSteps);
     setTplHasWorkers(true);
-    setTplCalcGrossKey("СЃСѓРјРјР°_Р·Р°РІРѕРґР°");
-    setTplCalcMediatorKey("РїСЂРѕС†РµРЅС‚_РїРѕСЃСЂРµРґРЅРёРєР°");
-    setTplCalcAiKey("РїСЂРѕС†РµРЅС‚_Р°Рё");
-    setTplIncomeFieldKey("СЃСѓРјРјР°_Р·Р°РІРѕРґР°");
+    setTplCalcGrossKey("сумма_завода");
+    setTplCalcMediatorKey("процент_посредника");
+    setTplCalcAiKey("процент_аи");
+    setTplIncomeFieldKey("сумма_завода");
     setTplFields((prev) => {
       const existing = prev.filter((f) => !["fixed_gross","fixed_mediator","fixed_ai","fixed_payroll"].includes(f._id));
       return [...fixed, ...existing];
@@ -1569,10 +1569,10 @@ export default function AppPage() {
   }
 
   async function saveTemplate() {
-    if (!tplName.trim()) return alert("Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ С€Р°Р±Р»РѕРЅР°");
-    if (tplFields.length === 0) return alert("Р”РѕР±Р°РІСЊС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРЅРѕ РїРѕР»Рµ");
+    if (!tplName.trim()) return alert("Введите название шаблона");
+    if (tplFields.length === 0) return alert("Добавьте хотя бы одно поле");
     for (const f of tplFields) {
-      if (!f.label.trim()) return alert("РЈ РІСЃРµС… РїРѕР»РµР№ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РЅР°Р·РІР°РЅРёРµ");
+      if (!f.label.trim()) return alert("У всех полей должно быть название");
     }
 
     // Validate calc chain if configured
@@ -1580,11 +1580,11 @@ export default function AppPage() {
       const fields2 = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
       const fieldKeys = new Set(fields2.map(x => x.key));
       for (const step of tplCalcSteps) {
-        if (!step.label.trim()) return alert("РЈ РєР°Р¶РґРѕРіРѕ С€Р°РіР° С†РµРїРѕС‡РєРё РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РЅР°Р·РІР°РЅРёРµ");
-        if (!step.deductFieldKey) return alert(`РЁР°Рі В«${step.label}В»: СѓРєР°Р¶РёС‚Рµ РїРѕР»Рµ РґР»СЏ РІС‹С‡РёС‚Р°РЅРёСЏ`);
-        if (!fieldKeys.has(step.deductFieldKey)) return alert(`РЁР°Рі В«${step.label}В»: РїРѕР»Рµ В«${step.deductFieldKey}В» РЅРµ РЅР°Р№РґРµРЅРѕ РІ РїРѕР»СЏС… С€Р°Р±Р»РѕРЅР°`);
+        if (!step.label.trim()) return alert("У каждого шага цепочки должно быть название");
+        if (!step.deductFieldKey) return alert(`Шаг «${step.label}»: укажите поле для вычитания`);
+        if (!fieldKeys.has(step.deductFieldKey)) return alert(`Шаг «${step.label}»: поле «${step.deductFieldKey}» не найдено в полях шаблона`);
         if (step.sourceType === "field" && step.sourceId && !fieldKeys.has(step.sourceId))
-          return alert(`РЁР°Рі В«${step.label}В»: РїРѕР»Рµ-РёСЃС‚РѕС‡РЅРёРє В«${step.sourceId}В» РЅРµ РЅР°Р№РґРµРЅРѕ`);
+          return alert(`Шаг «${step.label}»: поле-источник «${step.sourceId}» не найдено`);
       }
     }
 
@@ -1630,7 +1630,7 @@ export default function AppPage() {
       if (!res.ok) {
         const j = await res.json().catch(() => null);
         const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
-        return alert(`РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ С€Р°Р±Р»РѕРЅР°:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
+        return alert(`Ошибка сохранения шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
       }
     } else {
       const res = await fetch("/api/deal-templates", {
@@ -1640,7 +1640,7 @@ export default function AppPage() {
       if (!res.ok) {
         const j = await res.json().catch(() => null);
         const detail = j?.message ?? j?.error ?? `HTTP ${res.status}`;
-        return alert(`РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ С€Р°Р±Р»РѕРЅР°:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
+        return alert(`Ошибка создания шаблона:\n${Array.isArray(detail) ? detail.join("\n") : detail}`);
       }
     }
     setTemplateModalOpen(false);
@@ -1648,7 +1648,7 @@ export default function AppPage() {
   }
 
   async function deleteTemplate(id: string, name: string) {
-    if (!confirm(`РЈРґР°Р»РёС‚СЊ С€Р°Р±Р»РѕРЅ "${name}"? РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ СЃРґРµР»РєРё РЅРµ Р±СѓРґСѓС‚ Р·Р°С‚СЂРѕРЅСѓС‚С‹.`)) return;
+    if (!confirm(`Удалить шаблон "${name}"? Существующие сделки не будут затронуты.`)) return;
     await fetch(`/api/deal-templates/${id}`, { method: "DELETE", credentials: "include" });
     loadTemplates();
   }
@@ -1705,7 +1705,7 @@ export default function AppPage() {
         return;
       }
       const { created, skipped, errors } = result.result;
-      const errText = errors.length ? `\n\nРћС€РёР±РєРё:\n${errors.slice(0, 8).join("\n")}` : "";
+      const errText = errors.length ? `\n\nОшибки:\n${errors.slice(0, 8).join("\n")}` : "";
       alert(`РРјРїРѕСЂС‚ Р·Р°РІРµСЂС€С‘РЅ.\nРЎРѕР·РґР°РЅРѕ: ${created}\nРџСЂРѕРїСѓС‰РµРЅРѕ: ${skipped}${errText}`);
       if (created > 0) { void loadDeals(); void loadDashboard(); }
     } finally {
@@ -1726,7 +1726,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newOrgName.trim() }),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РѕС„РёСЃ");
+    if (!res.ok) return alert("Не удалось создать офис");
     setNewOrgName("");
     await loadOrgs();
   }
@@ -1737,7 +1737,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ organizationId: orgId }),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРєР»СЋС‡РёС‚СЊСЃСЏ");
+    if (!res.ok) return alert("Не удалось переключиться");
     setOrgSwitchOpen(false);
     // Reload user to get new activeOrganizationId, then reload current tab
     const meRes = await fetch("/api/auth/me", { credentials: "include" });
@@ -1750,7 +1750,7 @@ export default function AppPage() {
     const res = await fetch(`/api/orgs/${orgId}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      alert(j.message ?? "РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РѕС„РёСЃ");
+      alert(j.message ?? "Не удалось удалить офис");
       return;
     }
     await loadOrgs();
@@ -1771,11 +1771,11 @@ export default function AppPage() {
 
   // ---- clients ----
   async function deleteClientStatusRow(id: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ СЃС‚Р°С‚СѓСЃ?")) return;
+    if (!confirm("Удалить статус?")) return;
     const res = await fetch(`/api/client-statuses/${id}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ");
+      return alert(j.message ?? "Нельзя удалить");
     }
     await loadClientStatuses();
   }
@@ -1783,7 +1783,7 @@ export default function AppPage() {
   async function addClientStatusRow() {
     const slug = newClientStatusSlug.trim().toLowerCase();
     const label = newClientStatusLabel.trim();
-    if (!slug || !label) return alert("Slug Рё РЅР°Р·РІР°РЅРёРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹ (slug: Р»Р°С‚РёРЅРёС†Р°, РЅР°РїСЂРёРјРµСЂ follow_up)");
+    if (!slug || !label) return alert("Slug и название обязательны (slug: латиница, например follow_up)");
     const res = await fetch("/api/client-statuses", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -1791,23 +1791,23 @@ export default function AppPage() {
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "РћС€РёР±РєР°");
+      return alert(j.message ?? "Ошибка");
     }
     setNewClientStatusSlug(""); setNewClientStatusLabel("");
     await loadClientStatuses();
   }
 
   async function deleteClientFieldRow(id: string) {
-    if (!confirm("РЈРґР°Р»РёС‚СЊ РїРѕР»Рµ? Р—РЅР°С‡РµРЅРёСЏ РІ РєР°СЂС‚РѕС‡РєР°С… РѕСЃС‚Р°РЅСѓС‚СЃСЏ РІ JSON, РЅРѕ РїРѕР»Рµ СЃРєСЂРѕРµС‚СЃСЏ.")) return;
+    if (!confirm("Удалить поле? Значения в карточках останутся в JSON, но поле скроется.")) return;
     const res = await fetch(`/api/client-field-definitions/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) return alert("РћС€РёР±РєР°");
+    if (!res.ok) return alert("Ошибка");
     await loadClientFieldDefinitions();
   }
 
   async function addClientFieldRow() {
     const key = newClientFieldKey.trim().toLowerCase();
     const label = newClientFieldLabel.trim();
-    if (!key || !label) return alert("РљР»СЋС‡ Рё РїРѕРґРїРёСЃСЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹");
+    if (!key || !label) return alert("Ключ и подпись обязательны");
     const res = await fetch("/api/client-field-definitions", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -1815,7 +1815,7 @@ export default function AppPage() {
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      return alert(j.message ?? "РћС€РёР±РєР°");
+      return alert(j.message ?? "Ошибка");
     }
     setNewClientFieldKey(""); setNewClientFieldLabel(""); setNewClientFieldType("TEXT");
     await loadClientFieldDefinitions();
@@ -1836,7 +1836,7 @@ export default function AppPage() {
     if (!res.ok) {
       const errBody = await res.json().catch(() => null);
       const msg = errBody?.message ?? `HTTP ${res.status}`;
-      return alert(`РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ:\n${Array.isArray(msg) ? msg.join("\n") : msg}`);
+      return alert(`Не удалось создать пользователя:\n${Array.isArray(msg) ? msg.join("\n") : msg}`);
     }
     setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserPosition(""); setNewUserTargetOrgId("");
     await loadUsers();
@@ -1844,11 +1844,11 @@ export default function AppPage() {
   }
 
   async function deleteUser(userId: string, email: string) {
-    if (!confirm(`РЈРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ "${email}"?`)) return;
+    if (!confirm(`Удалить пользователя "${email}"?`)) return;
     const res = await fetch(`/api/users/${userId}`, { method: "DELETE", credentials: "include" });
     if (!res.ok) {
       const j = await res.json().catch(() => null);
-      return alert(j?.message ?? "РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ");
+      return alert(j?.message ?? "Не удалось удалить пользователя");
     }
     await loadUsers();
     await loadOrgs();
@@ -1860,7 +1860,7 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, position: userPositionValue || null }),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РґРѕР»Р¶РЅРѕСЃС‚СЊ");
+    if (!res.ok) return alert("Не удалось обновить должность");
     setUserPositionId(null); setUserPositionValue("");
     await loadUsers();
   }
@@ -1871,20 +1871,20 @@ export default function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, role }),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРјРµРЅРёС‚СЊ СЂРѕР»СЊ");
+    if (!res.ok) return alert("Не удалось сменить роль");
     await loadUsers();
   }
 
   async function resetUserPassword(userId: string) {
-    if (!userPwdValue.trim()) return alert("Р’РІРµРґРёС‚Рµ РїР°СЂРѕР»СЊ");
+    if (!userPwdValue.trim()) return alert("Введите пароль");
     const res = await fetch("/api/users/password", {
       method: "PATCH", credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, password: userPwdValue }),
     });
-    if (!res.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃР±СЂРѕСЃРёС‚СЊ РїР°СЂРѕР»СЊ");
+    if (!res.ok) return alert("Не удалось сбросить пароль");
     setUserPwdId(null); setUserPwdValue("");
-    alert("РџР°СЂРѕР»СЊ РѕР±РЅРѕРІР»С‘РЅ");
+    alert("Пароль обновлён");
   }
 
   async function logout() {
@@ -1906,7 +1906,7 @@ export default function AppPage() {
     };
   }
 
-  /** РљР»СЋС‡ РїРѕР»СЏ В«% РїРѕСЃСЂРµРґРЅРёРєР°В» РІ РґР°РЅРЅС‹С… С€Р°Р±Р»РѕРЅР° (РґР»СЏ СЂР°СЃС‡С‘С‚Р°). */
+  /** Ключ поля «% посредника» в данных шаблона (для расчёта). */
   function mediatorPctFieldKey(tpl: DealTemplate | null | undefined): string | null {
     if (!tpl) return null;
     if (tpl.calcMediatorPctKey) return tpl.calcMediatorPctKey;
@@ -1914,7 +1914,7 @@ export default function AppPage() {
       const f = tpl.fields.find(
         (field) =>
           field.type === "PERCENT" &&
-          (field.key.includes("РїРѕСЃСЂРµРґРЅРёРє") || field.label.toLowerCase().includes("РїРѕСЃСЂРµРґРЅРёРє")),
+          (field.key.includes("посредник") || field.label.toLowerCase().includes("посредник")),
       );
       return f?.key ?? null;
     }
@@ -1922,15 +1922,15 @@ export default function AppPage() {
     if (steps?.length) {
       const step = steps.find(
         (s) =>
-          s.label.toLowerCase().includes("РїРѕСЃСЂРµРґРЅРёРє") ||
-          (s.deductFieldKey && s.deductFieldKey.includes("РїРѕСЃСЂРµРґРЅРёРє")),
+          s.label.toLowerCase().includes("посредник") ||
+          (s.deductFieldKey && s.deductFieldKey.includes("посредник")),
       );
       return step?.deductFieldKey ?? null;
     }
     return null;
   }
 
-  /** РЎРёРЅС…СЂРѕРЅРёР·РёСЂСѓРµС‚ % РїРѕСЃСЂРµРґРЅРёРєР° РІ Р±Р»РѕРєРµ РІС‹Р±РѕСЂР° Рё РІ РґР°РЅРЅС‹С… СЃС‚СЂРѕРєРё С€Р°Р±Р»РѕРЅР° (РѕС‚ СЌС‚РѕРіРѕ СЃС‡РёС‚Р°РµС‚СЃСЏ РІС‹РїР»Р°С‚Р°). */
+  /** Синхронизирует % посредника в блоке выбора и в данных строки шаблона (от этого считается выплата). */
   function applyDealMediatorPct(pct: string, tplId?: string | null) {
     setDealMediatorPct(pct);
     const tpl = templates.find((t) => t.id === (tplId ?? dealTemplateId));
@@ -1971,13 +1971,13 @@ export default function AppPage() {
   async function openDealModal() {
     const tRes = await fetch("/api/deal-templates", { credentials: "include" });
     if (!tRes.ok) {
-      alert("РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ С€Р°Р±Р»РѕРЅС‹");
+      alert("Не удалось загрузить шаблоны");
       return;
     }
     const list: DealTemplate[] = await tRes.json();
     setTemplates(list);
     if (list.length === 0) {
-      alert("РЎРѕР·РґР°Р№С‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё: РќР°СЃС‚СЂРѕР№РєРё в†’ Р±Р»РѕРє В«РЁР°Р±Р»РѕРЅС‹ СЃРґРµР»РѕРєВ».");
+      alert("Создайте хотя бы один шаблон сделки: Настройки → блок «Шаблоны сделок».");
       return;
     }
     setDealModalOpen(true);
@@ -2086,7 +2086,7 @@ export default function AppPage() {
   const participantIncomeInfo = useMemo(() => {
     const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
     if (!activeTpl) {
-      return { base: dealTotals.tAmountOut, label: "СЃСѓРјРјР° В«РїРѕР»СѓС‡РёР»РёВ»" };
+      return { base: dealTotals.tAmountOut, label: "сумма «получили»" };
     }
     // New: universal calc chain
     if (activeTpl.calcSteps && activeTpl.calcSteps.length > 0 && dealDataRows[0]) {
@@ -2096,14 +2096,14 @@ export default function AppPage() {
         ? Math.max(0, payrollStep.deductAmt)
         : chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
       const label = payrollStep
-        ? `Р—Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ (${payrollStep.step.label})`
-        : chain.length > 0 ? chain[chain.length - 1].step.resultLabel : "Р РµР·СѓР»СЊС‚Р°С‚ СЂР°СЃС‡С‘С‚Р°";
+        ? `Зарплатный фонд (${payrollStep.step.label})`
+        : chain.length > 0 ? chain[chain.length - 1].step.resultLabel : "Результат расчёта";
       return { base, label };
     }
     // Legacy: MEDIATOR_AI_PAYROLL
     if (activeTpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0]) {
       const c = computeMediatorAiPayroll(dealDataRows[0].data, activeTpl);
-      if (c) return { base: c.F, label: "Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ (F), РїРѕСЃР»Рµ AI/Р°РІС‚РѕРјР°С‚РёРєРё" };
+      if (c) return { base: c.F, label: "зарплатный фонд (F), после AI/автоматики" };
     }
     if (activeTpl.incomeFieldKey) {
       const sum = dealDataRows.reduce((s, row) => s + (Number(row.data[activeTpl.incomeFieldKey!]) || 0), 0);
@@ -2116,7 +2116,7 @@ export default function AppPage() {
   async function saveDeal() {
     const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
     if (!dealEditingId && !activeTpl) {
-      alert("Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё");
+      alert("Выберите шаблон сделки");
       return;
     }
     const needWorkers = activeTpl ? activeTpl.hasWorkers : true;
@@ -2124,12 +2124,12 @@ export default function AppPage() {
     const parts = dealParticipants.filter((p) => p.userId).map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
     if (needWorkers && parts.length > 0) {
       const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-      if (totalPct !== 100) return alert("РџСЂРѕС†РµРЅС‚С‹ СѓС‡Р°СЃС‚РЅРёРєРѕРІ РґРѕР»Р¶РЅС‹ СЃСѓРјРјР°СЂРЅРѕ Р±С‹С‚СЊ 100%");
+      if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
     }
 
     const selectedClient = dealClientId ? dealClients.find((c) => c.id === dealClientId) : null;
     const tplName2 = activeTpl ? ` [${activeTpl.name}]` : "";
-    const titleText = selectedClient ? `РЎРґРµР»РєР° вЂ” ${selectedClient.name}${tplName2}` : `РЎРґРµР»РєР°${tplName2}`;
+    const titleText = selectedClient ? `Сделка — ${selectedClient.name}${tplName2}` : `Сделка${tplName2}`;
 
     const basePayload = {
       title: titleText,
@@ -2161,7 +2161,7 @@ export default function AppPage() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
         });
-        if (!dRes.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ СЃРґРµР»РєСѓ");
+        if (!dRes.ok) return alert("Не удалось создать сделку");
         const deal = await dRes.json();
         if (needWorkers && parts.length > 0) {
           await fetch(`/api/deals/${deal.id}/participants`, {
@@ -2174,7 +2174,7 @@ export default function AppPage() {
           method: "PATCH", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
         });
-        if (!upd.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЃРґРµР»РєСѓ");
+        if (!upd.ok) return alert("Не удалось обновить сделку");
         if (needWorkers) {
           await fetch(`/api/deals/${dealEditingId}/participants`, {
             method: "POST", credentials: "include",
@@ -2186,7 +2186,7 @@ export default function AppPage() {
       // Classic deal
       if (parts.length > 0) {
         const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-        if (totalPct !== 100) return alert("РџСЂРѕС†РµРЅС‚С‹ СѓС‡Р°СЃС‚РЅРёРєРѕРІ РґРѕР»Р¶РЅС‹ СЃСѓРјРјР°СЂРЅРѕ Р±С‹С‚СЊ 100%");
+        if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
       }
       const amountsPayload = dealAmounts.map((r) => ({
         amountIn: Number(r.amountIn) || 0, currencyIn: r.currencyIn,
@@ -2200,7 +2200,7 @@ export default function AppPage() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
         });
-        if (!dRes.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ СЃРґРµР»РєСѓ");
+        if (!dRes.ok) return alert("Не удалось создать сделку");
         const deal = await dRes.json();
         for (const a of amountsPayload) {
           await fetch(`/api/deals/${deal.id}/amounts`, {
@@ -2219,7 +2219,7 @@ export default function AppPage() {
           method: "PATCH", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
         });
-        if (!upd.ok) return alert("РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЃРґРµР»РєСѓ");
+        if (!upd.ok) return alert("Не удалось обновить сделку");
         await fetch(`/api/deals/${dealEditingId}/amounts`, {
           method: "PUT", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amounts: amountsPayload }),
@@ -2266,9 +2266,9 @@ export default function AppPage() {
           >
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", flexShrink: 0, boxShadow: "0 0 6px var(--green)" }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1, textTransform: "uppercase", letterSpacing: "0.5px" }}>РћС„РёСЃ</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Офис</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
-                {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "вЂ¦"}
+                {orgs.find((o) => o.id === user?.activeOrganizationId)?.name ?? "…"}
               </div>
             </div>
             {isSuperAdmin && <svg width="12" height="12" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>}
@@ -2290,7 +2290,7 @@ export default function AppPage() {
                   {o.id === user?.activeOrganizationId && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />}
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{o.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>{o._count.users} РїРѕР»СЊР·. В· {o._count.deals} СЃРґРµР»РѕРє</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>{o._count.users} польз. · {o._count.deals} сделок</div>
                   </div>
                 </div>
               ))}
@@ -2301,11 +2301,11 @@ export default function AppPage() {
         <nav className="sidebar-nav">
           {(() => {
             const NAV_LABELS: Record<string, string> = {
-              dashboard: isWorker ? "РњРѕР№ РєР°Р±РёРЅРµС‚" : "Р”Р°С€Р±РѕСЂРґ",
-              deals: "РЎРґРµР»РєРё", clients: "РљР»РёРµРЅС‚С‹",
-              expenses: "Р Р°СЃС…РѕРґС‹", reports: "РћС‚С‡С‘С‚С‹",
-              staff: "РЎРѕС‚СЂСѓРґРЅРёРєРё", mediators: "РџРѕСЃСЂРµРґРЅРёРєРё", olx: "РћР›РҐ", salary: "Р—Р°СЂРїР»Р°С‚Р°", tasks: "Р—Р°РґР°С‡Рё", chat: "Р§Р°С‚",
-              assistant: "AI РђСЃСЃРёСЃС‚РµРЅС‚", settings: "РќР°СЃС‚СЂРѕР№РєРё", profile: "РџСЂРѕС„РёР»СЊ"
+              dashboard: isWorker ? "Мой кабинет" : "Дашборд",
+              deals: "Сделки", clients: "Клиенты",
+              expenses: "Расходы", reports: "Отчёты",
+              staff: "Сотрудники", mediators: "Посредники", olx: "ОЛХ", salary: "Зарплата", tasks: "Задачи", chat: "Чат",
+              assistant: "AI Ассистент", settings: "Настройки", profile: "Профиль"
             };
             const NAV_SVG: Record<string, ReactElement> = {
               dashboard: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
@@ -2343,15 +2343,15 @@ export default function AppPage() {
               return (<>
                 {renderItem("dashboard")}
                 <div className="nav-divider" />
-                <div className="nav-section">РљР»РёРµРЅС‚С‹</div>
+                <div className="nav-section">Клиенты</div>
                 {renderItem("clients")}
                 {renderItem("assistant")}
                 <div className="nav-divider" />
-                <div className="nav-section">Р—Р°РґР°С‡Рё Рё С‡Р°С‚</div>
+                <div className="nav-section">Задачи и чат</div>
                 {renderItem("tasks")}
                 {renderItem("chat")}
                 <div className="nav-divider" />
-                <div className="nav-section">РђРєРєР°СѓРЅС‚</div>
+                <div className="nav-section">Аккаунт</div>
                 {renderItem("profile")}
               </>);
             }
@@ -2359,23 +2359,23 @@ export default function AppPage() {
             return (<>
               {renderItem("dashboard")}
               <div className="nav-divider" />
-              <div className="nav-section">РџСЂРѕРґР°Р¶Рё</div>
+              <div className="nav-section">Продажи</div>
               {renderItem("deals")}
               {renderItem("clients")}
               <div className="nav-divider" />
-              <div className="nav-section">Р¤РёРЅР°РЅСЃС‹</div>
+              <div className="nav-section">Финансы</div>
               {renderItem("expenses")}
               {isAdmin && renderItem("reports")}
               {isAdmin && renderItem("salary")}
               <div className="nav-divider" />
-              <div className="nav-section">РљРѕРјР°РЅРґР°</div>
+              <div className="nav-section">Команда</div>
               {isAdmin && renderItem("staff")}
               {isManager && renderItem("mediators")}
               {isManager && renderItem("olx")}
               {renderItem("tasks")}
               {renderItem("chat")}
               <div className="nav-divider" />
-              <div className="nav-section">РЎРёСЃС‚РµРјР°</div>
+              <div className="nav-section">Система</div>
               {renderItem("assistant")}
               {isAdmin && renderItem("settings")}
               {renderItem("profile")}
@@ -2388,8 +2388,8 @@ export default function AppPage() {
           <div className="sidebar-user" onClick={() => { setTab("profile"); setSidebarOpen(false); }}>
             <div className="sidebar-user-avatar">{(user?.email ?? "?")[0].toUpperCase()}</div>
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user?.email ?? "вЂ¦"}</div>
-              <div className="sidebar-user-role">{user ? (ROLE_LABELS[user.role] ?? user.role) : "вЂ¦"}</div>
+              <div className="sidebar-user-name">{user?.email ?? "…"}</div>
+              <div className="sidebar-user-role">{user ? (ROLE_LABELS[user.role] ?? user.role) : "…"}</div>
             </div>
           </div>
           {/* Theme + logout row */}
@@ -2402,11 +2402,11 @@ export default function AppPage() {
                     : <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                   }
                 </span>
-                <span>{theme === "dark" ? "РЎРІРµС‚Р»Р°СЏ" : "РўС‘РјРЅР°СЏ"}</span>
+                <span>{theme === "dark" ? "Светлая" : "Тёмная"}</span>
               </span>
               <span className={`theme-toggle-pill${theme === "dark" ? " is-dark" : ""}`} />
             </button>
-            <a className="nav-item" style={{ padding: "7px 10px", flexShrink: 0 }} onClick={logout} title="Р’С‹Р№С‚Рё">
+            <a className="nav-item" style={{ padding: "7px 10px", flexShrink: 0 }} onClick={logout} title="Выйти">
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </a>
           </div>
@@ -2449,7 +2449,7 @@ export default function AppPage() {
           {/* ===== WORKER CABINET ===== */}
           {tab === "dashboard" && !user ? (
             <div className="card" style={{ padding: 32, textAlign: "center", color: "var(--text-secondary)" }}>
-              Р—Р°РіСЂСѓР·РєР°вЂ¦
+              Загрузка…
             </div>
           ) : null}
 
@@ -2516,22 +2516,22 @@ export default function AppPage() {
               {/* Page header */}
               <div className="page-header">
                 <div className="page-header-left">
-                  <div className="page-header-title">РЎРґРµР»РєРё</div>
-                  <div className="page-header-sub">РЈРїСЂР°РІР»СЏР№С‚Рµ СЃРґРµР»РєР°РјРё, СѓС‡Р°СЃС‚РЅРёРєР°РјРё Рё РІС‹РїР»Р°С‚Р°РјРё</div>
+                  <div className="page-header-title">Сделки</div>
+                  <div className="page-header-sub">Управляйте сделками, участниками и выплатами</div>
                 </div>
                 <div className="page-header-actions">
                   <div className="filter-tabs">
-                    {([{ id: "ALL", label: "Р’СЃРµ" }, { id: "NEW", label: "РќРѕРІС‹Рµ" }, { id: "IN_PROGRESS", label: "Р’ СЂР°Р±РѕС‚Рµ" }, { id: "CLOSED", label: "Р—Р°РєСЂС‹С‚С‹Рµ" }] as const).map((f) => (
+                    {([{ id: "ALL", label: "Все" }, { id: "NEW", label: "Новые" }, { id: "IN_PROGRESS", label: "В работе" }, { id: "CLOSED", label: "Закрытые" }] as const).map((f) => (
                       <button key={f.id} className={`filter-tab ${dealFilter === f.id ? "active" : ""}`} onClick={() => setDealFilter(f.id as any)}>{f.label}</button>
                     ))}
                   </div>
-                  <button className="btn btn-primary" onClick={openDealModal}>+ РќРѕРІР°СЏ СЃРґРµР»РєР°</button>
+                  <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
                   {isManager && (
                     <>
                       <input
                         className="form-input"
                         style={{ width: 72 }}
-                        title="Р“РѕРґ РґР»СЏ РґР°С‚ В«23.04В» (Р±РµР· РіРѕРґР° РІ СЏС‡РµР№РєРµ)"
+                        title="Год для дат «23.04» (без года в ячейке)"
                         value={legacyImportYear}
                         onChange={(e) => setLegacyImportYear(e.target.value)}
                       />
@@ -2563,23 +2563,23 @@ export default function AppPage() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Р”Р°С‚Р°</th><th>РљР»РёРµРЅС‚</th><th>Р’РѕСЂРєРµСЂС‹</th><th>РЎС‚Р°С‚СѓСЃ</th>
-                        <th style={{ textAlign: "right" }}>Р’С‹С…РѕРґ</th>
+                        <th>Дата</th><th>Клиент</th><th>Воркеры</th><th>Статус</th>
+                        <th style={{ textAlign: "right" }}>Выход</th>
                         {isAdmin && <th style={{ width: 40 }}></th>}
                       </tr>
                     </thead>
                     <tbody>
                       {dealsLoading ? (
-                        <tr><td colSpan={6} style={{ padding: 24, color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°...</td></tr>
+                        <tr><td colSpan={6} style={{ padding: 24, color: "var(--text-secondary)" }}>Загрузка...</td></tr>
                       ) : deals.filter((d) => dealFilter === "ALL" || d.status === dealFilter).length === 0 ? (
                         <tr><td colSpan={6}>
                           <div className="empty-state">
                             <div className="empty-state-icon">
                               <svg width="22" height="22" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
                             </div>
-                            <div className="empty-state-title">РќРµС‚ СЃРґРµР»РѕРє</div>
-                            <div className="empty-state-desc">РЎРѕР·РґР°Р№С‚Рµ РїРµСЂРІСѓСЋ СЃРґРµР»РєСѓ С‡С‚РѕР±С‹ РЅР°С‡Р°С‚СЊ РІРµСЃС‚Рё СѓС‡С‘С‚</div>
-                            <button className="btn btn-primary" onClick={openDealModal}>+ РќРѕРІР°СЏ СЃРґРµР»РєР°</button>
+                            <div className="empty-state-title">Нет сделок</div>
+                            <div className="empty-state-desc">Создайте первую сделку чтобы начать вести учёт</div>
+                            <button className="btn btn-primary" onClick={openDealModal}>+ Новая сделка</button>
                           </div>
                         </td></tr>
                       ) : (
@@ -2606,21 +2606,21 @@ export default function AppPage() {
                             const workerParts = d.participants.map((p) => {
                               const label = p.user.name || p.user.email.split("@")[0];
                               return `${label} ${p.pct}%`;
-                            }).join(" В· ");
+                            }).join(" · ");
                             return (
                               <tr key={d.id} style={{ cursor: "pointer" }}>
                                 <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} onClick={() => openDealEditModal(d)}>
-                                  {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "вЂ”"}
+                                  {d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}
                                 </td>
-                                <td onClick={() => openDealEditModal(d)}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Р‘РµР· РєР»РёРµРЅС‚Р°</span>}</td>
-                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }} onClick={() => openDealEditModal(d)}>{workerParts || "вЂ”"}</td>
+                                <td onClick={() => openDealEditModal(d)}>{d.client ? d.client.name : <span style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>Без клиента</span>}</td>
+                                <td style={{ fontSize: 12, color: "var(--text-secondary)" }} onClick={() => openDealEditModal(d)}>{workerParts || "—"}</td>
                                 <td onClick={() => openDealEditModal(d)}>
                                   <span className={`badge ${d.status === "CLOSED" ? "badge-green" : d.status === "IN_PROGRESS" ? "badge-amber" : "badge-blue"}`}>
-                                    {d.status === "NEW" ? "РќРѕРІР°СЏ" : d.status === "IN_PROGRESS" ? "Р’ СЂР°Р±РѕС‚Рµ" : "Р—Р°РєСЂС‹С‚Р°"}
+                                    {d.status === "NEW" ? "Новая" : d.status === "IN_PROGRESS" ? "В работе" : "Закрыта"}
                                   </span>
                                 </td>
                                 <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} onClick={() => openDealEditModal(d)}>
-                                  {totalOut > 0 ? `${totalOut.toLocaleString("ru-RU")}${dealCurrencyLabel ? " " + dealCurrencyLabel : ""}` : "вЂ”"}
+                                  {totalOut > 0 ? `${totalOut.toLocaleString("ru-RU")}${dealCurrencyLabel ? " " + dealCurrencyLabel : ""}` : "—"}
                                 </td>
                                 {isAdmin && (
                                   <td style={{ width: 40, padding: "0 8px 0 0" }}>
@@ -2628,7 +2628,7 @@ export default function AppPage() {
                                       onClick={(e) => { e.stopPropagation(); deleteDeal(d.id); }}
                                       className="btn btn-ghost"
                                       style={{ width: 28, height: 28, padding: 0, color: "var(--text-tertiary)" }}
-                                      title="РЈРґР°Р»РёС‚СЊ СЃРґРµР»РєСѓ"
+                                      title="Удалить сделку"
                                     >
                                       <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/><path d="M9,6V4h6v2"/></svg>
                                     </button>
@@ -2653,20 +2653,20 @@ export default function AppPage() {
                   <div className="card" style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }}>
                     <div className="card-header">
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="card-title">{dealEditingId ? "Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ СЃРґРµР»РєСѓ" : "РќРѕРІР°СЏ СЃРґРµР»РєР°"}</span>
+                        <span className="card-title">{dealEditingId ? "Редактировать сделку" : "Новая сделка"}</span>
                         {dealTemplateStep === "form" && dealTemplateId && (
                           <span style={{ fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>
                             {templates.find(t => t.id === dealTemplateId)?.name}
                           </span>
                         )}
                       </div>
-                      <button className="btn btn-secondary" onClick={closeDealModal}>РћС‚РјРµРЅР°</button>
+                      <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
                     </div>
 
                     {/* Template picker step */}
                     {!dealEditingId && dealTemplateStep === "pick" ? (
                       <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё:</div>
+                        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Выберите шаблон сделки:</div>
                         <div style={{ display: "grid", gap: 8 }}>
                           {templates.map((t) => (
                             <label key={t.id} style={{
@@ -2680,7 +2680,7 @@ export default function AppPage() {
                               <div>
                                 <div style={{ fontWeight: 600 }}>{t.name}</div>
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                                  {t.fields.length} РїРѕР»РµР№ В· {t.hasWorkers ? "СЃ РІРѕСЂРєРµСЂР°РјРё" : "Р±РµР· РІРѕСЂРєРµСЂРѕРІ"}
+                                  {t.fields.length} полей · {t.hasWorkers ? "с воркерами" : "без воркеров"}
                                   {t.calcPreset === CALC_MEDIATOR_AI_PAYROLL ? " В· СЂР°СЃС‡С‘С‚ РїРѕСЃСЂРµРґРЅРёРє/РР/С„РѕРЅРґ" : ""}
                                 </div>
                               </div>
@@ -2692,13 +2692,13 @@ export default function AppPage() {
                             className="btn btn-primary"
                             onClick={() => {
                               if (!dealTemplateId) {
-                                alert("Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ");
+                                alert("Выберите шаблон");
                                 return;
                               }
                               setDealTemplateStep("form");
                             }}
                           >
-                            РџСЂРѕРґРѕР»Р¶РёС‚СЊ в†’
+                            Продолжить →
                           </button>
                         </div>
                       </div>
@@ -2709,16 +2709,16 @@ export default function AppPage() {
                       {/* Date + Client */}
                       <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 14 }}>
                         <div>
-                          <div className="form-label">Р”Р°С‚Р° *</div>
+                          <div className="form-label">Дата *</div>
                           <input className="form-input" type="date" value={dealDate} onChange={(e) => setDealDate(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">РљР»РёРµРЅС‚</div>
+                          <div className="form-label">Клиент</div>
                           {!dealClientSkip && !dealClientId ? (
                             <div style={{ display: "grid", gap: 6 }}>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <input className="form-input" placeholder="РџРѕРёСЃРє..." value={dealClientSearch} onChange={(e) => setDealClientSearch(e.target.value)} />
-                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>Р‘РµР· РєР»РёРµРЅС‚Р°</button>
+                                <input className="form-input" placeholder="Поиск..." value={dealClientSearch} onChange={(e) => setDealClientSearch(e.target.value)} />
+                                <button className="btn btn-secondary" onClick={() => setDealClientSkip(true)}>Без клиента</button>
                               </div>
                               <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-card)", maxHeight: 130, overflow: "auto" }}>
                                 {dealClients.filter((c) => (c.name + " " + c.phone).toLowerCase().includes(dealClientSearch.toLowerCase())).slice(0, 20).map((c) => (
@@ -2731,12 +2731,12 @@ export default function AppPage() {
                             </div>
                           ) : dealClientId ? (
                             <div style={{ background: "var(--green-bg)", borderRadius: 10, padding: "8px 12px", display: "flex", gap: 10, alignItems: "center" }}>
-                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>{dealClients.find((c) => c.id === dealClientId)?.name ?? "РљР»РёРµРЅС‚"}</span>
-                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>Г—</button>
+                              <span style={{ flex: 1, fontWeight: 600, color: "var(--green-text)" }}>{dealClients.find((c) => c.id === dealClientId)?.name ?? "Клиент"}</span>
+                              <button className="btn btn-secondary" onClick={() => setDealClientId(null)}>×</button>
                             </div>
                           ) : (
                             <div style={{ background: "var(--bg-metric)", borderRadius: 10, padding: "8px 12px", color: "var(--text-secondary)", fontStyle: "italic" }}>
-                              Р‘РµР· РєР»РёРµРЅС‚Р°{" "}
+                              Без клиента{" "}
                               <span style={{ color: "var(--accent)", cursor: "pointer", fontStyle: "normal", marginLeft: 8 }} onClick={() => setDealClientSkip(false)}>РР·РјРµРЅРёС‚СЊ</span>
                             </div>
                           )}
@@ -2745,11 +2745,11 @@ export default function AppPage() {
 
                       {/* Status */}
                       <div style={{ width: 240 }}>
-                        <div className="form-label">РЎС‚Р°С‚СѓСЃ</div>
+                        <div className="form-label">Статус</div>
                         <select className="form-input" value={dealStatus} onChange={(e) => setDealStatus(e.target.value as DealStatus)}>
-                          <option value="NEW">РќРѕРІР°СЏ</option>
-                          <option value="IN_PROGRESS">Р’ СЂР°Р±РѕС‚Рµ</option>
-                          <option value="CLOSED">Р—Р°РєСЂС‹С‚Р°</option>
+                          <option value="NEW">Новая</option>
+                          <option value="IN_PROGRESS">В работе</option>
+                          <option value="CLOSED">Закрыта</option>
                         </select>
                       </div>
 
@@ -2761,21 +2761,21 @@ export default function AppPage() {
                         return (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
                             <div>
-                              <div className="form-label">РџРѕСЃСЂРµРґРЅРёРє</div>
+                              <div className="form-label">Посредник</div>
                               <select className="form-input" value={dealMediatorId} onChange={(e) => setDealMediatorSelection(e.target.value)}>
-                                <option value="">вЂ” РЅРµ РІС‹Р±СЂР°РЅ вЂ”</option>
+                                <option value="">— не выбран —</option>
                                 {mediators.filter((m: any) => m.isActive !== false).map((m: any) => (
                                   <option key={m.id} value={m.id}>{m.name}{m.defaultPct != null ? ` (${m.defaultPct}%)` : ""}</option>
                                 ))}
                               </select>
                               {mediatorFieldKey && (
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>
-                                  % РёР· СЃРїСЂР°РІРѕС‡РЅРёРєР° РїРѕРґСЃС‚Р°РІР»СЏРµС‚СЃСЏ РІ СЂР°СЃС‡С‘С‚{dealMediatorPct ? ` (СЃРµР№С‡Р°СЃ ${dealMediatorPct}%)` : ""}
+                                  % из справочника подставляется в расчёт{dealMediatorPct ? ` (сейчас ${dealMediatorPct}%)` : ""}
                                 </div>
                               )}
                             </div>
                             <div>
-                              <div className="form-label">% РїРѕ СЃРґРµР»РєРµ</div>
+                              <div className="form-label">% по сделке</div>
                               <input
                                 className="form-input"
                                 type="number"
@@ -2798,16 +2798,16 @@ export default function AppPage() {
                         return (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
                             <div>
-                              <div className="form-label">РћР›РҐ</div>
+                              <div className="form-label">ОЛХ</div>
                               <select className="form-input" value={dealOlxId} onChange={(e) => setDealOlxSelection(e.target.value)}>
-                                <option value="">вЂ” РЅРµ РІС‹Р±СЂР°РЅ вЂ”</option>
+                                <option value="">— не выбран —</option>
                                 {olxList.filter((o: any) => o.isActive !== false).map((o: any) => (
                                   <option key={o.id} value={o.id}>{o.name}{o.defaultPct != null ? ` (${o.defaultPct}%)` : ""}</option>
                                 ))}
                               </select>
                             </div>
                             <div>
-                              <div className="form-label">% РїРѕ СЃРґРµР»РєРµ</div>
+                              <div className="form-label">% по сделке</div>
                               <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealOlxPct} onChange={(e) => setDealOlxPct(e.target.value)} />
                             </div>
                           </div>
@@ -2835,7 +2835,7 @@ export default function AppPage() {
                             </div>
                             <div style={{ maxWidth: 200 }}>
                               <div className="form-label">% РРЅС„Рѕ</div>
-                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="РЅР°РїСЂРёРјРµСЂ 5" value={dealInfoPct} onChange={(e) => setDealInfoPct(e.target.value)} />
+                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="например 5" value={dealInfoPct} onChange={(e) => setDealInfoPct(e.target.value)} />
                             </div>
                           </div>
                         );
@@ -2847,9 +2847,9 @@ export default function AppPage() {
                         return (
                           <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                              <div className="form-label" style={{ margin: 0 }}>Р”Р°РЅРЅС‹Рµ [{tpl.name}]</div>
+                              <div className="form-label" style={{ margin: 0 }}>Данные [{tpl.name}]</div>
                               {tpl.calcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
-                                <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Р”РѕР±Р°РІРёС‚СЊ СЃС‚СЂРѕРєСѓ</button>
+                                <button className="btn btn-secondary" onClick={() => setDealDataRows(p => [...p, { _id: crypto.randomUUID(), data: {} }])}>+ Добавить строку</button>
                               )}
                             </div>
                             {tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (
@@ -2858,9 +2858,9 @@ export default function AppPage() {
                             {dealDataRows.map((row, ri) => (
                               <div key={row._id} style={{ background: "var(--bg-metric)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>РЎС‚СЂРѕРєР° {ri + 1}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Строка {ri + 1}</span>
                                   {dealDataRows.length > 1 && (
-                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16 }} onClick={() => setDealDataRows(p => p.filter(x => x._id !== row._id))}>Г—</span>
+                                    <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontSize: 16 }} onClick={() => setDealDataRows(p => p.filter(x => x._id !== row._id))}>×</span>
                                   )}
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
@@ -2875,9 +2875,9 @@ export default function AppPage() {
                                     const isGross = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcGrossFieldKey;
                                     const isMediator = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcMediatorPctKey;
                                     const isAi = tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && f.key === tpl.calcAiPctKey;
-                                    const calcBadge = isGross ? { icon: "рџ’°", color: "var(--accent)", tip: "Р‘Р°Р·Р° СЂР°СЃС‡С‘С‚Р°" }
-                                      : isMediator ? { icon: "рџЏ¦", color: "var(--amber)", tip: "% РїРѕСЃСЂРµРґРЅРёРєР°" }
-                                      : isAi ? { icon: "рџ¤–", color: "var(--text-secondary)", tip: "% AI" }
+                                    const calcBadge = isGross ? { icon: "💰", color: "var(--accent)", tip: "База расчёта" }
+                                      : isMediator ? { icon: "🏦", color: "var(--amber)", tip: "% посредника" }
+                                      : isAi ? { icon: "🤖", color: "var(--text-secondary)", tip: "% AI" }
                                       : null;
                                     return (
                                     <div key={f.key} style={calcBadge ? { background: `${calcBadge.color}0d`, borderRadius: 8, padding: "6px 8px", border: `1.5px solid ${calcBadge.color}44` } : {}}>
@@ -2889,15 +2889,15 @@ export default function AppPage() {
                                         <select className="form-input" value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}
                                           style={{ borderColor: calcBadge ? `${calcBadge.color}66` : undefined }}>
-                                          <option value="">вЂ” РІР°Р»СЋС‚Р° вЂ”</option>
+                                          <option value="">— валюта —</option>
                                           {CURRENCIES.map(c => (
-                                            <option key={c} value={c}>{CURRENCY_META[c]?.symbol} {c} вЂ” {CURRENCY_META[c]?.name}</option>
+                                            <option key={c} value={c}>{CURRENCY_META[c]?.symbol} {c} — {CURRENCY_META[c]?.name}</option>
                                           ))}
                                         </select>
                                       ) : f.type === "SELECT" ? (
                                         <select className="form-input" value={row.data[f.key] ?? ""}
                                           onChange={(e) => setDealDataRows(p => p.map(x => x._id === row._id ? { ...x, data: { ...x.data, [f.key]: e.target.value } } : x))}>
-                                          <option value="">вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”</option>
+                                          <option value="">— выберите —</option>
                                           {(f.options ?? "").split(",").map(o => o.trim()).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
                                         </select>
                                       ) : f.type === "CHECKBOX" ? (
@@ -2933,8 +2933,8 @@ export default function AppPage() {
                               return (
                                 <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
                                   <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                                    рџ“Љ Р Р°СЃС‡С‘С‚ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ
-                                    {!hasValues && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)" }}>вЂ” Р·Р°РїРѕР»РЅРёС‚Рµ С‡РёСЃР»РѕРІС‹Рµ РїРѕР»СЏ РІС‹С€Рµ</span>}
+                                    📊 Расчёт распределения
+                                    {!hasValues && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)" }}>— заполните числовые поля выше</span>}
                                   </div>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "3px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
                                     {chain.map((cr, ci) => {
@@ -2955,17 +2955,17 @@ export default function AppPage() {
                                             </>
                                           )}
                                           <span style={{ color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", paddingLeft: 8 }}>
-                                            {isPayroll ? "рџ‘Ґ" : "в€’"} {cr.step.label} ({deductLabel})
+                                            {isPayroll ? "👥" : "−"} {cr.step.label} ({deductLabel})
                                           </span>
                                           <span style={{ textAlign: "right", color: isPayroll ? "var(--amber)" : "var(--text-tertiary)", fontWeight: isPayroll ? 700 : 400 }}>
-                                            в€’ {fmt(cr.deductAmt)}
+                                            − {fmt(cr.deductAmt)}
                                           </span>
                                           <span style={{
                                             color: isLast ? "var(--green)" : "var(--text-secondary)",
                                             fontWeight: isLast ? 700 : 400,
                                             borderTop: "1px dashed var(--border)", paddingTop: 3,
                                           }}>
-                                            {isLast ? "рџЏў " : ""}{cr.step.resultLabel}
+                                            {isLast ? "🏢 " : ""}{cr.step.resultLabel}
                                           </span>
                                           <span style={{
                                             textAlign: "right", fontWeight: isLast ? 700 : 400,
@@ -2989,17 +2989,17 @@ export default function AppPage() {
                               return (
                                 <div style={{ marginTop: 8, padding: 14, background: "var(--accent)08", borderRadius: 10, border: "2px solid var(--accent)33" }}>
                                   <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                                    рџ“Љ Р Р°СЃС‡С‘С‚ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ
-                                    {(!c || c.G === 0) && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>вЂ” Р·Р°РїРѕР»РЅРёС‚Рµ {grossField?.label ?? "РЎСѓРјРјР° Р·Р°РІРѕРґР°"} рџ’° РІС‹С€Рµ</span>}
+                                    📊 Расчёт распределения
+                                    {(!c || c.G === 0) && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 4 }}>— заполните {grossField?.label ?? "Сумма завода"} 💰 выше</span>}
                                   </div>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-                                    <span style={{ color: "var(--text-secondary)" }}>рџ’° РЎСѓРјРјР° Р·Р°РІРѕРґР°</span><span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>рџЏ¦ РџРѕСЃСЂРµРґРЅРёРє</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>в€’ {fmt(c?.M ?? 0)}</span>
+                                    <span style={{ color: "var(--text-secondary)" }}>💰 Сумма завода</span><span style={{ textAlign: "right", fontWeight: 700 }}>{fmt(c?.G ?? 0)}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>🏦 Посредник</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.M ?? 0)}</span>
                                     <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R1</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R1 ?? 0)}</span>
-                                    <span style={{ color: "var(--text-tertiary)" }}>рџ¤– AI</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>в€’ {fmt(c?.A ?? 0)}</span>
+                                    <span style={{ color: "var(--text-tertiary)" }}>🤖 AI</span><span style={{ textAlign: "right", color: "var(--text-tertiary)" }}>− {fmt(c?.A ?? 0)}</span>
                                     <span style={{ color: "var(--text-secondary)", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>R2</span><span style={{ textAlign: "right", borderTop: "1px dashed var(--border)", paddingTop: 3 }}>{fmt(c?.R2 ?? 0)}</span>
-                                    <span style={{ color: "var(--amber)" }}>рџ‘Ґ Р—Рџ С„РѕРЅРґ ({parsePayrollPoolPct(tpl)}%)</span><span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>в€’ {fmt(c?.F ?? 0)}</span>
-                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>рџЏў РџСЂРёР±С‹Р»СЊ РѕС„РёСЃР°</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>{fmt(c?.P ?? 0)}</span>
+                                    <span style={{ color: "var(--amber)" }}>👥 ЗП фонд ({parsePayrollPoolPct(tpl)}%)</span><span style={{ textAlign: "right", color: "var(--amber)", fontWeight: 700 }}>− {fmt(c?.F ?? 0)}</span>
+                                    <span style={{ fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>🏢 Прибыль офиса</span><span style={{ textAlign: "right", fontWeight: 700, color: "var(--green)", borderTop: "2px solid var(--border)", paddingTop: 4 }}>{fmt(c?.P ?? 0)}</span>
                                   </div>
                                 </div>
                               );
@@ -3009,8 +3009,8 @@ export default function AppPage() {
                       })() : (
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div className="form-label" style={{ margin: 0 }}>РћРїРµСЂР°С†РёРё (РєР»Р°СЃСЃРёРєР°, Р±РµР· С€Р°Р±Р»РѕРЅР°) *</div>
-                          <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Р”РѕР±Р°РІРёС‚СЊ СЃС‚СЂРѕРєСѓ</button>
+                          <div className="form-label" style={{ margin: 0 }}>Операции (классика, без шаблона) *</div>
+                          <button className="btn btn-secondary" onClick={() => setDealAmounts((p) => [...p, newAmtRow()])}>+ Добавить строку</button>
                         </div>
 
                         <div style={{ display: "grid", gap: 10 }}>
@@ -3019,7 +3019,7 @@ export default function AppPage() {
                               {/* row 1: bank, type, shopName */}
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 1fr 28px", gap: 8, marginBottom: 8, alignItems: "end" }}>
                                 <div>
-                                  <div className="form-label" style={{ marginBottom: 3 }}>Р‘Р°РЅРє</div>
+                                  <div className="form-label" style={{ marginBottom: 3 }}>Банк</div>
                                   <input
                                     className="form-input"
                                     value={r.bank}
@@ -3028,26 +3028,26 @@ export default function AppPage() {
                                   />
                                 </div>
                                 <div>
-                                  <div className="form-label" style={{ marginBottom: 3 }}>РўРёРї</div>
+                                  <div className="form-label" style={{ marginBottom: 3 }}>Тип</div>
                                   <select
                                     className="form-input"
                                     value={r.operationType}
                                     onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, operationType: e.target.value as OperationType } : x))}
                                   >
-                                    <option value="ATM">Р‘Р°РЅРєРѕРјР°С‚</option>
-                                    <option value="PURCHASE">РџРѕРєСѓРїРєР°</option>
-                                    <option value="TRANSFER">РџРµСЂРµРІРѕРґ</option>
+                                    <option value="ATM">Банкомат</option>
+                                    <option value="PURCHASE">Покупка</option>
+                                    <option value="TRANSFER">Перевод</option>
                                   </select>
                                 </div>
                                 <div>
                                   {r.operationType === "PURCHASE" ? (
                                     <>
-                                      <div className="form-label" style={{ marginBottom: 3 }}>РњР°РіР°Р·РёРЅ</div>
+                                      <div className="form-label" style={{ marginBottom: 3 }}>Магазин</div>
                                       <input
                                         className="form-input"
                                         value={r.shopName}
                                         onChange={(e) => setDealAmounts((p) => p.map((x) => x.id === r.id ? { ...x, shopName: e.target.value } : x))}
-                                        placeholder="РќР°Р·РІР°РЅРёРµ РјР°РіР°Р·РёРЅР°"
+                                        placeholder="Название магазина"
                                       />
                                     </>
                                   ) : <div />}
@@ -3055,13 +3055,13 @@ export default function AppPage() {
                                 <div
                                   style={{ width: 28, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18 }}
                                   onClick={() => setDealAmounts((p) => p.filter((x) => x.id !== r.id))}
-                                >Г—</div>
+                                >×</div>
                               </div>
 
-                              {/* row 2: amountIn + currencyIn в†’ amountOut + currencyOut */}
+                              {/* row 2: amountIn + currencyIn → amountOut + currencyOut */}
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 24px 1fr 90px", gap: 8, alignItems: "end" }}>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Р’Р·СЏР»Рё</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Взяли</div>
                                   <input
                                     className="form-input"
                                     value={r.amountIn}
@@ -3071,7 +3071,7 @@ export default function AppPage() {
                                   />
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Р’Р°Р»СЋС‚Р°</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
                                   <select
                                     className="form-input"
                                     value={r.currencyIn}
@@ -3080,9 +3080,9 @@ export default function AppPage() {
                                     {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
                                   </select>
                                 </div>
-                                <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingBottom: 8 }}>в†’</div>
+                                <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingBottom: 8 }}>→</div>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>РџРѕР»СѓС‡РёР»Рё</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Получили</div>
                                   <input
                                     className="form-input"
                                     value={r.amountOut}
@@ -3092,7 +3092,7 @@ export default function AppPage() {
                                   />
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Р’Р°Р»СЋС‚Р°</div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", marginBottom: 3 }}>Валюта</div>
                                   <select
                                     className="form-input"
                                     value={r.currencyOut}
@@ -3151,31 +3151,31 @@ export default function AppPage() {
                             <div style={{ padding: "12px 16px", background: isMediator ? "var(--accent)08" : "var(--bg-metric)", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                                  рџ‘Ґ Р—Р°СЂРїР»Р°С‚Р° СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ
+                                  👥 Зарплата сотрудников
                                   {totalPct === 100 && filledParticipants.length > 0 && (
-                                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 600 }}>вњ“ СЂР°СЃРїСЂРµРґРµР»РµРЅРѕ</span>
+                                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "var(--green-bg)", color: "var(--green-text)", fontWeight: 600 }}>✓ распределено</span>
                                   )}
                                 </div>
                                 {isMediator && incomeBase > 0 ? (
                                   <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-                                    Р¤РѕРЅРґ РґР»СЏ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ:&nbsp;
+                                    Фонд для распределения:&nbsp;
                                     <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontSize: 14 }}>{incomeBase.toLocaleString()}</strong>
-                                    &nbsp;вЂ” СЌС‚Рѕ {parsePayrollPoolPct(activeTplForParts!)}% РѕС‚ СЃСѓРјРјС‹ РїРѕСЃР»Рµ РІСЃРµС… РІС‹С‡РµС‚РѕРІ. Р Р°Р·РґРµР»Рё 100% СЌС‚РѕР№ СЃСѓРјРјС‹ РјРµР¶РґСѓ СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё.
+                                    &nbsp;— это {parsePayrollPoolPct(activeTplForParts!)}% от суммы после всех вычетов. Раздели 100% этой суммы между сотрудниками.
                                   </div>
                                 ) : incomeBase > 0 ? (
                                   <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-                                    Р‘Р°Р·Р°: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong> В· СѓРєР°Р¶Рё % РєР°Р¶РґРѕРјСѓ СЃРѕС‚СЂСѓРґРЅРёРєСѓ, РІ СЃСѓРјРјРµ 100%
+                                    База: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incomeBase.toLocaleString()}</strong> · укажи % каждому сотруднику, в сумме 100%
                                   </div>
                                 ) : (
-                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-tertiary)" }}>РЈРєР°Р¶Рё СЃСѓРјРјС‹ РІ РїРѕР»СЏС… РІС‹С€Рµ вЂ” СЃСЂР°Р·Сѓ СѓРІРёРґРёС€СЊ СЃРєРѕР»СЊРєРѕ РїРѕР»СѓС‡РёС‚ РєР°Р¶РґС‹Р№</div>
+                                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-tertiary)" }}>Укажи суммы в полях выше — сразу увидишь сколько получит каждый</div>
                                 )}
                               </div>
                               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                                 {filledParticipants.length > 1 && (
-                                  <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={splitEvenly} title="Р Р°Р·РґРµР»РёС‚СЊ РїРѕСЂРѕРІРЅСѓ">вљ–пёЏ РџРѕСЂРѕРІРЅСѓ</button>
+                                  <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={splitEvenly} title="Разделить поровну">⚖️ Поровну</button>
                                 )}
                                 <button className="btn btn-secondary" style={{ fontSize: 12, height: 32 }} onClick={() => setDealParticipants((p) => [...p, { id: crypto.randomUUID(), userId: "", pct: remaining > 0 ? String(remaining) : "0" }])}>
-                                  + РЎРѕС‚СЂСѓРґРЅРёРє
+                                  + Сотрудник
                                 </button>
                               </div>
                             </div>
@@ -3201,10 +3201,10 @@ export default function AppPage() {
                                       value={p.userId}
                                       onChange={(e) => setDealParticipants((pp) => pp.map((x) => x.id === p.id ? { ...x, userId: e.target.value } : x))}
                                     >
-                                      <option value="">вЂ” РІС‹Р±СЂР°С‚СЊ СЃРѕС‚СЂСѓРґРЅРёРєР° вЂ”</option>
+                                      <option value="">— выбрать сотрудника —</option>
                                       {dealWorkers.map((w) => (
                                         <option key={w.id} value={w.id}>
-                                          {w.name || w.email}{w.position ? ` В· ${w.position}` : ""}
+                                          {w.name || w.email}{w.position ? ` · ${w.position}` : ""}
                                         </option>
                                       ))}
                                     </select>
@@ -3225,13 +3225,13 @@ export default function AppPage() {
                                         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "var(--green)", fontSize: 13 }}>
                                           {earn.toLocaleString()}
                                         </div>
-                                      ) : <span style={{ color: "var(--border)" }}>вЂ”</span>}
+                                      ) : <span style={{ color: "var(--border)" }}>—</span>}
                                     </div>
                                     {/* Remove */}
                                     <button
                                       style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}
                                       onClick={() => setDealParticipants((pp) => pp.filter((x) => x.id !== p.id))}
-                                    >Г—</button>
+                                    >×</button>
                                   </div>
                                 );
                               })}
@@ -3241,10 +3241,10 @@ export default function AppPage() {
                             {dealParticipants.length > 0 && (
                               <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-light)", background: "var(--bg-metric)" }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Р Р°СЃРїСЂРµРґРµР»РµРЅРѕ: <strong style={{ color: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--amber)" }}>{totalPct}%</strong></span>
+                                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Распределено: <strong style={{ color: totalPct === 100 ? "var(--green)" : totalPct > 100 ? "var(--red)" : "var(--amber)" }}>{totalPct}%</strong></span>
                                   {incomeBase > 0 && (
                                     <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
-                                      {dealParticipants.filter(p => p.userId).reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()} РёР· {incomeBase.toLocaleString()}
+                                      {dealParticipants.filter(p => p.userId).reduce((s, p) => s + Math.round(incomeBase * (Number(p.pct) || 0) / 100 * 100) / 100, 0).toLocaleString()} из {incomeBase.toLocaleString()}
                                     </span>
                                   )}
                                 </div>
@@ -3253,7 +3253,7 @@ export default function AppPage() {
                                 </div>
                                 {totalPct !== 100 && (
                                   <div style={{ marginTop: 6, fontSize: 12, color: totalPct > 100 ? "var(--red)" : "var(--amber)" }}>
-                                    {totalPct > 100 ? `вљ  РџСЂРµРІС‹С€РµРЅРёРµ РЅР° ${totalPct - 100}% вЂ” СѓРјРµРЅСЊС€Рё РїСЂРѕС†РµРЅС‚С‹` : `РћСЃС‚Р°Р»РѕСЃСЊ СЂР°СЃРїСЂРµРґРµР»РёС‚СЊ: ${100 - totalPct}%${incomeBase > 0 ? ` (${Math.round(incomeBase * (100 - totalPct) / 100 * 100) / 100} РІ СЃСѓРјРјРµ)` : ""}`}
+                                    {totalPct > 100 ? `⚠ Превышение на ${totalPct - 100}% — уменьши проценты` : `Осталось распределить: ${100 - totalPct}%${incomeBase > 0 ? ` (${Math.round(incomeBase * (100 - totalPct) / 100 * 100) / 100} в сумме)` : ""}`}
                                   </div>
                                 )}
                               </div>
@@ -3264,17 +3264,17 @@ export default function AppPage() {
 
                       {/* Comment */}
                       <div>
-                        <div className="form-label">РљРѕРјРјРµРЅС‚Р°СЂРёР№</div>
+                        <div className="form-label">Комментарий</div>
                         <textarea className="form-input" value={dealComment} onChange={(e) => setDealComment(e.target.value)} style={{ height: 72, paddingTop: 10 }} />
                       </div>
 
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                         {!dealEditingId && templates.length > 0 && (
-                          <button className="btn btn-secondary" onClick={() => setDealTemplateStep("pick")}>в†ђ РЁР°Р±Р»РѕРЅ</button>
+                          <button className="btn btn-secondary" onClick={() => setDealTemplateStep("pick")}>← Шаблон</button>
                         )}
-                        <button className="btn btn-secondary" onClick={closeDealModal}>РћС‚РјРµРЅР°</button>
+                        <button className="btn btn-secondary" onClick={closeDealModal}>Отмена</button>
                         <button className="btn btn-primary" onClick={saveDeal}>
-                          {dealEditingId ? "РЎРѕС…СЂР°РЅРёС‚СЊ" : "РЎРѕР·РґР°С‚СЊ СЃРґРµР»РєСѓ"}
+                          {dealEditingId ? "Сохранить" : "Создать сделку"}
                         </button>
                       </div>
                     </div>
@@ -3318,7 +3318,7 @@ export default function AppPage() {
             <div style={{ display: "grid", gap: 16 }}>
               <div className="page-header">
                 <div className="page-header-left">
-                  <div className="page-header-title">Р—Р°РґР°С‡Рё</div>
+                  <div className="page-header-title">Задачи</div>
                   <div className="page-header-sub">РќР°Р·РЅР°С‡Р°Р№С‚Рµ СЃСЂРѕРєРё, РѕС‚СЃР»РµР¶РёРІР°Р№С‚Рµ СЃС‚Р°С‚СѓСЃС‹. РСЃРїРѕР»РЅРёС‚РµР»Рё РїРѕР»СѓС‡Р°СЋС‚ РїРёСЃСЊРјРѕ Рѕ РЅРѕРІРѕР№ Р·Р°РґР°С‡Рµ.</div>
                 </div>
                 {isManager && (
@@ -3326,21 +3326,21 @@ export default function AppPage() {
                     <button
                       className="btn btn-primary"
                       onClick={() => { setTaskModalOpen(true); void loadTaskUserOptions(); }}
-                    >+ РќРѕРІР°СЏ Р·Р°РґР°С‡Р°</button>
+                    >+ Новая задача</button>
                   </div>
                 )}
               </div>
               <div className="filter-tabs" style={{ width: "fit-content" }}>
                 {([
-                  { id: "active" as const, label: "РђРєС‚РёРІРЅС‹Рµ" },
-                  { id: "all" as const, label: "Р’СЃРµ" },
-                  { id: "done" as const, label: "РђСЂС…РёРІ" },
+                  { id: "active" as const, label: "Активные" },
+                  { id: "all" as const, label: "Все" },
+                  { id: "done" as const, label: "Архив" },
                 ]).map((f) => (
                   <button key={f.id} type="button" className={`filter-tab ${taskFilter === f.id ? "active" : ""}`} onClick={() => setTaskFilter(f.id)}>{f.label}</button>
                 ))}
               </div>
               {tasksLoading ? (
-                <div style={{ color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+                <div style={{ color: "var(--text-secondary)" }}>Загрузка…</div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
                   {tasks
@@ -3354,7 +3354,7 @@ export default function AppPage() {
                       const due = t.dueAt ? new Date(t.dueAt) : null;
                       const overdue = !!(due && due < new Date() && t.status !== "DONE" && t.status !== "CANCELLED");
                       const stLabel: Record<TaskStatus, string> = {
-                        PENDING: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ", IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ", DONE: "Р’С‹РїРѕР»РЅРµРЅРѕ", CANCELLED: "РћС‚РјРµРЅРµРЅР°",
+                        PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена",
                       };
                       return (
                         <div
@@ -3371,13 +3371,13 @@ export default function AppPage() {
                           </div>
                           {t.description && <div className="task-card-desc">{t.description}</div>}
                           <div className="task-card-meta">
-                            <span>рџ‘¤ {t.assignee.name || t.assignee.email}</span>
-                            <span>В·</span>
-                            <span>РѕС‚ {t.createdBy.name || t.createdBy.email}</span>
+                            <span>👤 {t.assignee.name || t.assignee.email}</span>
+                            <span>·</span>
+                            <span>от {t.createdBy.name || t.createdBy.email}</span>
                             {t.dueAt && (
                               <>
-                                <span>В·</span>
-                                <span className="mono" style={overdue ? { color: "var(--amber)" } : {}}>РґРѕ {new Date(t.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                <span>·</span>
+                                <span className="mono" style={overdue ? { color: "var(--amber)" } : {}}>до {new Date(t.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                               </>
                             )}
                           </div>
@@ -3385,15 +3385,15 @@ export default function AppPage() {
                             {isMine && t.status !== "DONE" && t.status !== "CANCELLED" && (
                               <>
                                 {t.status === "PENDING" && (
-                                  <button className="btn btn-secondary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "IN_PROGRESS" })}>Р’Р·СЏС‚СЊ РІ СЂР°Р±РѕС‚Сѓ</button>
+                                  <button className="btn btn-secondary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "IN_PROGRESS" })}>Взять в работу</button>
                                 )}
-                                <button className="btn btn-primary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "DONE" })}>Р’С‹РїРѕР»РЅРµРЅРѕ</button>
+                                <button className="btn btn-primary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "DONE" })}>Выполнено</button>
                               </>
                             )}
                             {isManager && (
-                              <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>РЈРґР°Р»РёС‚СЊ</button>
+                              <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>Удалить</button>
                             )}
-                            <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, marginLeft: "auto" }}>РћС‚РєСЂС‹С‚СЊ в†’</button>
+                            <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, marginLeft: "auto" }}>Открыть →</button>
                           </div>
                         </div>
                       );
@@ -3405,8 +3405,8 @@ export default function AppPage() {
                   <div className="empty-state-icon">
                     <svg width="24" height="24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                   </div>
-                  <div className="empty-state-title">РќРµС‚ Р·Р°РґР°С‡</div>
-                  <div className="empty-state-desc">{isManager ? "РЎРѕР·РґР°Р№С‚Рµ Р·Р°РґР°С‡Сѓ РґР»СЏ СЃРѕС‚СЂСѓРґРЅРёРєР° вЂ” РѕРЅ РїРѕР»СѓС‡РёС‚ РїРёСЃСЊРјРѕ" : "Р’Р°Рј РїРѕРєР° РЅРёС‡РµРіРѕ РЅРµ РЅР°Р·РЅР°С‡РёР»Рё"}</div>
+                  <div className="empty-state-title">Нет задач</div>
+                  <div className="empty-state-desc">{isManager ? "Создайте задачу для сотрудника — он получит письмо" : "Вам пока ничего не назначили"}</div>
                 </div>
               )}
               {taskModalOpen && isManager && (
@@ -3417,22 +3417,22 @@ export default function AppPage() {
                 >
                   <div className="card" style={{ width: 480, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
                     <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span className="card-title">РќРѕРІР°СЏ Р·Р°РґР°С‡Р°</span>
-                      <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>Г—</button>
+                      <span className="card-title">Новая задача</span>
+                      <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>×</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 14 }}>
                       <div>
-                        <div className="form-label">РќР°Р·РІР°РЅРёРµ *</div>
-                        <input className="form-input" value={taskFormTitle} onChange={(e) => setTaskFormTitle(e.target.value)} placeholder="РљСЂР°С‚РєРѕ, С‡С‚Рѕ СЃРґРµР»Р°С‚СЊ" />
+                        <div className="form-label">Название *</div>
+                        <input className="form-input" value={taskFormTitle} onChange={(e) => setTaskFormTitle(e.target.value)} placeholder="Кратко, что сделать" />
                       </div>
                       <div>
-                        <div className="form-label">РћРїРёСЃР°РЅРёРµ</div>
-                        <textarea className="form-input" value={taskFormDesc} onChange={(e) => setTaskFormDesc(e.target.value)} rows={3} placeholder="Р”РµС‚Р°Р»Рё" />
+                        <div className="form-label">Описание</div>
+                        <textarea className="form-input" value={taskFormDesc} onChange={(e) => setTaskFormDesc(e.target.value)} rows={3} placeholder="Детали" />
                       </div>
                       <div>
                         <div className="form-label">РСЃРїРѕР»РЅРёС‚РµР»СЊ *</div>
                         <select className="form-input" value={taskFormAssigneeId} onChange={(e) => setTaskFormAssigneeId(e.target.value)}>
-                          <option value="">Р’С‹Р±РµСЂРёС‚Рµ</option>
+                          <option value="">Выберите</option>
                           {taskUsersForSelect.map((u) => (
                             <option key={u.id} value={u.id}>{u.name || u.email} ({u.email})</option>
                           ))}
@@ -3440,17 +3440,17 @@ export default function AppPage() {
                       </div>
                       <div className="g2">
                         <div>
-                          <div className="form-label">РќР°С‡Р°Р»Рѕ</div>
+                          <div className="form-label">Начало</div>
                           <input className="form-input" type="datetime-local" value={taskFormStart} onChange={(e) => setTaskFormStart(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">РЎСЂРѕРє</div>
+                          <div className="form-label">Срок</div>
                           <input className="form-input" type="datetime-local" value={taskFormDue} onChange={(e) => setTaskFormDue(e.target.value)} />
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>РћС‚РјРµРЅР°</button>
-                        <button className="btn btn-primary" onClick={() => void createTaskFromModal()} disabled={!taskFormTitle.trim() || !taskFormAssigneeId}>РЎРѕР·РґР°С‚СЊ</button>
+                        <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>Отмена</button>
+                        <button className="btn btn-primary" onClick={() => void createTaskFromModal()} disabled={!taskFormTitle.trim() || !taskFormAssigneeId}>Создать</button>
                       </div>
                     </div>
                   </div>
@@ -3466,19 +3466,19 @@ export default function AppPage() {
               {/* Left: contacts / conversations */}
               <div className={`chat-sidebar${chatActiveUser ? " chat-sidebar--hidden" : ""}`}>
                 <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>РЎРѕРѕР±С‰РµРЅРёСЏ</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>Сообщения</div>
                   <button
                     className="btn btn-secondary"
                     style={{ height: 28, fontSize: 11, padding: "0 10px" }}
                     onClick={() => setChatShowContacts(v => !v)}
-                    title="РќРѕРІС‹Р№ С‡Р°С‚"
-                  >+ РќРѕРІС‹Р№</button>
+                    title="Новый чат"
+                  >+ Новый</button>
                 </div>
 
                 {/* New chat: pick a contact */}
                 {chatShowContacts && (
                   <div style={{ borderBottom: "1px solid var(--border)", maxHeight: 220, overflowY: "auto" }}>
-                    <div style={{ padding: "8px 12px 4px", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>РЎРѕС‚СЂСѓРґРЅРёРєРё</div>
+                    <div style={{ padding: "8px 12px 4px", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сотрудники</div>
                     {chatContacts.map(c => (
                       <div
                         key={c.id}
@@ -3503,8 +3503,8 @@ export default function AppPage() {
                 <div style={{ flex: 1, overflowY: "auto" }}>
                   {chatConversations.length === 0 && !chatShowContacts && (
                     <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
-                      <div style={{ fontSize: 28, marginBottom: 8 }}>рџ’¬</div>
-                      РќР°Р¶РјРёС‚Рµ В«+ РќРѕРІС‹Р№В» С‡С‚РѕР±С‹ РЅР°С‡Р°С‚СЊ РїРµСЂРµРїРёСЃРєСѓ
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+                      Нажмите «+ Новый» чтобы начать переписку
                     </div>
                   )}
                   {chatConversations.map(conv => {
@@ -3537,7 +3537,7 @@ export default function AppPage() {
                           </div>
                           {conv.lastMessage && (
                             <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                              {conv.lastMessage.sender.id === user?.id ? "Р’С‹: " : ""}{conv.lastMessage.body}
+                              {conv.lastMessage.sender.id === user?.id ? "Вы: " : ""}{conv.lastMessage.body}
                             </div>
                           )}
                         </div>
@@ -3557,8 +3557,8 @@ export default function AppPage() {
                 {!chatActiveUser ? (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-tertiary)", gap: 12 }}>
                     <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.2" viewBox="0 0 24 24" style={{ opacity: 0.3 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <div style={{ fontWeight: 600, fontSize: 15, opacity: 0.6 }}>Р’С‹Р±РµСЂРёС‚Рµ СЃРѕР±РµСЃРµРґРЅРёРєР°</div>
-                    <div style={{ fontSize: 13, opacity: 0.5 }}>Р’СЃРµ СЃРѕРѕР±С‰РµРЅРёСЏ С€РёС„СЂСѓСЋС‚СЃСЏ AES-256</div>
+                    <div style={{ fontWeight: 600, fontSize: 15, opacity: 0.6 }}>Выберите собеседника</div>
+                    <div style={{ fontSize: 13, opacity: 0.5 }}>Все сообщения шифруются AES-256</div>
                   </div>
                 ) : (
                   <>
@@ -3583,12 +3583,12 @@ export default function AppPage() {
                     {/* Messages */}
                     <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
                       {chatLoading && chatMessages.length === 0 ? (
-                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Загрузка…</div>
                       ) : chatMessages.length === 0 ? (
                         <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>рџ‘‹</div>
-                          <div style={{ fontWeight: 600, marginBottom: 4 }}>РќР°С‡РЅРёС‚Рµ РѕР±С‰РµРЅРёРµ</div>
-                          <div style={{ fontSize: 13 }}>РќР°РїРёС€РёС‚Рµ {chatActiveUser.name || chatActiveUser.email}</div>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>👋</div>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>Начните общение</div>
+                          <div style={{ fontSize: 13 }}>Напишите {chatActiveUser.name || chatActiveUser.email}</div>
                         </div>
                       ) : chatMessages.map((m, i) => {
                         const isMe = m.sender.id === user?.id;
@@ -3639,7 +3639,7 @@ export default function AppPage() {
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); } }}
-                        placeholder={`РќР°РїРёСЃР°С‚СЊ ${chatActiveUser.name || chatActiveUser.email}вЂ¦ (Enter вЂ” РѕС‚РїСЂР°РІРёС‚СЊ)`}
+                        placeholder={`Написать ${chatActiveUser.name || chatActiveUser.email}… (Enter — отправить)`}
                         rows={1}
                         style={{ flex: 1, resize: "none", minHeight: 40, maxHeight: 120, overflowY: "auto", lineHeight: 1.5 }}
                       />
@@ -3665,24 +3665,24 @@ export default function AppPage() {
               {/* Not configured banner */}
               {aiConfigured === false && (
                 <div style={{ marginBottom: 12, padding: "12px 16px", borderRadius: 12, background: "#f59e0b22", border: "1px solid #f59e0b55", fontSize: 13, color: "#f59e0b", flexShrink: 0 }}>
-                  вљ пёЏ <strong>AI РЅРµ РЅР°СЃС‚СЂРѕРµРЅ.</strong> РќР° СЃРµСЂРІРµСЂРµ РЅРµС‚ OPENAI_API_KEY. Р”РѕР±Р°РІСЊС‚Рµ РІ С„Р°Р№Р» <code>.env</code> РЅР° VPS:<br/>
+                  ⚠️ <strong>AI не настроен.</strong> На сервере нет OPENAI_API_KEY. Добавьте в файл <code>.env</code> на VPS:<br/>
                   <code style={{ display: "block", marginTop: 6, padding: "4px 8px", background: "#0005", borderRadius: 6, fontFamily: "monospace" }}>OPENAI_API_KEY=sk-proj-...</code>
-                  Р—Р°С‚РµРј: <code>docker compose up -d backend</code>
+                  Затем: <code>docker compose up -d backend</code>
                 </div>
               )}
 
               {/* Header */}
               <div className="card" style={{ padding: "16px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>вњ¦</div>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>✦</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>AI РђСЃСЃРёСЃС‚РµРЅС‚</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>AI Ассистент</div>
                   <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                    РЎРґРµР»РєРё, СЂР°СЃС…РѕРґС‹ Рё РєР°СЂС‚РѕС‡РєРё РєР»РёРµРЅС‚РѕРІ РёР· С‚РµРєСЃС‚Р° РёР»Рё РіРѕР»РѕСЃР° вЂ” РІ С‚РѕРј С‡РёСЃР»Рµ РІСЃС‚Р°РІРєР° СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ Р·РІРѕРЅРєРµ
+                    Сделки, расходы и карточки клиентов из текста или голоса — в том числе вставка уведомления о звонке
                   </div>
                 </div>
                 {agentHistory.length > 0 && (
                   <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { setAgentHistory([]); setAgentPending(null); }}>
-                    РћС‡РёСЃС‚РёС‚СЊ
+                    Очистить
                   </button>
                 )}
               </div>
@@ -3691,21 +3691,21 @@ export default function AppPage() {
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingBottom: 8 }}>
                 {agentHistory.length === 0 ? (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "40px 20px" }}>
-                    <div style={{ fontSize: 48 }}>вњ¦</div>
+                    <div style={{ fontSize: 48 }}>✦</div>
                     <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Р§РµРј РјРѕРіСѓ РїРѕРјРѕС‡СЊ?</div>
-                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>РќР°РґРёРєС‚СѓР№С‚Рµ РёР»Рё РЅР°РїРёС€РёС‚Рµ вЂ” РёР»Рё РІСЃС‚Р°РІСЊС‚Рµ РіРѕС‚РѕРІРѕРµ СѓРІРµРґРѕРјР»РµРЅРёРµ Рѕ Р·РІРѕРЅРєРµ: РїРѕРґРіРѕС‚РѕРІР»СЋ РєР°СЂС‚РѕС‡РєСѓ РєР»РёРµРЅС‚Р° РЅР° РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Чем могу помочь?</div>
+                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>Надиктуйте или напишите — или вставьте готовое уведомление о звонке: подготовлю карточку клиента на подтверждение</div>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 600 }}>
                       {(
                         [
-                          "Р—Р°РїРёС€Рё СЃРґРµР»РєСѓ: РІС‡РµСЂР° Р”Рё Рё РѕР»С… РІР·СЏР»Рё 6838 РѕС‚ eurocom 75/25, Р·Р°РєСЂС‹Р» РђРЅС‚",
-                          "РЎРєРѕР»СЊРєРѕ Р·Р°СЂР°Р±РѕС‚Р°Р» РєР°Р¶РґС‹Р№ РІРѕСЂРєРµСЂ Р·Р° СЌС‚РѕС‚ РјРµСЃСЏС†?",
-                          "Р—Р°РїРёС€Рё СЂР°СЃС…РѕРґ: Р°СЂРµРЅРґР° РѕС„РёСЃР° 500$",
-                          "РџРѕРєР°Р¶Рё СЃС‚Р°С‚РёСЃС‚РёРєСѓ Р·Р° РЅРµРґРµР»СЋ",
-                          "РљР°РєРѕР№ РґРѕС…РѕРґ Р·Р° Р°РїСЂРµР»СЊ?",
+                          "Запиши сделку: вчера Ди и олх взяли 6838 от eurocom 75/25, закрыл Ант",
+                          "Сколько заработал каждый воркер за этот месяц?",
+                          "Запиши расход: аренда офиса 500$",
+                          "Покажи статистику за неделю",
+                          "Какой доход за апрель?",
                           {
-                            label: "вњ… РљР»РёРµРЅС‚ РёР· СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ Р·РІРѕРЅРєРµ (РїСЂРёРјРµСЂ)",
+                            label: "✅ Клиент из уведомления о звонке (пример)",
                             text: "вњ… РќРѕРІС‹Р№ Р·РІРѕРЅРѕРє\n\nрџ‘¤РђСЃСЃРёСЃС‚РµРЅС‚: Robert Nowak PKO BP\n\nрџЏ¦Р‘Р°РЅРє: PKO BP\n\nрџ§ЌвЂЌв™ЂпёЏРљР»РёРµРЅС‚: Marta Rusowicz\n\nвЋпёЏРўРµР»РµС„РѕРЅ: +48503703469\n\nрџ“ќ Summary: РєР»РёРµРЅС‚РєР° Р·Р°СЏРІРёР»Р°, С‡С‚Рѕ РЅРµ РёРјРµРµС‚ СЃС‡С‘С‚Р° РІ PKO BP.\nвЏ° Р’СЂРµРјСЏ РЅР°С‡Р°Р»Р° Р·РІРѕРЅРєР°: 04.05.2026, 11:31",
                           },
                         ] as const
@@ -3728,7 +3728,7 @@ export default function AppPage() {
                       justifyContent: m.role === "user" ? "flex-end" : "flex-start",
                     }}>
                       {m.role === "assistant" && (
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, marginRight: 8, marginTop: 2 }}>вњ¦</div>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, marginRight: 8, marginTop: 2 }}>✦</div>
                       )}
                       <div style={{
                         maxWidth: "75%",
@@ -3746,15 +3746,15 @@ export default function AppPage() {
                         {m.role === "assistant" && m.pendingAction && agentPending && i === agentHistory.length - 1 && (
                           <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-light)" }}>
                             <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={confirmAgentAction}>
-                              вњ… РџРѕРґС‚РІРµСЂРґРёС‚СЊ
+                              ✅ Подтвердить
                             </button>
                             <button className="btn btn-secondary" style={{ fontSize: 13 }}
-                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "РћС‚РјРµРЅРµРЅРѕ. Р§С‚Рѕ РЅСѓР¶РЅРѕ РёР·РјРµРЅРёС‚СЊ?" }]); }}>
+                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено. Что нужно изменить?" }]); }}>
                               вњЏпёЏ РР·РјРµРЅРёС‚СЊ
                             </button>
                             <button className="btn btn-secondary" style={{ fontSize: 13, color: "var(--red)" }}
-                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "РћС‚РјРµРЅРµРЅРѕ." }]); }}>
-                              вњ• РћС‚РјРµРЅР°
+                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено." }]); }}>
+                              ✕ Отмена
                             </button>
                           </div>
                         )}
@@ -3764,12 +3764,12 @@ export default function AppPage() {
                 )}
                 {agentLoading && (
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>вњ¦</div>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✦</div>
                     <div style={{ padding: "12px 16px", borderRadius: "18px 18px 18px 4px", background: "var(--bg-card)", border: "1px solid var(--border-light)", fontSize: 14, color: "var(--text-tertiary)" }}>
                       <span style={{ display: "inline-flex", gap: 4 }}>
-                        <span style={{ animation: "pulse 1s ease-in-out infinite" }}>в—Џ</span>
-                        <span style={{ animation: "pulse 1s ease-in-out 0.2s infinite" }}>в—Џ</span>
-                        <span style={{ animation: "pulse 1s ease-in-out 0.4s infinite" }}>в—Џ</span>
+                        <span style={{ animation: "pulse 1s ease-in-out infinite" }}>●</span>
+                        <span style={{ animation: "pulse 1s ease-in-out 0.2s infinite" }}>●</span>
+                        <span style={{ animation: "pulse 1s ease-in-out 0.4s infinite" }}>●</span>
                       </span>
                     </div>
                   </div>
@@ -3784,7 +3784,7 @@ export default function AppPage() {
                     value={agentInput}
                     onChange={e => setAgentInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAgentMessage(); } }}
-                    placeholder="РќР°РїРёС€РёС‚Рµ РёР»Рё РЅР°РґРёРєС‚СѓР№С‚Рµ... (Enter вЂ” РѕС‚РїСЂР°РІРёС‚СЊ, Shift+Enter вЂ” РЅРѕРІР°СЏ СЃС‚СЂРѕРєР°)"
+                    placeholder="Напишите или надиктуйте... (Enter — отправить, Shift+Enter — новая строка)"
                     disabled={agentLoading}
                     rows={2}
                     style={{ flex: 1, resize: "none", lineHeight: 1.5, paddingTop: 10 }}
@@ -3793,7 +3793,7 @@ export default function AppPage() {
                     <button
                       onClick={startVoice}
                       disabled={agentLoading}
-                      title="Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ (Chrome/Edge)"
+                      title="Голосовой ввод (Chrome/Edge)"
                       style={{
                         width: 44, height: 44, borderRadius: 12, border: "none",
                         background: isListening ? "#ef4444" : "var(--bg-hover)",
@@ -3802,24 +3802,24 @@ export default function AppPage() {
                         boxShadow: isListening ? "0 0 0 4px #ef444433" : "none",
                       }}
                     >
-                      {isListening ? "вЏ№" : "рџЋ¤"}
+                      {isListening ? "⏹" : "🎤"}
                     </button>
                     <button
                       className="btn btn-primary"
                       onClick={() => sendAgentMessage()}
                       disabled={agentLoading || !agentInput.trim()}
                       style={{ width: 44, height: 44, padding: 0, borderRadius: 12, fontSize: 18 }}
-                    >в†’</button>
+                    >→</button>
                   </div>
                 </div>
                 {isListening && (
                   <div style={{ marginTop: 6, fontSize: 12, color: "#ef4444", display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1s ease-in-out infinite" }} />
-                    Р“РѕРІРѕСЂРёС‚Рµ... (Chrome СЃР»СѓС€Р°РµС‚)
+                    Говорите... (Chrome слушает)
                   </div>
                 )}
                 <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-tertiary)" }}>
-                  РњРѕР¶РЅРѕ РІСЃС‚Р°РІРёС‚СЊ СѓРІРµРґРѕРјР»РµРЅРёРµ Рѕ Р·РІРѕРЅРєРµ (РєР»РёРµРЅС‚, С‚РµР»РµС„РѕРЅ, Р±Р°РЅРє, summary) вЂ” РїРѕСЃР»Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РїРѕСЏРІРёС‚СЃСЏ РєР°СЂС‚РѕС‡РєР° РІ В«РљР»РёРµРЅС‚Р°С…В»
+                  Можно вставить уведомление о звонке (клиент, телефон, банк, summary) — после подтверждения появится карточка в «Клиентах»
                 </div>
               </div>
 
@@ -3832,20 +3832,20 @@ export default function AppPage() {
               {!staffMember && (
                 <div className="page-header">
                   <div className="page-header-left">
-                    <div className="page-header-title">РЎРѕС‚СЂСѓРґРЅРёРєРё</div>
-                    <div className="page-header-sub">РЈРїСЂР°РІР»СЏР№С‚Рµ РєРѕРјР°РЅРґРѕР№, РѕС„РёСЃР°РјРё Рё СЃС‚Р°С‚РёСЃС‚РёРєРѕР№ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ</div>
+                    <div className="page-header-title">Сотрудники</div>
+                    <div className="page-header-sub">Управляйте командой, офисами и статистикой сотрудников</div>
                   </div>
                 </div>
               )}
               {staffLoading ? (
-                <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
+                <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
               ) : staffMember ? (
                 // ---- Member detail view ----
                 <div>
                   <button className="btn btn-secondary" style={{ marginBottom: 20 }}
-                    onClick={() => setStaffMember(null)}>в†ђ РќР°Р·Р°Рґ Рє СЃРїРёСЃРєСѓ</button>
+                    onClick={() => setStaffMember(null)}>← Назад к списку</button>
                   {staffMemberLoading ? (
-                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
+                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
                   ) : (
                     <div style={{ display: "grid", gap: 16, maxWidth: 760 }}>
                       {/* profile card */}
@@ -3872,7 +3872,7 @@ export default function AppPage() {
                                 </span>
                               )}
                               <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--accent)22", fontSize: 12, color: "var(--accent)" }}>
-                                {({ SUPER_ADMIN: "РЎСѓРїРµСЂ РђРґРјРёРЅ", ADMIN: "РђРґРјРёРЅ", MANAGER: "РњРµРЅРµРґР¶РµСЂ", WORKER: "Р Р°Р±РѕС‚РЅРёРє" } as Record<string,string>)[staffMember.role] ?? staffMember.role}
+                                {({ SUPER_ADMIN: "Супер Админ", ADMIN: "Админ", MANAGER: "Менеджер", WORKER: "Работник" } as Record<string,string>)[staffMember.role] ?? staffMember.role}
                               </span>
                               {staffMember.organization && (
                                 <span style={{ padding: "3px 10px", borderRadius: 20, background: "var(--bg-hover)", fontSize: 12, color: "var(--text-secondary)" }}>
@@ -3886,7 +3886,7 @@ export default function AppPage() {
                         {(staffMember.phone || staffMember.telegram || staffMember.contacts) && (
                           <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color)", display: "flex", gap: 20, flexWrap: "wrap" }}>
                             {staffMember.phone && (
-                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>РўРµР»РµС„РѕРЅ</div>
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Телефон</div>
                                 <div style={{ fontSize: 13 }}>{staffMember.phone}</div></div>
                             )}
                             {staffMember.telegram && (
@@ -3894,7 +3894,7 @@ export default function AppPage() {
                                 <div style={{ fontSize: 13 }}>{staffMember.telegram}</div></div>
                             )}
                             {staffMember.contacts && (
-                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>РљРѕРЅС‚Р°РєС‚С‹</div>
+                              <div><div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>Контакты</div>
                                 <div style={{ fontSize: 13 }}>{staffMember.contacts}</div></div>
                             )}
                           </div>
@@ -3904,11 +3904,11 @@ export default function AppPage() {
                       {/* extra orgs (memberships) */}
                       {isAdmin && (
                         <div className="card" style={{ padding: "16px 20px" }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>РћС„РёСЃС‹ СЃРѕС‚СЂСѓРґРЅРёРєР°</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Офисы сотрудника</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                             {/* Primary org */}
                             <span style={{ padding: "4px 12px", borderRadius: 20, background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
-                              {staffMember.organization?.name ?? "вЂ”"} (РѕСЃРЅРѕРІРЅРѕР№)
+                              {staffMember.organization?.name ?? "—"} (основной)
                             </span>
                             {/* Extra orgs */}
                             {(staffMember.extraMemberships ?? []).map((m: any) => (
@@ -3916,7 +3916,7 @@ export default function AppPage() {
                                 {m.organization.name}
                                 {isAdmin && (
                                   <span style={{ cursor: "pointer", color: "var(--text-tertiary)", fontWeight: 700 }}
-                                    onClick={() => removeMembership(staffMember.id, m.organizationId)}>Г—</span>
+                                    onClick={() => removeMembership(staffMember.id, m.organizationId)}>×</span>
                                 )}
                               </span>
                             ))}
@@ -3930,7 +3930,7 @@ export default function AppPage() {
                               return available.length > 0 ? (
                                 <select className="form-input" style={{ width: "auto", fontSize: 12, height: 30, padding: "0 8px" }}
                                   value="" onChange={e => { if (e.target.value) addMembership(staffMember.id, e.target.value); }}>
-                                  <option value="">+ Р”РѕР±Р°РІРёС‚СЊ РІ РѕС„РёСЃ</option>
+                                  <option value="">+ Добавить в офис</option>
                                   {available.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                                 </select>
                               ) : null;
@@ -3938,7 +3938,7 @@ export default function AppPage() {
                           </div>
                           {(staffMember.extraMemberships ?? []).length > 0 && (
                             <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
-                              РЎРѕС‚СЂСѓРґРЅРёРє СѓС‡Р°СЃС‚РІСѓРµС‚ РІ СЃРґРµР»РєР°С… Рё РїРѕР»СѓС‡Р°РµС‚ РІС‹РїР»Р°С‚С‹ РІ {1 + (staffMember.extraMemberships?.length ?? 0)} РѕС„РёСЃР°С…
+                              Сотрудник участвует в сделках и получает выплаты в {1 + (staffMember.extraMemberships?.length ?? 0)} офисах
                             </div>
                           )}
                         </div>
@@ -3953,10 +3953,10 @@ export default function AppPage() {
                           <>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
                               {[
-                                { label: "РЎРґРµР»РѕРє", value: staffMember.dealsCount },
-                                { label: "Р’С‹РїР»Р°С‚С‹ (СЃРґРµР»РєРё)", value: `$${staffMember.totalPayout}` },
-                                { label: "РќР°С‡РёСЃР»РµРЅРѕ (Р—Рџ)", value: empSalary ? `$${empSalary.totalAccrued}` : salaryLoading ? "вЂ¦" : "вЂ”" },
-                                { label: "Р—Р°РґР°С‡Рё (Р°РєС‚РёРІ.)", value: tasksLoading ? "вЂ¦" : activeTasks.length },
+                                { label: "Сделок", value: staffMember.dealsCount },
+                                { label: "Выплаты (сделки)", value: `$${staffMember.totalPayout}` },
+                                { label: "Начислено (ЗП)", value: empSalary ? `$${empSalary.totalAccrued}` : salaryLoading ? "…" : "—" },
+                                { label: "Задачи (актив.)", value: tasksLoading ? "…" : activeTasks.length },
                               ].map((s) => (
                                 <div key={s.label} className="card" style={{ padding: "16px 18px" }}>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{s.label}</div>
@@ -3968,7 +3968,7 @@ export default function AppPage() {
                             {/* Salary block */}
                             <div className="card" style={{ padding: "20px 24px" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600 }}>Р—Р°СЂРїР»Р°С‚Р° ({salaryPeriod})</div>
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>Зарплата ({salaryPeriod})</div>
                                 {isAdmin && (
                                   <button
                                     type="button"
@@ -3985,14 +3985,14 @@ export default function AppPage() {
                                 )}
                               </div>
                               {salaryLoading ? (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
                               ) : empSalary ? (
                                 <>
                                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
                                     {[
-                                      { label: "РќР°С‡РёСЃР»РµРЅРѕ", val: `$${empSalary.totalAccrued}`, color: "var(--text-primary)" },
-                                      { label: "Р’С‹РїР»Р°С‡РµРЅРѕ", val: `$${empSalary.paidUsd}`, color: "#22c55e" },
-                                      { label: "Р‘Р°Р»Р°РЅСЃ", val: `$${empSalary.balance}`, color: empSalary.balance < 0 ? "#ef4444" : "var(--text-primary)" },
+                                      { label: "Начислено", val: `$${empSalary.totalAccrued}`, color: "var(--text-primary)" },
+                                      { label: "Выплачено", val: `$${empSalary.paidUsd}`, color: "#22c55e" },
+                                      { label: "Баланс", val: `$${empSalary.balance}`, color: empSalary.balance < 0 ? "#ef4444" : "var(--text-primary)" },
                                     ].map(m => (
                                       <div key={m.label} style={{ background: "var(--bg-hover)", borderRadius: 8, padding: "10px 14px" }}>
                                         <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{m.label}</div>
@@ -4002,21 +4002,21 @@ export default function AppPage() {
                                   </div>
                                   {empSalary.salaryConfig && (
                                     <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 16, flexWrap: "wrap" }}>
-                                      <span>РЎС‚Р°РІРєР°: <b>{empSalary.salaryConfig.baseAmount} {empSalary.salaryConfig.currency}</b></span>
-                                      <span>Р”РµРЅСЊ РІС‹РїР»Р°С‚С‹: <b>{empSalary.salaryConfig.payDay}</b></span>
-                                      <span>Р‘РѕРЅСѓСЃС‹ РїРѕ СЃРґРµР»РєР°Рј: <b>${empSalary.dealEarningsUsd}</b></span>
+                                      <span>Ставка: <b>{empSalary.salaryConfig.baseAmount} {empSalary.salaryConfig.currency}</b></span>
+                                      <span>День выплаты: <b>{empSalary.salaryConfig.payDay}</b></span>
+                                      <span>Бонусы по сделкам: <b>${empSalary.dealEarningsUsd}</b></span>
                                     </div>
                                   )}
                                   {empSalary.payments?.length > 0 && (
                                     <div style={{ marginTop: 14 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Р’С‹РїР»Р°С‚С‹</div>
+                                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Выплаты</div>
                                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                         {empSalary.payments.slice(0, 5).map((p: any) => (
                                           <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "6px 10px", background: "var(--bg-hover)", borderRadius: 6 }}>
-                                            <span style={{ color: "var(--text-secondary)" }}>{({ BASE: "РЎС‚Р°РІРєР°", DEAL_BONUS: "Р‘РѕРЅСѓСЃ", ADVANCE: "РђРІР°РЅСЃ", MANUAL: "Р’СЂСѓС‡РЅСѓСЋ" } as Record<string,string>)[p.type] ?? p.type}</span>
+                                            <span style={{ color: "var(--text-secondary)" }}>{({ BASE: "Ставка", DEAL_BONUS: "Бонус", ADVANCE: "Аванс", MANUAL: "Вручную" } as Record<string,string>)[p.type] ?? p.type}</span>
                                             <span style={{ fontWeight: 600 }}>{p.amount} {p.currency}</span>
                                             <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: p.isPaid ? "#22c55e22" : "#f59e0b22", color: p.isPaid ? "#22c55e" : "#f59e0b" }}>
-                                              {p.isPaid ? "Р’С‹РїР»Р°С‡РµРЅРѕ" : "РћР¶РёРґР°РµС‚"}
+                                              {p.isPaid ? "Выплачено" : "Ожидает"}
                                             </span>
                                           </div>
                                         ))}
@@ -4025,17 +4025,17 @@ export default function AppPage() {
                                   )}
                                 </>
                               ) : (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°СЂРїР»Р°С‚Р° РЅРµ РЅР°СЃС‚СЂРѕРµРЅР°. {isAdmin ? "РќР°Р¶РјРёС‚Рµ В«РќР°СЃС‚СЂРѕРёС‚СЊВ» С‡С‚РѕР±С‹ Р·Р°РґР°С‚СЊ СЃС‚Р°РІРєСѓ." : ""}</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Зарплата не настроена. {isAdmin ? "Нажмите «Настроить» чтобы задать ставку." : ""}</div>
                               )}
                             </div>
 
                             {/* Tasks block */}
                             <div className="card" style={{ padding: "20px 24px" }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Р—Р°РґР°С‡Рё</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Задачи</div>
                               {tasksLoading ? (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
                               ) : empTasks.length === 0 ? (
-                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>РќРµС‚ Р·Р°РґР°С‡</div>
+                                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Нет задач</div>
                               ) : (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                   {empTasks.slice(0, 10).map((t: any) => (
@@ -4045,7 +4045,7 @@ export default function AppPage() {
                                       <span style={{ marginLeft: 12, padding: "2px 8px", borderRadius: 10, fontSize: 11, flexShrink: 0,
                                         background: t.status === "DONE" ? "#22c55e22" : t.status === "CANCELLED" ? "#ef444422" : t.status === "IN_PROGRESS" ? "#3b82f622" : "#f59e0b22",
                                         color: t.status === "DONE" ? "#22c55e" : t.status === "CANCELLED" ? "#ef4444" : t.status === "IN_PROGRESS" ? "#3b82f6" : "#f59e0b" }}>
-                                        {({ TODO: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ", IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ", DONE: "Р“РѕС‚РѕРІРѕ", CANCELLED: "РћС‚РјРµРЅРµРЅР°" } as Record<string,string>)[t.status] ?? t.status}
+                                        {({ TODO: "К выполнению", IN_PROGRESS: "В работе", DONE: "Готово", CANCELLED: "Отменена" } as Record<string,string>)[t.status] ?? t.status}
                                       </span>
                                     </div>
                                   ))}
@@ -4059,12 +4059,12 @@ export default function AppPage() {
                       {/* recent deals */}
                       {staffMember.recentDeals?.length > 0 && (
                         <div className="card" style={{ padding: "20px 24px" }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>РџРѕСЃР»РµРґРЅРёРµ СЃРґРµР»РєРё</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Последние сделки</div>
                           <div style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                               <thead>
                                 <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                                  {["РќР°Р·РІР°РЅРёРµ", "Р”Р°С‚Р°", "РЎС‚Р°С‚СѓСЃ", "РЎС‚Р°РІРєР° %", "Р’С‹РїР»Р°С‚Р°"].map(h => (
+                                  {["Название", "Дата", "Статус", "Ставка %", "Выплата"].map(h => (
                                     <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "var(--text-tertiary)", fontWeight: 500, fontSize: 11 }}>{h}</th>
                                   ))}
                                 </tr>
@@ -4072,11 +4072,11 @@ export default function AppPage() {
                               <tbody>
                                 {staffMember.recentDeals.map((d: any) => (
                                   <tr key={d.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                                    <td style={{ padding: "8px 8px" }}>{d.title || d.templateName || "вЂ”"}</td>
-                                    <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "вЂ”"}</td>
+                                    <td style={{ padding: "8px 8px" }}>{d.title || d.templateName || "—"}</td>
+                                    <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru-RU") : "—"}</td>
                                     <td style={{ padding: "8px 8px" }}>
                                       <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: d.status === "DONE" ? "#22c55e22" : d.status === "CANCELLED" ? "#ef444422" : "#f59e0b22", color: d.status === "DONE" ? "#22c55e" : d.status === "CANCELLED" ? "#ef4444" : "#f59e0b" }}>
-                                        {d.status === "DONE" ? "Р—Р°РєСЂС‹С‚Р°" : d.status === "CANCELLED" ? "РћС‚РјРµРЅРµРЅР°" : "Р’ СЂР°Р±РѕС‚Рµ"}
+                                        {d.status === "DONE" ? "Закрыта" : d.status === "CANCELLED" ? "Отменена" : "В работе"}
                                       </span>
                                     </td>
                                     <td style={{ padding: "8px 8px", color: "var(--text-tertiary)" }}>{d.pct}%</td>
@@ -4095,7 +4095,7 @@ export default function AppPage() {
                 // ---- SUPER_ADMIN grouped view ----
                 <div style={{ display: "grid", gap: 24 }}>
                   {(!staffData || staffData.length === 0) ? (
-                    <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>РќРµС‚ РґР°РЅРЅС‹С…</div>
+                    <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет данных</div>
                   ) : staffData.map((group: any) => (
                     <div key={group.org.id} className="card" style={{ padding: "20px 24px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -4104,7 +4104,7 @@ export default function AppPage() {
                         </div>
                         <div>
                           <div style={{ fontSize: 16, fontWeight: 700 }}>{group.org.name}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{group.members.length} СЃРѕС‚СЂ.</div>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{group.members.length} сотр.</div>
                         </div>
                       </div>
                       <StaffTable members={group.members} onSelect={(id: string) => loadStaffMember(id)} />
@@ -4114,9 +4114,9 @@ export default function AppPage() {
               ) : (
                 // ---- ADMIN single office view ----
                 <div className="card" style={{ padding: "20px 24px" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>РЎРѕС‚СЂСѓРґРЅРёРєРё РѕС„РёСЃР°</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Сотрудники офиса</div>
                   {(!staffData || staffData.length === 0) ? (
-                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>РќРµС‚ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ</div>
+                    <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников</div>
                   ) : (
                     <StaffTable members={staffData} onSelect={(id: string) => loadStaffMember(id)} />
                   )}
@@ -4168,7 +4168,7 @@ export default function AppPage() {
 
           {/* ===== SALARY ===== */}
           {tab === "salary" ? (() => {
-            const ROLE_LABELS_S: Record<string, string> = { ADMIN: "РђРґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ", MANAGER: "РњРµРЅРµРґР¶РµСЂ", WORKER: "Р’РѕСЂРєРµСЂ", SUPER_ADMIN: "РЎСѓРїРµСЂ-Р°РґРјРёРЅ" };
+            const ROLE_LABELS_S: Record<string, string> = { ADMIN: "Администратор", MANAGER: "Менеджер", WORKER: "Воркер", SUPER_ADMIN: "Супер-админ" };
             const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
             const fmtDec = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
@@ -4176,7 +4176,7 @@ export default function AppPage() {
             const totalDebt = salaryData.reduce((s, e) => s + Math.max(0, e.balance ?? 0), 0) + Math.max(0, salaryAiPartner?.balance ?? 0);
             const totalPaid = salaryData.reduce((s, e) => s + (e.paidUsd ?? 0), 0) + (salaryAiPartner?.paidUsd ?? 0);
 
-            // в”Ђв”Ђ CABINET VIEW в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ── CABINET VIEW ──────────────────────────────────────────────
             if (selectedSalaryEmp) {
               const emp = selectedSalaryEmp;
               const isAi = !!emp.isAiPartner;
@@ -4191,7 +4191,7 @@ export default function AppPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <button className="btn btn-ghost" onClick={() => setSelectedSalaryEmp(null)} style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
                       <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-                      Р’СЃРµ СЃРѕС‚СЂСѓРґРЅРёРєРё
+                      Все сотрудники
                     </button>
                     <div style={{ width: 1, height: 24, background: "var(--border)" }} />
                     <div style={{ width: 36, height: 36, borderRadius: "50%", background: avatarColor + "22", color: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
@@ -4211,21 +4211,21 @@ export default function AppPage() {
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
                     {(isAi ? [
                       { label: "РќР°С‡РёСЃР»РµРЅРѕ", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Р”РѕР»СЏ РР РїРѕ СЃРґРµР»РєР°Рј РѕС„РёСЃР°: $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#8B5CF6" },
-                      { label: "Р’С‹РїР»Р°С‡РµРЅРѕ", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} РїРѕРґС‚РІ. РІС‹РїР»Р°С‚`, color: "#059669" },
+                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
                       { label: isInDebt ? "Рљ РІС‹РїР»Р°С‚Рµ" : "Р‘Р°Р»Р°РЅСЃ", value: `${isInDebt ? "в€’" : "+"}$${fmt(Math.abs(debt))}`, sub: "РЎС‡С‘С‚ РР РїСЂРёРІСЏР·Р°РЅ Рє РѕС„РёСЃСѓ", color: isInDebt ? "#DC2626" : "#059669" },
                     ] : [
-                      { label: "РќР°С‡РёСЃР»РµРЅРѕ", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: (() => {
+                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: (() => {
                           const baseFull = emp.baseUsd ?? 0;
                           const basePart = emp.baseAccruedUsd ?? 0;
                           const pending = Math.max(0, baseFull - basePart);
                           const dealPart = emp.dealEarningsUsd ?? 0;
                           if (cfg && pending > 0 && salaryPeriod === new Date().toISOString().slice(0, 7)) {
-                            return `РЎС‚Р°РІРєР° $${fmt(basePart)} (РµС‰С‘ $${fmt(pending)} СЃ ${cfg.payDay}-РіРѕ) + СЃРґРµР»РєРё $${fmtDec(dealPart)}`;
+                            return `Ставка $${fmt(basePart)} (ещё $${fmt(pending)} с ${cfg.payDay}-го) + сделки $${fmtDec(dealPart)}`;
                           }
-                          return `РЎС‚Р°РІРєР° $${fmt(basePart || baseFull)} + СЃРґРµР»РєРё $${fmtDec(dealPart)}`;
+                          return `Ставка $${fmt(basePart || baseFull)} + сделки $${fmtDec(dealPart)}`;
                         })(), color: "#6366F1" },
-                      { label: "Р’С‹РїР»Р°С‡РµРЅРѕ", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} РїРѕРґС‚РІ. РІС‹РїР»Р°С‚ Р·Р° ${salaryPeriod}`, color: "#059669" },
-                      { label: isInDebt ? "Р”РѕР»Рі (РЅРµ РІС‹РїР»Р°С‡РµРЅРѕ)" : "Р‘Р°Р»Р°РЅСЃ", value: `${isInDebt ? "в€’" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? ((debt > Math.max(0, (emp.totalAccrued ?? 0) - (emp.paidUsd ?? 0)) + 0.01) ? "РЎ СѓС‡С‘С‚РѕРј РїСЂРѕС€Р»С‹С… РјРµСЃСЏС†РµРІ" : "РўСЂРµР±СѓРµС‚ РІС‹РїР»Р°С‚С‹") : "РџРµСЂРµРїР»Р°С‚Р° РёР»Рё СЂРѕРІРЅРѕ", color: isInDebt ? "#DC2626" : "#059669" },
+                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат за ${salaryPeriod}`, color: "#059669" },
+                      { label: isInDebt ? "Долг (не выплачено)" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? ((debt > Math.max(0, (emp.totalAccrued ?? 0) - (emp.paidUsd ?? 0)) + 0.01) ? "С учётом прошлых месяцев" : "Требует выплаты") : "Переплата или ровно", color: isInDebt ? "#DC2626" : "#059669" },
                     ]).map(m => (
                       <div key={m.label} style={{ background: "var(--bg-card)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
@@ -4257,20 +4257,20 @@ export default function AppPage() {
                         ) : cfg ? (
                           <>
                             <div>
-                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>РЎС‚Р°РІРєР° РІ РјРµСЃСЏС†</div>
+                              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Ставка в месяц</div>
                               <div style={{ fontSize: 22, fontWeight: 700 }}>{Number(cfg.baseAmount).toLocaleString()} <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>{cfg.currency}</span></div>
-                              {cfg.currency !== "USD" && <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>в‰€ ${fmt(emp.baseUsd ?? 0)} USD</div>}
+                              {cfg.currency !== "USD" && <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>≈ ${fmt(emp.baseUsd ?? 0)} USD</div>}
                             </div>
                             <div style={{ display: "flex", gap: 20 }}>
                               <div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Р”РµРЅСЊ РІС‹РїР»Р°С‚С‹</div>
-                                <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.payDay}-Рµ</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>День выплаты</div>
+                                <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.payDay}-е</div>
                                 {salaryPeriod === new Date().toISOString().slice(0, 7) && !(emp.baseAccrued || (emp.baseAccruedUsd ?? 0) > 0) && (
-                                  <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}>РЎС‚Р°РІРєР° РІРѕР№РґС‘С‚ РІ РЅР°С‡РёСЃР»РµРЅРёРµ {cfg.payDay}-РіРѕ С‡РёСЃР»Р°</div>
+                                  <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}>Ставка войдёт в начисление {cfg.payDay}-го числа</div>
                                 )}
                               </div>
                               <div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Р’Р°Р»СЋС‚Р°</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Валюта</div>
                                 <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.currency}</div>
                               </div>
                             </div>
@@ -4282,25 +4282,25 @@ export default function AppPage() {
                           </>
                         ) : (
                           <div style={{ padding: "24px 0", textAlign: "center" }}>
-                            <div style={{ fontSize: 32, marginBottom: 8 }}>рџ’°</div>
-                            <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 14 }}>РЎС‚Р°РІРєР° РЅРµ РЅР°СЃС‚СЂРѕРµРЅР°</div>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 14 }}>Ставка не настроена</div>
                             <button type="button" className="btn btn-primary" style={{ fontSize: 12 }}
                               onClick={() => openSalaryConfigModal(emp.userId, emp.name || emp.email, null)}>
-                              РЈСЃС‚Р°РЅРѕРІРёС‚СЊ СЃС‚Р°РІРєСѓ
+                              Установить ставку
                             </button>
                           </div>
                         )}
 
                         {/* Deal earnings breakdown */}
                         <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 14 }}>
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>РЎРґРµР»РєРё Р·Р° {salaryPeriod}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сделки за {salaryPeriod}</div>
                           {emp.dealEarningsUsd > 0 ? (
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Р—Р°СЂР°Р±РѕС‚РѕРє РїРѕ СЃРґРµР»РєР°Рј</span>
+                              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Заработок по сделкам</span>
                               <span style={{ fontWeight: 700, color: "#059669", fontSize: 15 }}>${fmtDec(emp.dealEarningsUsd)}</span>
                             </div>
                           ) : (
-                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>РќРµС‚ СЃРґРµР»РѕРє Р·Р° РїРµСЂРёРѕРґ</div>
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Нет сделок за период</div>
                           )}
                         </div>
                       </div>
@@ -4312,16 +4312,16 @@ export default function AppPage() {
                         <div style={{ fontWeight: 600, fontSize: 14 }}>РСЃС‚РѕСЂРёСЏ РІС‹РїР»Р°С‚ вЂ” {salaryPeriod}</div>
                         <button type="button" className="btn btn-primary" style={{ fontSize: 12 }}
                           onClick={() => openSalaryPaymentModal(emp.userId, emp.name || emp.email, user?.activeOrganizationId ?? "", cfg?.currency ?? "USD")}>
-                          + Р”РѕР±Р°РІРёС‚СЊ РІС‹РїР»Р°С‚Сѓ
+                          + Добавить выплату
                         </button>
                       </div>
 
                       <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
                         {emp.payments.length === 0 ? (
                           <div style={{ padding: "40px 0", textAlign: "center" }}>
-                            <div style={{ fontSize: 28, marginBottom: 8 }}>рџ“‹</div>
-                            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Р’С‹РїР»Р°С‚ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РЅРµС‚</div>
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>РќР°Р¶РјРёС‚Рµ В«+ Р”РѕР±Р°РІРёС‚СЊ РІС‹РїР»Р°С‚СѓВ», С‡С‚РѕР±С‹ Р·Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ</div>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Выплат за этот период нет</div>
+                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Нажмите «+ Добавить выплату», чтобы зафиксировать</div>
                           </div>
                         ) : (
                           <div style={{ display: "grid", gap: 8 }}>
@@ -4337,14 +4337,14 @@ export default function AppPage() {
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                     <span style={{ fontWeight: 700, fontSize: 15 }}>{p.amount.toLocaleString()} {p.currency}</span>
-                                    {p.currency !== "USD" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>в‰€ ${fmt(p.amountUsd)}</span>}
+                                    {p.currency !== "USD" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>≈ ${fmt(p.amountUsd)}</span>}
                                     <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "var(--accent-light)", color: "var(--accent)", fontWeight: 500 }}>{SALARY_PAYMENT_TYPES[p.type] ?? p.type}</span>
-                                    {p.isPaid && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(5,150,105,0.12)", color: "#059669", fontWeight: 600 }}>вњ“ Р’С‹РїР»Р°С‡РµРЅРѕ</span>}
+                                    {p.isPaid && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, background: "rgba(5,150,105,0.12)", color: "#059669", fontWeight: 600 }}>✓ Выплачено</span>}
                                   </div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
                                     {p.note && <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{p.note}</span>}
                                     <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{new Date(p.createdAt).toLocaleDateString("ru-RU")}</span>
-                                    {p.isPaid && p.paidAt && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>В· РІС‹РїР»Р°С‡РµРЅРѕ {new Date(p.paidAt).toLocaleDateString("ru-RU")}</span>}
+                                    {p.isPaid && p.paidAt && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>· выплачено {new Date(p.paidAt).toLocaleDateString("ru-RU")}</span>}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -4352,11 +4352,11 @@ export default function AppPage() {
                                     style={{ padding: "5px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
                                       background: p.isPaid ? "rgba(220,38,38,0.1)" : "rgba(5,150,105,0.12)",
                                       color: p.isPaid ? "#DC2626" : "#059669" }}>
-                                    {p.isPaid ? "РћС‚РјРµРЅРёС‚СЊ" : "Р’С‹РїР»Р°С‚РёС‚СЊ"}
+                                    {p.isPaid ? "Отменить" : "Выплатить"}
                                   </button>
                                   <button onClick={() => deleteSalaryPayment(p.id)}
                                     style={{ padding: "5px 8px", borderRadius: 7, border: "none", cursor: "pointer", background: "rgba(220,38,38,0.08)", color: "#DC2626", fontSize: 13 }}>
-                                    вњ•
+                                    ✕
                                   </button>
                                 </div>
                               </div>
@@ -4371,27 +4371,27 @@ export default function AppPage() {
               );
             }
 
-            // в”Ђв”Ђ LIST VIEW в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ── LIST VIEW ─────────────────────────────────────────────────
             return (
               <div style={{ display: "grid", gap: 16 }}>
                 <div className="page-header">
                   <div className="page-header-left">
-                    <div className="page-header-title">Р—Р°СЂРїР»Р°С‚Р°</div>
-                    <div className="page-header-sub">РЈС‡С‘С‚ Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°, РґРѕР»РіРѕРІ Рё РІС‹РїР»Р°С‚ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј</div>
+                    <div className="page-header-title">Зарплата</div>
+                    <div className="page-header-sub">Учёт зарплатного фонда, долгов и выплат сотрудникам</div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input type="month" value={salaryPeriod}
                       onChange={e => { setSalaryPeriod(e.target.value); loadSalary(e.target.value); }}
                       style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }} />
-                    <button className="btn btn-secondary" onClick={() => loadSalary()}>РћР±РЅРѕРІРёС‚СЊ</button>
+                    <button className="btn btn-secondary" onClick={() => loadSalary()}>Обновить</button>
                   </div>
                 </div>
 
                 {/* Summary strip */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
                   {[
-                    { label: "Р¤РѕРЅРґ Р—Рџ Р·Р° РїРµСЂРёРѕРґ", value: `$${fmt(totalFund)}`, sub: "РЎС‚Р°РІРєРё + Р·Р°СЂР°Р±РѕС‚РѕРє РїРѕ СЃРґРµР»РєР°Рј", color: "#6366F1", bg: "rgba(99,102,241,0.07)" },
-                    { label: "Р”РѕР»Рі СЃРѕС‚СЂСѓРґРЅРёРєР°Рј", value: `$${fmt(totalDebt)}`, sub: totalDebt > 0 ? `РЈ ${salaryData.filter((e: any) => (e.balance ?? 0) > 0).length} СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РµСЃС‚СЊ РґРѕР»Рі` : "Р’СЃРµ РґРѕР»РіРё РїРѕРіР°С€РµРЅС‹", color: totalDebt > 0 ? "#DC2626" : "#059669", bg: totalDebt > 0 ? "rgba(220,38,38,0.06)" : "rgba(5,150,105,0.06)" },
+                    { label: "Фонд ЗП за период", value: `$${fmt(totalFund)}`, sub: "Ставки + заработок по сделкам", color: "#6366F1", bg: "rgba(99,102,241,0.07)" },
+                    { label: "Долг сотрудникам", value: `$${fmt(totalDebt)}`, sub: totalDebt > 0 ? `У ${salaryData.filter((e: any) => (e.balance ?? 0) > 0).length} сотрудников есть долг` : "Все долги погашены", color: totalDebt > 0 ? "#DC2626" : "#059669", bg: totalDebt > 0 ? "rgba(220,38,38,0.06)" : "rgba(5,150,105,0.06)" },
                     { label: "РС‚РѕРіРѕ РІС‹РїР»Р°С‡РµРЅРѕ", value: `$${fmt(totalPaid)}`, sub: "РџРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РІС‹РїР»Р°С‚С‹", color: "#059669", bg: "rgba(5,150,105,0.06)" },
                   ].map(m => (
                     <div key={m.label} style={{ padding: "18px 22px", borderRadius: 14, background: m.bg, border: `1px solid ${m.color}22` }}>
@@ -4408,17 +4408,17 @@ export default function AppPage() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto", padding: "12px 20px", gap: 8, alignItems: "center", cursor: "pointer" }}
                       onClick={() => setSelectedSalaryEmp(salaryAiPartner)}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(139,92,246,0.15)", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>рџ¤–</div>
-                        <div><div style={{ fontWeight: 600 }}>{salaryAiPartner.name}</div><div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Р”РѕР»СЏ РїРѕ СЃРґРµР»РєР°Рј</div></div>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(139,92,246,0.15)", color: "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>🤖</div>
+                        <div><div style={{ fontWeight: 600 }}>{salaryAiPartner.name}</div><div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Доля по сделкам</div></div>
                       </div>
-                      <div style={{ textAlign: "right", color: "var(--text-tertiary)", fontSize: 12 }}>вЂ”</div>
+                      <div style={{ textAlign: "right", color: "var(--text-tertiary)", fontSize: 12 }}>—</div>
                       <div style={{ textAlign: "right", fontWeight: 600, color: "#8B5CF6" }}>${fmtDec(salaryAiPartner.dealEarningsUsd ?? 0)}</div>
                       <div style={{ textAlign: "right", fontWeight: 700, color: "#8B5CF6" }}>${fmt(salaryAiPartner.totalAccrued ?? 0)}</div>
                       <div style={{ textAlign: "right", color: "#059669" }}>${fmt(salaryAiPartner.paidUsd ?? 0)}</div>
                       <div style={{ textAlign: "right", fontWeight: 700, color: (salaryAiPartner.balance ?? 0) > 0 ? "#DC2626" : "#059669" }}>
-                        {(salaryAiPartner.balance ?? 0) > 0 ? "в€’" : "+"}${fmt(Math.abs(salaryAiPartner.balance ?? 0))}
+                        {(salaryAiPartner.balance ?? 0) > 0 ? "−" : "+"}${fmt(Math.abs(salaryAiPartner.balance ?? 0))}
                       </div>
-                      <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setSelectedSalaryEmp(salaryAiPartner); }}>РљР°Р±РёРЅРµС‚</button>
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setSelectedSalaryEmp(salaryAiPartner); }}>Кабинет</button>
                     </div>
                   </div>
                 )}
@@ -4426,22 +4426,22 @@ export default function AppPage() {
                 {/* Employee table */}
                 <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
                   <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14 }}>
-                    РЎРѕС‚СЂСѓРґРЅРёРєРё ({salaryData.length})
+                    Сотрудники ({salaryData.length})
                   </div>
                   {salaryLoading ? (
-                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
                   ) : salaryData.length === 0 ? (
-                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>РќРµС‚ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РІ РѕС„РёСЃРµ</div>
+                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников в офисе</div>
                   ) : (
                     <>
                       {/* Table header */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 110px 110px 110px auto", padding: "8px 20px", borderBottom: "1px solid var(--border-light)", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", gap: 8 }}>
-                        <span>РЎРѕС‚СЂСѓРґРЅРёРє</span>
-                        <span style={{ textAlign: "right" }}>РЎС‚Р°РІРєР°</span>
-                        <span style={{ textAlign: "right" }}>РЎРґРµР»РєРё</span>
-                        <span style={{ textAlign: "right" }}>РќР°С‡РёСЃР»РµРЅРѕ</span>
-                        <span style={{ textAlign: "right" }}>Р’С‹РїР»Р°С‡РµРЅРѕ</span>
-                        <span style={{ textAlign: "right" }}>Р‘Р°Р»Р°РЅСЃ</span>
+                        <span>Сотрудник</span>
+                        <span style={{ textAlign: "right" }}>Ставка</span>
+                        <span style={{ textAlign: "right" }}>Сделки</span>
+                        <span style={{ textAlign: "right" }}>Начислено</span>
+                        <span style={{ textAlign: "right" }}>Выплачено</span>
+                        <span style={{ textAlign: "right" }}>Баланс</span>
                         <span />
                       </div>
                       {salaryData.map((emp: any) => {
@@ -4468,9 +4468,9 @@ export default function AppPage() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 600, fontSize: 14 }}>{emp.name || emp.email}</div>
-                                <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` В· ${emp.position}` : ""}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{ROLE_LABELS_S[emp.role] ?? emp.role}{emp.position ? ` · ${emp.position}` : ""}</div>
                               </div>
-                              {cfg && <div style={{ marginLeft: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--bg-input)", color: "var(--text-tertiary)" }}>Р—Рџ {cfg.payDay}-Рµ</div>}
+                              {cfg && <div style={{ marginLeft: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--bg-input)", color: "var(--text-tertiary)" }}>ЗП {cfg.payDay}-е</div>}
                             </div>
 
                             {/* Base salary */}
@@ -4478,7 +4478,7 @@ export default function AppPage() {
                               {cfg ? (
                                 <span style={{ fontSize: 13, fontWeight: 600 }}>${fmt(emp.baseUsd ?? 0)}</span>
                               ) : (
-                                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>вЂ”</span>
+                                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>—</span>
                               )}
                             </div>
 
@@ -4502,16 +4502,16 @@ export default function AppPage() {
                             {/* Balance */}
                             <div style={{ textAlign: "right" }}>
                               <span style={{ fontSize: 14, fontWeight: 800, color: isInDebt ? "#DC2626" : "#059669" }}>
-                                {isInDebt ? "в€’" : "+"}${fmt(Math.abs(debt))}
+                                {isInDebt ? "−" : "+"}${fmt(Math.abs(debt))}
                               </span>
-                              {isInDebt && <div style={{ fontSize: 10, color: "#DC2626" }}>РґРѕР»Рі</div>}
+                              {isInDebt && <div style={{ fontSize: 10, color: "#DC2626" }}>долг</div>}
                             </div>
 
                             {/* Actions */}
                             <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
                               <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
                                 onClick={() => setSelectedSalaryEmp(emp)}>
-                                РљР°Р±РёРЅРµС‚ в†’
+                                Кабинет →
                               </button>
                             </div>
                           </div>
@@ -4533,17 +4533,17 @@ export default function AppPage() {
               {isSuperAdmin ? (
                 <div className="card">
                   <div className="card-header">
-                    <span className="card-title">РћС„РёСЃС‹ / РћСЂРіР°РЅРёР·Р°С†РёРё</span>
-                    <button className="btn btn-secondary" onClick={loadOrgs}>РћР±РЅРѕРІРёС‚СЊ</button>
+                    <span className="card-title">Офисы / Организации</span>
+                    <button className="btn btn-secondary" onClick={loadOrgs}>Обновить</button>
                   </div>
                   <div className="card-body" style={{ display: "grid", gap: 16 }}>
                     {/* Create org */}
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
                       <div style={{ flex: 1 }}>
-                        <div className="form-label">РќР°Р·РІР°РЅРёРµ РѕС„РёСЃР°</div>
-                        <input className="form-input" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="РљРёС—РІ, Р”РЅС–РїСЂРѕ, Р›СЊРІС–РІ..." />
+                        <div className="form-label">Название офиса</div>
+                        <input className="form-input" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="Київ, Дніпро, Львів..." />
                       </div>
-                      <button className="btn btn-primary" onClick={createOrg} disabled={!newOrgName.trim()}>+ РЎРѕР·РґР°С‚СЊ РѕС„РёСЃ</button>
+                      <button className="btn btn-primary" onClick={createOrg} disabled={!newOrgName.trim()}>+ Создать офис</button>
                     </div>
 
                     {/* Orgs table */}
@@ -4552,22 +4552,22 @@ export default function AppPage() {
                         <table className="data-table">
                           <thead>
                             <tr>
-                              <th>РќР°Р·РІР°РЅРёРµ</th>
-                              <th style={{ textAlign: "right" }}>РЎРѕС‚СЂСѓРґРЅРёРєРѕРІ</th>
-                              <th style={{ textAlign: "right" }}>РЎРґРµР»РѕРє</th>
+                              <th>Название</th>
+                              <th style={{ textAlign: "right" }}>Сотрудников</th>
+                              <th style={{ textAlign: "right" }}>Сделок</th>
                               <th style={{ width: 180 }}></th>
                             </tr>
                           </thead>
                           <tbody>
                             {orgs.length === 0 ? (
-                              <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>РќРµС‚ РѕС„РёСЃРѕРІ</td></tr>
+                              <tr><td colSpan={5} style={{ padding: 16, color: "var(--text-secondary)" }}>Нет офисов</td></tr>
                             ) : (
                               orgs.map((o) => (
                                 <tr key={o.id}>
                                   <td style={{ fontWeight: 600 }}>
                                     {o.name}
                                     {o.id === user.activeOrganizationId ? (
-                                      <span style={{ marginLeft: 8, fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px" }}>Р°РєС‚РёРІРЅС‹Р№</span>
+                                      <span style={{ marginLeft: 8, fontSize: 11, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px" }}>активный</span>
                                     ) : null}
                                   </td>
                                   <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{o._count.users}</td>
@@ -4579,13 +4579,13 @@ export default function AppPage() {
                                           className="btn btn-secondary"
                                           style={{ padding: "4px 12px", fontSize: 12 }}
                                           onClick={() => switchOrg(o.id)}
-                                        >РџРµСЂРµР№С‚Рё</button>
+                                        >Перейти</button>
                                       ) : null}
                                       <button
                                         className="btn btn-secondary"
                                         style={{ padding: "4px 12px", fontSize: 12, color: "var(--red)" }}
                                         onClick={() => deleteOrg(o.id, o.name)}
-                                      >РЈРґР°Р»РёС‚СЊ</button>
+                                      >Удалить</button>
                                     </div>
                                   </td>
                                 </tr>
@@ -4604,10 +4604,10 @@ export default function AppPage() {
                 <div className="card">
                   <div className="card-header">
                     <div>
-                      <span className="card-title">РљСѓСЂСЃС‹ РІР°Р»СЋС‚</span>
+                      <span className="card-title">Курсы валют</span>
                       {ratesLastSync && (
                         <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                          РћР±РЅРѕРІР»РµРЅРѕ: {new Date(ratesLastSync).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          Обновлено: {new Date(ratesLastSync).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                         </div>
                       )}
                     </div>
@@ -4619,7 +4619,7 @@ export default function AppPage() {
                             style={{ animation: ratesSyncing ? "spin 1s linear infinite" : "none" }}>
                             <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                           </svg>
-                          {ratesSyncing ? "РћР±РЅРѕРІР»РµРЅРёРµвЂ¦" : "РђРІС‚Рѕ-РѕР±РЅРѕРІРёС‚СЊ"}
+                          {ratesSyncing ? "Обновление…" : "Авто-обновить"}
                         </button>
                       )}
                       <button type="button" className="btn btn-secondary" onClick={() => setRatesModalOpen(true)}>РР·РјРµРЅРёС‚СЊ РІСЂСѓС‡РЅСѓСЋ</button>
@@ -4636,7 +4636,7 @@ export default function AppPage() {
                       ))}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>
-                      РљСѓСЂСЃС‹ РѕР±РЅРѕРІР»СЏСЋС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РєР°Р¶РґС‹Р№ РґРµРЅСЊ РІ 06:00 Рё РїСЂРё Р·Р°РїСѓСЃРєРµ СЃРµСЂРІРµСЂР°. 1 USD вЂ” Р±Р°Р·РѕРІР°СЏ РІР°Р»СЋС‚Р°.
+                      Курсы обновляются автоматически каждый день в 06:00 и при запуске сервера. 1 USD — базовая валюта.
                     </div>
                   </div>
                 </div>
@@ -4645,29 +4645,29 @@ export default function AppPage() {
               {/* Deal Templates */}
               <div className="card">
                 <div className="card-header">
-                  <span className="card-title">РЁР°Р±Р»РѕРЅС‹ СЃРґРµР»РѕРє</span>
-                  <button className="btn btn-primary" onClick={() => openTemplateModal()}>+ РќРѕРІС‹Р№ С€Р°Р±Р»РѕРЅ</button>
+                  <span className="card-title">Шаблоны сделок</span>
+                  <button className="btn btn-primary" onClick={() => openTemplateModal()}>+ Новый шаблон</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
                   {templates.length === 0 ? (
                     <div style={{ color: "var(--text-secondary)", fontSize: 13, padding: "8px 0" }}>
-                      РќРµС‚ С€Р°Р±Р»РѕРЅРѕРІ. РЎРѕР·РґР°Р№С‚Рµ СЃРІРѕР№ РїРµСЂРІС‹Р№ С€Р°Р±Р»РѕРЅ С‡С‚РѕР±С‹ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ РєР°СЃС‚РѕРјРЅС‹Рµ РїРѕР»СЏ РІ СЃРґРµР»РєР°С….
+                      Нет шаблонов. Создайте свой первый шаблон чтобы использовать кастомные поля в сделках.
                     </div>
                   ) : (
                     <div className="card" style={{ border: "1px solid var(--border-light)" }}>
                       <div className="table-scroll" style={{ padding: 0 }}>
                         <table className="data-table">
-                          <thead><tr><th>РќР°Р·РІР°РЅРёРµ</th><th>РџРѕР»РµР№</th><th>Р’РѕСЂРєРµСЂС‹</th><th style={{ width: 160 }}></th></tr></thead>
+                          <thead><tr><th>Название</th><th>Полей</th><th>Воркеры</th><th style={{ width: 160 }}></th></tr></thead>
                           <tbody>
                             {templates.map((t) => (
                               <tr key={t.id}>
                                 <td style={{ fontWeight: 600 }}>{t.name}</td>
                                 <td style={{ color: "var(--text-secondary)" }}>{t.fields.length}</td>
-                                <td>{t.hasWorkers ? <span className="badge badge-green">Р”Р°</span> : <span className="badge badge-amber">РќРµС‚</span>}</td>
+                                <td>{t.hasWorkers ? <span className="badge badge-green">Да</span> : <span className="badge badge-amber">Нет</span>}</td>
                                 <td>
                                   <div style={{ display: "flex", gap: 6 }}>
-                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openTemplateModal(t)}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button>
-                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteTemplate(t.id, t.name)}>РЈРґР°Р»РёС‚СЊ</button>
+                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openTemplateModal(t)}>Редактировать</button>
+                                    <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => deleteTemplate(t.id, t.name)}>Удалить</button>
                                   </div>
                                 </td>
                               </tr>
@@ -4685,40 +4685,40 @@ export default function AppPage() {
                   <div className="card">
                     <div className="card-header">
                       <div>
-                        <span className="card-title">РљР»РёРµРЅС‚С‹ вЂ” СЃС‚Р°С‚СѓСЃС‹ РІРѕСЂРѕРЅРєРё</span>
+                        <span className="card-title">Клиенты — статусы воронки</span>
                         <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
-                          <strong>РљРѕРґ</strong> вЂ” Р»Р°С‚РёРЅРёС†Р° РґР»СЏ СЃРёСЃС‚РµРјС‹ (РЅРµ РјРµРЅСЏРµС‚СЃСЏ). <strong>РќР°Р·РІР°РЅРёРµ</strong> вЂ” РєР°Рє РІРёРґСЏС‚ СЃРѕС‚СЂСѓРґРЅРёРєРё РІ CRM.
-                          <strong> РџРѕСЂСЏРґРѕРє</strong> вЂ” СЃРѕСЂС‚РёСЂРѕРІРєР° РІ СЃРїРёСЃРєР°С…. <strong>Р¦РІРµС‚</strong> вЂ” hex, РЅР°РїСЂРёРјРµСЂ <code style={{ fontSize: 11 }}>#3b82f6</code>.
-                          <strong> РљРѕРЅРµС† РІРѕСЂРѕРЅРєРё</strong> вЂ” РѕС‚РјРµС‚РєР° В«С„РёРЅР°Р»СЊРЅС‹Р№В» СЃС‚Р°С‚СѓСЃ (РЅР°РїСЂРёРјРµСЂ Р·Р°РєСЂС‹С‚).
+                          <strong>Код</strong> — латиница для системы (не меняется). <strong>Название</strong> — как видят сотрудники в CRM.
+                          <strong> Порядок</strong> — сортировка в списках. <strong>Цвет</strong> — hex, например <code style={{ fontSize: 11 }}>#3b82f6</code>.
+                          <strong> Конец воронки</strong> — отметка «финальный» статус (например закрыт).
                         </div>
                       </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientStatuses()}>РћР±РЅРѕРІРёС‚СЊ</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientStatuses()}>Обновить</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 18 }}>
                       <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Р”РѕР±Р°РІРёС‚СЊ СЃС‚Р°С‚СѓСЃ</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Добавить статус</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
                           <div style={{ minWidth: 160 }}>
-                            <div className="form-label">РљРѕРґ (Р»Р°С‚РёРЅРёС†Р°)</div>
+                            <div className="form-label">Код (латиница)</div>
                             <input className="form-input" value={newClientStatusSlug} onChange={(e) => setNewClientStatusSlug(e.target.value)} placeholder="naprimer_ozhidaet" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} />
                           </div>
                           <div style={{ flex: 1, minWidth: 200 }}>
-                            <div className="form-label">РќР°Р·РІР°РЅРёРµ РІ РёРЅС‚РµСЂС„РµР№СЃРµ</div>
-                            <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="РќР°РїСЂРёРјРµСЂ: РћР¶РёРґР°РµС‚ РѕС‚РІРµС‚Р°" />
+                            <div className="form-label">Название в интерфейсе</div>
+                            <input className="form-input" value={newClientStatusLabel} onChange={(e) => setNewClientStatusLabel(e.target.value)} placeholder="Например: Ожидает ответа" />
                           </div>
-                          <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>Р”РѕР±Р°РІРёС‚СЊ СЃС‚Р°С‚СѓСЃ</button>
+                          <button type="button" className="btn btn-primary" onClick={() => void addClientStatusRow()}>Добавить статус</button>
                         </div>
                       </div>
                       <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "auto" }}>
                         <table className="data-table">
                           <thead style={{ background: "var(--bg-metric)" }}>
                             <tr>
-                              <th><span style={{ display: "block" }}>РљРѕРґ</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>СЃРёСЃС‚РµРјРЅС‹Р№</span></th>
-                              <th>РљР°Рє РІ CRM</th>
-                              <th style={{ width: 100 }}>РџРѕСЂСЏРґРѕРє</th>
-                              <th style={{ width: 120 }}>Р¦РІРµС‚ (HEX)</th>
-                              <th style={{ width: 110 }}><span style={{ display: "block" }}>РљРѕРЅРµС†</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>РІРѕСЂРѕРЅРєРё</span></th>
-                              <th style={{ width: 180 }}>Р”РµР№СЃС‚РІРёСЏ</th>
+                              <th><span style={{ display: "block" }}>Код</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>системный</span></th>
+                              <th>Как в CRM</th>
+                              <th style={{ width: 100 }}>Порядок</th>
+                              <th style={{ width: 120 }}>Цвет (HEX)</th>
+                              <th style={{ width: 110 }}><span style={{ display: "block" }}>Конец</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>воронки</span></th>
+                              <th style={{ width: 180 }}>Действия</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -4756,11 +4756,11 @@ export default function AppPage() {
                                         });
                                         if (!res.ok) {
                                           const j = await res.json().catch(() => ({}));
-                                          return alert(j.message ?? "РћС€РёР±РєР°");
+                                          return alert(j.message ?? "Ошибка");
                                         }
                                         await loadClientStatuses();
-                                      }}>РЎРѕС…СЂР°РЅРёС‚СЊ</button>
-                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientStatusRow(s.id)}>РЈРґР°Р»РёС‚СЊ</button>
+                                      }}>Сохранить</button>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientStatusRow(s.id)}>Удалить</button>
                                     </div>
                                   </td>
                                 </tr>
@@ -4775,48 +4775,48 @@ export default function AppPage() {
                   <div className="card">
                     <div className="card-header">
                       <div>
-                        <span className="card-title">РљР»РёРµРЅС‚С‹ вЂ” РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ</span>
+                        <span className="card-title">Клиенты — дополнительные поля</span>
                         <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
-                          РџРѕР»СЏ РїРѕСЏРІР»СЏСЋС‚СЃСЏ РІ С„РѕСЂРјРµ РєР»РёРµРЅС‚Р° РїРѕРґ СЃС‚Р°РЅРґР°СЂС‚РЅС‹РјРё Р±Р»РѕРєР°РјРё. Р‘Р°РЅРє, Р°СЃСЃРёСЃС‚РµРЅС‚ Рё РёС‚РѕРі Р·РІРѕРЅРєР° СѓР¶Рµ РµСЃС‚СЊ РѕС‚РґРµР»СЊРЅРѕ.
-                          Р”Р»СЏ С‚РёРїР° В«РЎРїРёСЃРѕРєВ» РІ РєРѕР»РѕРЅРєРµ РІР°СЂРёР°РЅС‚РѕРІ СѓРєР°Р¶РёС‚Рµ Р·РЅР°С‡РµРЅРёСЏ С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ РёР»Рё СЃ РЅРѕРІРѕР№ СЃС‚СЂРѕРєРё.
+                          Поля появляются в форме клиента под стандартными блоками. Банк, ассистент и итог звонка уже есть отдельно.
+                          Для типа «Список» в колонке вариантов укажите значения через запятую или с новой строки.
                         </div>
                       </div>
-                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientFieldDefinitions()}>РћР±РЅРѕРІРёС‚СЊ</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => void loadClientFieldDefinitions()}>Обновить</button>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 18 }}>
                       <div style={clientFormSectionStyle(true)}>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>РќРѕРІРѕРµ РїРѕР»Рµ</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Новое поле</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
                           <div style={{ minWidth: 140 }}>
-                            <div className="form-label">РљРѕРґ РїРѕР»СЏ (Р»Р°С‚РёРЅРёС†Р°)</div>
+                            <div className="form-label">Код поля (латиница)</div>
                             <input className="form-input" value={newClientFieldKey} onChange={(e) => setNewClientFieldKey(e.target.value)} placeholder="istochnik" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} />
                           </div>
                           <div style={{ flex: 1, minWidth: 180 }}>
-                            <div className="form-label">РџРѕРґРїРёСЃСЊ РІ С„РѕСЂРјРµ</div>
+                            <div className="form-label">Подпись в форме</div>
                             <input className="form-input" value={newClientFieldLabel} onChange={(e) => setNewClientFieldLabel(e.target.value)} placeholder="РСЃС‚РѕС‡РЅРёРє Р»РёРґР°" />
                           </div>
                           <div style={{ width: 200 }}>
-                            <div className="form-label">РўРёРї РґР°РЅРЅС‹С…</div>
+                            <div className="form-label">Тип данных</div>
                             <select className="form-input" value={newClientFieldType} onChange={(e) => setNewClientFieldType(e.target.value as FieldType)}>
                               {FIELD_TYPES_ALL.map((t) => (
                                 <option key={t} value={t}>{FIELD_TYPE_LABELS[t]}</option>
                               ))}
                             </select>
                           </div>
-                          <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>Р”РѕР±Р°РІРёС‚СЊ РїРѕР»Рµ</button>
+                          <button type="button" className="btn btn-primary" onClick={() => void addClientFieldRow()}>Добавить поле</button>
                         </div>
                       </div>
                       <div className="table-scroll" style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "auto" }}>
                         <table className="data-table">
                           <thead style={{ background: "var(--bg-metric)" }}>
                             <tr>
-                              <th><span style={{ display: "block" }}>РљРѕРґ</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>РЅРµ РјРµРЅСЏРµС‚СЃСЏ</span></th>
-                              <th>РџРѕРґРїРёСЃСЊ</th>
-                              <th style={{ width: 160 }}>РўРёРї</th>
-                              <th style={{ width: 90 }}>РџРѕСЂСЏРґРѕРє</th>
-                              <th style={{ width: 80 }}>РћР±СЏР·.</th>
-                              <th style={{ minWidth: 160 }}><span style={{ display: "block" }}>Р’Р°СЂРёР°РЅС‚С‹</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>РґР»СЏ СЃРїРёСЃРєР°</span></th>
-                              <th style={{ width: 180 }}>Р”РµР№СЃС‚РІРёСЏ</th>
+                              <th><span style={{ display: "block" }}>Код</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>не меняется</span></th>
+                              <th>Подпись</th>
+                              <th style={{ width: 160 }}>Тип</th>
+                              <th style={{ width: 90 }}>Порядок</th>
+                              <th style={{ width: 80 }}>Обяз.</th>
+                              <th style={{ minWidth: 160 }}><span style={{ display: "block" }}>Варианты</span><span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-tertiary)" }}>для списка</span></th>
+                              <th style={{ width: 180 }}>Действия</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -4862,11 +4862,11 @@ export default function AppPage() {
                                         });
                                         if (!res.ok) {
                                           const j = await res.json().catch(() => ({}));
-                                          return alert(j.message ?? "РћС€РёР±РєР°");
+                                          return alert(j.message ?? "Ошибка");
                                         }
                                         await loadClientFieldDefinitions();
-                                      }}>РЎРѕС…СЂР°РЅРёС‚СЊ</button>
-                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientFieldRow(f.id)}>РЈРґР°Р»РёС‚СЊ</button>
+                                      }}>Сохранить</button>
+                                      <button type="button" className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }} onClick={() => void deleteClientFieldRow(f.id)}>Удалить</button>
                                     </div>
                                   </td>
                                 </tr>
@@ -4882,53 +4882,53 @@ export default function AppPage() {
 
               <div className="card">
                 <div className="card-header">
-                  <span className="card-title">РџРѕР»СЊР·РѕРІР°С‚РµР»Рё</span>
-                  <button className="btn btn-secondary" onClick={loadUsers}>РћР±РЅРѕРІРёС‚СЊ</button>
+                  <span className="card-title">Пользователи</span>
+                  <button className="btn btn-secondary" onClick={loadUsers}>Обновить</button>
                 </div>
                 <div className="card-body" style={{ display: "grid", gap: 16 }}>
                   {!isAdmin ? (
-                    <div style={{ color: "var(--text-secondary)" }}>Р”РѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РґР»СЏ РђРґРјРёРЅР° Рё РЎСѓРїРµСЂ РђРґРјРёРЅР°.</div>
+                    <div style={{ color: "var(--text-secondary)" }}>Доступно только для Админа и Супер Админа.</div>
                   ) : (
                     <>
                       {/* create form */}
                       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
                         <div>
-                          <div className="form-label">Р›РѕРіРёРЅ (email)</div>
-                          <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} placeholder="email РёР»Рё username" />
+                          <div className="form-label">Логин (email)</div>
+                          <input className="form-input" value={newUserLogin} onChange={(e) => setNewUserLogin(e.target.value)} placeholder="email или username" />
                         </div>
                         <div>
                           <div className="form-label">РРјСЏ (РѕС‚РѕР±СЂР°Р¶Р°РµС‚СЃСЏ РІ CRM)</div>
                           <input className="form-input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="РРІР°РЅ РџРµС‚СЂРѕРІ" />
                         </div>
                         <div>
-                          <div className="form-label">РџР°СЂРѕР»СЊ</div>
+                          <div className="form-label">Пароль</div>
                           <input className="form-input" type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
                         </div>
                         <div>
-                          <div className="form-label">Р”РѕР»Р¶РЅРѕСЃС‚СЊ / Р РѕР»СЊ РІ РєРѕРјР°РЅРґРµ</div>
-                          <input className="form-input" value={newUserPosition} onChange={(e) => setNewUserPosition(e.target.value)} placeholder="Р’РѕСЂРєРµСЂ, РљР°СЃСЃРёСЂ, Р‘СѓС…РіР°Р»С‚РµСЂ..." />
+                          <div className="form-label">Должность / Роль в команде</div>
+                          <input className="form-input" value={newUserPosition} onChange={(e) => setNewUserPosition(e.target.value)} placeholder="Воркер, Кассир, Бухгалтер..." />
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                           <div>
-                            <div className="form-label">Р”РѕСЃС‚СѓРї</div>
+                            <div className="form-label">Доступ</div>
                             <select className="form-input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
-                              <option value="WORKER">Р Р°Р±РѕС‚РЅРёРє</option>
-                              <option value="MANAGER">РњРµРЅРµРґР¶РµСЂ</option>
-                              <option value="ADMIN">РђРґРјРёРЅ РѕС„РёСЃР°</option>
-                              {isSuperAdmin && <option value="SUPER_ADMIN">РЎСѓРїРµСЂ РђРґРјРёРЅ</option>}
+                              <option value="WORKER">Работник</option>
+                              <option value="MANAGER">Менеджер</option>
+                              <option value="ADMIN">Админ офиса</option>
+                              {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
                             </select>
                           </div>
                           <div>
-                            <div className="form-label">РћС„РёСЃ</div>
+                            <div className="form-label">Офис</div>
                             <select className="form-input" value={newUserTargetOrgId} onChange={(e) => setNewUserTargetOrgId(e.target.value)}>
-                              <option value="">РўРµРєСѓС‰РёР№</option>
+                              <option value="">Текущий</option>
                               {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                             </select>
                           </div>
                         </div>
                       </div>
                       <div>
-                        <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ РЎРѕР·РґР°С‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ</button>
+                        <button className="btn btn-primary" onClick={createUser} disabled={!newUserLogin || !newUserPassword}>+ Создать пользователя</button>
                       </div>
 
                       {/* users table */}
@@ -4937,24 +4937,24 @@ export default function AppPage() {
                           <table className="data-table">
                             <thead>
                               <tr>
-                                <th>Р›РѕРіРёРЅ</th>
+                                <th>Логин</th>
                                 <th>РРјСЏ</th>
-                                <th>Р”РѕР»Р¶РЅРѕСЃС‚СЊ</th>
-                                <th>РћС„РёСЃ</th>
-                                <th>Р”РѕСЃС‚СѓРї</th>
-                                <th style={{ width: 260 }}>Р”РµР№СЃС‚РІРёСЏ</th>
+                                <th>Должность</th>
+                                <th>Офис</th>
+                                <th>Доступ</th>
+                                <th style={{ width: 260 }}>Действия</th>
                               </tr>
                             </thead>
                             <tbody>
                               {usersLoading ? (
-                                <tr><td colSpan={6} style={{ padding: 16 }}>Р—Р°РіСЂСѓР·РєР°...</td></tr>
+                                <tr><td colSpan={6} style={{ padding: 16 }}>Загрузка...</td></tr>
                               ) : users.length === 0 ? (
-                                <tr><td colSpan={6} style={{ padding: 16 }}>РџРѕРєР° РїСѓСЃС‚Рѕ</td></tr>
+                                <tr><td colSpan={6} style={{ padding: 16 }}>Пока пусто</td></tr>
                               ) : (
                                 users.map((u) => (
                                   <tr key={u.id}>
                                     <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{u.email}</td>
-                                    <td style={{ fontWeight: 600 }}>{u.name || <span style={{ color: "var(--text-tertiary)", fontStyle: "italic", fontWeight: 400 }}>РЅРµ Р·Р°РґР°РЅРѕ</span>}</td>
+                                    <td style={{ fontWeight: 600 }}>{u.name || <span style={{ color: "var(--text-tertiary)", fontStyle: "italic", fontWeight: 400 }}>не задано</span>}</td>
                                     <td>
                                       {userPositionId === u.id ? (
                                         <div style={{ display: "flex", gap: 4 }}>
@@ -4962,23 +4962,23 @@ export default function AppPage() {
                                             className="form-input"
                                             value={userPositionValue}
                                             onChange={(e) => setUserPositionValue(e.target.value)}
-                                            placeholder="Р’РѕСЂРєРµСЂ..."
+                                            placeholder="Воркер..."
                                             style={{ width: 120 }}
                                           />
                                           <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPosition(u.id)}>OK</button>
-                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPositionId(null)}>Г—</button>
+                                          <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setUserPositionId(null)}>×</button>
                                         </div>
                                       ) : (
                                         <span
                                           style={{ cursor: "pointer", color: u.position ? "var(--text-primary)" : "var(--text-tertiary)", fontStyle: u.position ? "normal" : "italic" }}
                                           onClick={() => { setUserPositionId(u.id); setUserPositionValue(u.position ?? ""); }}
                                         >
-                                          {u.position || "РЅРµ Р·Р°РґР°РЅР°"}
+                                          {u.position || "не задана"}
                                         </span>
                                       )}
                                     </td>
                                     <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                                      {orgs.find((o) => o.id === u.organizationId)?.name ?? "вЂ”"}
+                                      {orgs.find((o) => o.id === u.organizationId)?.name ?? "—"}
                                     </td>
                                     <td>
                                       <select
@@ -4987,10 +4987,10 @@ export default function AppPage() {
                                         style={{ width: 120 }}
                                         onChange={(e) => changeUserRole(u.id, e.target.value as any)}
                                       >
-                                        <option value="WORKER">Р Р°Р±РѕС‚РЅРёРє</option>
-                                        <option value="MANAGER">РњРµРЅРµРґР¶РµСЂ</option>
-                                        <option value="ADMIN">РђРґРјРёРЅ РѕС„РёСЃР°</option>
-                                        {isSuperAdmin && <option value="SUPER_ADMIN">РЎСѓРїРµСЂ РђРґРјРёРЅ</option>}
+                                        <option value="WORKER">Работник</option>
+                                        <option value="MANAGER">Менеджер</option>
+                                        <option value="ADMIN">Админ офиса</option>
+                                        {isSuperAdmin && <option value="SUPER_ADMIN">Супер Админ</option>}
                                       </select>
                                     </td>
                                     <td>
@@ -5000,24 +5000,24 @@ export default function AppPage() {
                                             <input
                                               className="form-input"
                                               type="password"
-                                              placeholder="РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ"
+                                              placeholder="Новый пароль"
                                               value={userPwdValue}
                                               onChange={(e) => setUserPwdValue(e.target.value)}
                                               style={{ width: 120 }}
                                             />
                                             <button className="btn btn-primary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => resetUserPassword(u.id)}>OK</button>
-                                            <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>Г—</button>
+                                            <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { setUserPwdId(null); setUserPwdValue(""); }}>×</button>
                                           </div>
                                         ) : (
                                           <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setUserPwdId(u.id); setUserPwdValue(""); }}>
-                                            РЎРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ
+                                            Сменить пароль
                                           </button>
                                         )}
                                         <button
                                           className="btn btn-secondary"
                                           style={{ padding: "4px 10px", fontSize: 12, color: "var(--red)" }}
                                           onClick={() => deleteUser(u.id, u.email)}
-                                        >РЈРґР°Р»РёС‚СЊ</button>
+                                        >Удалить</button>
                                       </div>
                                     </td>
                                   </tr>
@@ -5032,28 +5032,28 @@ export default function AppPage() {
                 </div>
               </div>
 
-              {/* Audit log вЂ” admin only */}
+              {/* Audit log — admin only */}
               {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
                 <div className="card">
                   <div className="card-header">
-                    <span className="card-title">Р–СѓСЂРЅР°Р» РґРµР№СЃС‚РІРёР№</span>
-                    <button className="btn btn-secondary" onClick={() => loadAuditLog(0)} style={{ fontSize: 12 }}>РћР±РЅРѕРІРёС‚СЊ</button>
+                    <span className="card-title">Журнал действий</span>
+                    <button className="btn btn-secondary" onClick={() => loadAuditLog(0)} style={{ fontSize: 12 }}>Обновить</button>
                   </div>
                   <div className="card-body" style={{ padding: 0 }}>
                     {auditLoading ? (
-                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
+                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Загрузка...</div>
                     ) : auditLog.length === 0 ? (
-                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>РќРµС‚ Р·Р°РїРёСЃРµР№</div>
+                      <div style={{ padding: 16, fontSize: 13, color: "var(--text-secondary)" }}>Нет записей</div>
                     ) : (
                       <>
                         <div className="table-scroll">
                           <table className="data-table">
                             <thead>
                               <tr>
-                                <th>Р’СЂРµРјСЏ</th>
-                                <th>РЎРѕС‚СЂСѓРґРЅРёРє</th>
-                                <th>Р”РµР№СЃС‚РІРёРµ</th>
-                                <th>РћР±СЉРµРєС‚</th>
+                                <th>Время</th>
+                                <th>Сотрудник</th>
+                                <th>Действие</th>
+                                <th>Объект</th>
                                 <th>IP</th>
                               </tr>
                             </thead>
@@ -5077,10 +5077,10 @@ export default function AppPage() {
                                     </span>
                                   </td>
                                   <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                                    {row.entityType ? `${row.entityType}${row.entityId ? ` #${row.entityId.slice(0, 8)}` : ""}` : "вЂ”"}
+                                    {row.entityType ? `${row.entityType}${row.entityId ? ` #${row.entityId.slice(0, 8)}` : ""}` : "—"}
                                   </td>
                                   <td style={{ fontSize: 11, color: "var(--text-tertiary)", fontFamily: "monospace" }}>
-                                    {row.ip ?? "вЂ”"}
+                                    {row.ip ?? "—"}
                                   </td>
                                 </tr>
                               ))}
@@ -5089,11 +5089,11 @@ export default function AppPage() {
                         </div>
                         {/* Pagination */}
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderTop: "1px solid var(--border-light)", fontSize: 12, color: "var(--text-secondary)" }}>
-                          <span>{auditTotal} Р·Р°РїРёСЃРµР№</span>
+                          <span>{auditTotal} записей</span>
                           <div style={{ display: "flex", gap: 6 }}>
-                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset === 0} onClick={() => loadAuditLog(Math.max(0, auditOffset - AUDIT_LIMIT))}>в†ђ РќР°Р·Р°Рґ</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset === 0} onClick={() => loadAuditLog(Math.max(0, auditOffset - AUDIT_LIMIT))}>← Назад</button>
                             <span style={{ lineHeight: "28px" }}>{Math.floor(auditOffset / AUDIT_LIMIT) + 1} / {Math.ceil(auditTotal / AUDIT_LIMIT) || 1}</span>
-                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset + AUDIT_LIMIT >= auditTotal} onClick={() => loadAuditLog(auditOffset + AUDIT_LIMIT)}>Р’РїРµСЂС‘Рґ в†’</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 11 }} disabled={auditOffset + AUDIT_LIMIT >= auditTotal} onClick={() => loadAuditLog(auditOffset + AUDIT_LIMIT)}>Вперёд →</button>
                           </div>
                         </div>
                       </>
@@ -5109,13 +5109,13 @@ export default function AppPage() {
             <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
 
               {profileLoading ? (
-                <div style={{ color: "var(--text-secondary)" }}>Р—Р°РіСЂСѓР·РєР°...</div>
+                <div style={{ color: "var(--text-secondary)" }}>Загрузка...</div>
               ) : (
                 <>
                   {/* Info card */}
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">Р›РёС‡РЅС‹Рµ РґР°РЅРЅС‹Рµ</span>
+                      <span className="card-title">Личные данные</span>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 14 }}>
 
@@ -5132,7 +5132,7 @@ export default function AppPage() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 16 }}>{profile?.name || profile?.email}</div>
                           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-                            {ROLE_LABELS[profile?.role as Role] ?? profile?.role} В· {profile?.organization?.name}
+                            {ROLE_LABELS[profile?.role as Role] ?? profile?.role} · {profile?.organization?.name}
                           </div>
                           {profile?.position && (
                             <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{profile.position}</div>
@@ -5146,17 +5146,17 @@ export default function AppPage() {
                           <input className="form-input" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="РРІР°РЅ РРІР°РЅРѕРІ" />
                         </div>
                         <div>
-                          <div className="form-label">Email (Р»РѕРіРёРЅ)</div>
+                          <div className="form-label">Email (логин)</div>
                           <input className="form-input" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="email@example.com" />
                         </div>
                       </div>
 
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>РљРѕРЅС‚Р°РєС‚С‹</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Контакты</div>
                         <div style={{ display: "grid", gap: 12 }}>
                           <div className="g2">
                             <div>
-                              <div className="form-label">РўРµР»РµС„РѕРЅ</div>
+                              <div className="form-label">Телефон</div>
                               <input className="form-input" value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="+380 XX XXX XXXX" />
                             </div>
                             <div>
@@ -5165,9 +5165,9 @@ export default function AppPage() {
                             </div>
                           </div>
                           <div>
-                            <div className="form-label">Р”СЂСѓРіРёРµ РєРѕРЅС‚Р°РєС‚С‹</div>
+                            <div className="form-label">Другие контакты</div>
                             <textarea className="form-input" value={profileContacts} onChange={(e) => setProfileContacts(e.target.value)}
-                              placeholder="Viber, WhatsApp, РґСЂСѓРіРѕРµ..." style={{ height: 72 }} />
+                              placeholder="Viber, WhatsApp, другое..." style={{ height: 72 }} />
                           </div>
                         </div>
                       </div>
@@ -5181,7 +5181,7 @@ export default function AppPage() {
 
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving}>
-                          {profileSaving ? "РЎРѕС…СЂР°РЅСЏРµРј..." : "РЎРѕС…СЂР°РЅРёС‚СЊ"}
+                          {profileSaving ? "Сохраняем..." : "Сохранить"}
                         </button>
                       </div>
                     </div>
@@ -5190,20 +5190,20 @@ export default function AppPage() {
                   {/* Password change card */}
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">РЎРјРµРЅР° РїР°СЂРѕР»СЏ</span>
+                      <span className="card-title">Смена пароля</span>
                     </div>
                     <div className="card-body" style={{ display: "grid", gap: 14 }}>
                       <div>
-                        <div className="form-label">РўРµРєСѓС‰РёР№ РїР°СЂРѕР»СЊ</div>
+                        <div className="form-label">Текущий пароль</div>
                         <input className="form-input" type="password" value={pwdOld} onChange={(e) => setPwdOld(e.target.value)} autoComplete="current-password" />
                       </div>
                       <div className="g2">
                         <div>
-                          <div className="form-label">РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ</div>
+                          <div className="form-label">Новый пароль</div>
                           <input className="form-input" type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} autoComplete="new-password" />
                         </div>
                         <div>
-                          <div className="form-label">РџРѕРІС‚РѕСЂ РїР°СЂРѕР»СЏ</div>
+                          <div className="form-label">Повтор пароля</div>
                           <input className="form-input" type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} autoComplete="new-password" />
                         </div>
                       </div>
@@ -5226,23 +5226,23 @@ export default function AppPage() {
                   {/* Active sessions card */}
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">РђРєС‚РёРІРЅС‹Рµ СЃРµСЃСЃРёРё</span>
+                      <span className="card-title">Активные сессии</span>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={loadSessions} style={{ fontSize: 12 }}>РћР±РЅРѕРІРёС‚СЊ</button>
-                        <button className="btn btn-secondary" onClick={revokeAllSessions} style={{ fontSize: 12, color: "var(--red)" }}>Р—Р°РІРµСЂС€РёС‚СЊ РІСЃРµ РґСЂСѓРіРёРµ</button>
+                        <button className="btn btn-secondary" onClick={loadSessions} style={{ fontSize: 12 }}>Обновить</button>
+                        <button className="btn btn-secondary" onClick={revokeAllSessions} style={{ fontSize: 12, color: "var(--red)" }}>Завершить все другие</button>
                       </div>
                     </div>
                     <div className="card-body" style={{ padding: 0 }}>
                       {sessionsLoading ? (
-                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°...</div>
+                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Загрузка...</div>
                       ) : sessions.length === 0 ? (
-                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>РќРµС‚ Р°РєС‚РёРІРЅС‹С… СЃРµСЃСЃРёР№</div>
+                        <div style={{ padding: "16px", color: "var(--text-secondary)", fontSize: 13 }}>Нет активных сессий</div>
                       ) : (
                         <div style={{ display: "grid" }}>
                           {sessions.map((s, i) => {
                             const ua = s.userAgent ?? "";
                             const isMobile = /mobile|android|iphone|ipad/i.test(ua);
-                            const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/ ]([\d.]+)/)?.[0] ?? "Р‘СЂР°СѓР·РµСЂ РЅРµРёР·РІРµСЃС‚РµРЅ";
+                            const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/ ]([\d.]+)/)?.[0] ?? "Браузер неизвестен";
                             const isFirst = i === 0;
                             return (
                               <div key={s.id} style={{
@@ -5251,19 +5251,19 @@ export default function AppPage() {
                                 borderTop: i > 0 ? "1px solid var(--border-light)" : undefined,
                                 background: isFirst ? "var(--accent)06" : undefined,
                               }}>
-                                <div style={{ fontSize: 22, flexShrink: 0 }}>{isMobile ? "рџ“±" : "рџ’»"}</div>
+                                <div style={{ fontSize: 22, flexShrink: 0 }}>{isMobile ? "📱" : "💻"}</div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600 }}>
                                     {browser}
                                     {isFirst && (
-                                      <span style={{ marginLeft: 8, fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>С‚РµРєСѓС‰Р°СЏ</span>
+                                      <span style={{ marginLeft: 8, fontSize: 10, background: "var(--accent-light)", color: "var(--accent)", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>текущая</span>
                                     )}
                                   </div>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                                    IP: {s.ip ?? "вЂ”"} В· РџРѕСЃР»РµРґРЅСЏСЏ Р°РєС‚РёРІРЅРѕСЃС‚СЊ: {new Date(s.lastActiveAt).toLocaleString("ru")}
+                                    IP: {s.ip ?? "—"} · Последняя активность: {new Date(s.lastActiveAt).toLocaleString("ru")}
                                   </div>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
-                                    РЎРѕР·РґР°РЅР°: {new Date(s.createdAt).toLocaleString("ru")}
+                                    Создана: {new Date(s.createdAt).toLocaleString("ru")}
                                   </div>
                                 </div>
                                 {!isFirst && (
@@ -5273,7 +5273,7 @@ export default function AppPage() {
                                     onClick={() => revokeSession(s.id)}
                                     disabled={sessionRevoking === s.id}
                                   >
-                                    {sessionRevoking === s.id ? "..." : "Р—Р°РІРµСЂС€РёС‚СЊ"}
+                                    {sessionRevoking === s.id ? "..." : "Завершить"}
                                   </button>
                                 )}
                               </div>
@@ -5342,24 +5342,24 @@ export default function AppPage() {
           <div className="card" style={{ width: 700, maxWidth: "100%", maxHeight: "92vh", overflow: "auto" }}>
             <div className="card-header">
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="card-title">{templateEditing ? "Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ С€Р°Р±Р»РѕРЅ" : "РќРѕРІС‹Р№ С€Р°Р±Р»РѕРЅ СЃРґРµР»РєРё"}</span>
+                <span className="card-title">{templateEditing ? "Редактировать шаблон" : "Новый шаблон сделки"}</span>
                 {!templateEditing && (
                   <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500 }}>
-                    РЁР°Рі {tplWizardStep === "type" ? "1" : "2"} РёР· 2
+                    Шаг {tplWizardStep === "type" ? "1" : "2"} из 2
                   </span>
                 )}
               </div>
-              <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>РћС‚РјРµРЅР°</button>
+              <button className="btn btn-secondary" onClick={() => setTemplateModalOpen(false)}>Отмена</button>
             </div>
 
-            {/* в”Ђв”Ђ РЁРђР“ 1: РІС‹Р±РѕСЂ С‚РёРїР° СЃС…РµРјС‹ в”Ђв”Ђ */}
+            {/* ── ШАГ 1: выбор типа схемы ── */}
             {tplWizardStep === "type" && !templateEditing && (
               <div className="card-body" style={{ display: "grid", gap: 20 }}>
                 <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-                  Р’С‹Р±РµСЂРёС‚Рµ, РєР°Рє Р±СѓРґСѓС‚ СЃС‡РёС‚Р°С‚СЊСЃСЏ РґРµРЅСЊРіРё РІ СЃРґРµР»РєР°С… РїРѕ СЌС‚РѕРјСѓ С€Р°Р±Р»РѕРЅСѓ:
+                  Выберите, как будут считаться деньги в сделках по этому шаблону:
                 </div>
 
-                {/* РљР°СЂС‚РѕС‡РєР° 1: СЃС…РµРјР° РїРѕСЃСЂРµРґРЅРёРєР° */}
+                {/* Карточка 1: схема посредника */}
                 <div
                   onClick={() => {
                     setTplCalcPreset(CALC_MEDIATOR_AI_PAYROLL);
@@ -5375,24 +5375,24 @@ export default function AppPage() {
                   onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent)33")}
                   onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}
                 >
-                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>рџ’ё</div>
+                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>💸</div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>РЎС…РµРјР° СЃ РїРѕСЃСЂРµРґРЅРёРєРѕРј, AI Рё СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Схема с посредником, AI и сотрудниками</div>
                     <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                      РџРѕРґС…РѕРґРёС‚ РµСЃР»Рё РґРµРЅСЊРіРё РёРґСѓС‚ РїРѕ С†РµРїРѕС‡РєРµ:
+                      Подходит если деньги идут по цепочке:
                     </div>
                     <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {["РЎСѓРјРјР° Р·Р°РІРѕРґР°", "в†’ РІС‹С‡РµС‚ РїРѕСЃСЂРµРґРЅРёРєР° %", "в†’ РІС‹С‡РµС‚ AI %", "в†’ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ %", "в†’ РїСЂРёР±С‹Р»СЊ РѕС„РёСЃР°"].map((s, i) => (
+                      {["Сумма завода", "→ вычет посредника %", "→ вычет AI %", "→ зарплатный фонд %", "→ прибыль офиса"].map((s, i) => (
                         <span key={i} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 20, background: i === 0 ? "var(--accent)" : "var(--bg-metric)", color: i === 0 ? "#fff" : "var(--text-secondary)", fontWeight: i === 0 ? 700 : 400 }}>{s}</span>
                       ))}
                     </div>
                     <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      РЎРёСЃС‚РµРјР° СЃР°РјР° СЃС‡РёС‚Р°РµС‚ СЃРєРѕР»СЊРєРѕ РєРѕРјСѓ РґРѕСЃС‚Р°С‘С‚СЃСЏ. Р’Р°Рј РѕСЃС‚Р°С‘С‚СЃСЏ С‚РѕР»СЊРєРѕ РІРІРѕРґРёС‚СЊ СЃСѓРјРјС‹ Рё РїСЂРѕС†РµРЅС‚С‹.
+                      Система сама считает сколько кому достаётся. Вам остаётся только вводить суммы и проценты.
                     </div>
                   </div>
                 </div>
 
-                {/* РљР°СЂС‚РѕС‡РєР° 2: РїСЂРѕСЃС‚Р°СЏ СЃС…РµРјР° */}
+                {/* Карточка 2: простая схема */}
                 <div
                   onClick={() => {
                     setTplCalcPreset("");
@@ -5410,48 +5410,48 @@ export default function AppPage() {
                   onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent)22")}
                   onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}
                 >
-                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--bg-metric)", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>рџ“‹</div>
+                  <div style={{ width: 56, height: 56, borderRadius: 12, background: "var(--bg-metric)", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>📋</div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>РџСЂРѕРёР·РІРѕР»СЊРЅР°СЏ С„РѕСЂРјР°</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Произвольная форма</div>
                     <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-                      Р’С‹ СЃР°РјРё РґРѕР±Р°РІР»СЏРµС‚Рµ РЅСѓР¶РЅС‹Рµ РїРѕР»СЏ вЂ” С‚РµРєСЃС‚, С‡РёСЃР»Р°, СЃРїРёСЃРєРё, С„Р»Р°Р¶РєРё. РџРѕРґС…РѕРґРёС‚ РґР»СЏ Р»СЋР±РѕР№ СЃС‚СЂСѓРєС‚СѓСЂС‹ РґР°РЅРЅС‹С….
+                      Вы сами добавляете нужные поля — текст, числа, списки, флажки. Подходит для любой структуры данных.
                     </div>
                     <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      Р Р°СЃС‡С‘С‚ Р·Р°СЂРїР»Р°С‚С‹ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РїРѕ РѕРґРЅРѕРјСѓ РІС‹Р±СЂР°РЅРЅРѕРјСѓ С‡РёСЃР»РѕРІРѕРјСѓ РїРѕР»СЋ.
+                      Расчёт зарплаты сотрудников по одному выбранному числовому полю.
                     </div>
                   </div>
                 </div>
 
                 <div style={{ paddingTop: 4, textAlign: "center", fontSize: 12, color: "var(--text-tertiary)" }}>
-                  РќР°Р¶РјРёС‚Рµ РЅР° РєР°СЂС‚РѕС‡РєСѓ С‡С‚РѕР±С‹ РїСЂРѕРґРѕР»Р¶РёС‚СЊ
+                  Нажмите на карточку чтобы продолжить
                 </div>
               </div>
             )}
 
-            {/* в”Ђв”Ђ РЁРђР“ 2: РЅР°СЃС‚СЂРѕР№РєР° РїРѕР»РµР№ в”Ђв”Ђ */}
+            {/* ── ШАГ 2: настройка полей ── */}
             {(tplWizardStep === "fields" || templateEditing) && (
               <div className="card-body" style={{ display: "grid", gap: 18 }}>
 
-                {/* РќР°Р·РІР°РЅРёРµ */}
+                {/* Название */}
                 <div>
-                  <div className="form-label">РќР°Р·РІР°РЅРёРµ С€Р°Р±Р»РѕРЅР° *</div>
+                  <div className="form-label">Название шаблона *</div>
                   <input className="form-input" value={tplName} onChange={(e) => setTplName(e.target.value)}
-                    placeholder="РќР°РїСЂРёРјРµСЂ: РћР±РјРµРЅРЅРёРє PLN, РљСЂРёРїС‚Рѕ-СЃС…РµРјР°вЂ¦" autoFocus />
+                    placeholder="Например: Обменник PLN, Крипто-схема…" autoFocus />
                 </div>
 
-                {/* РЎС…РµРјР° вЂ” РєСЂР°С‚РєРёР№ Р±Р»РѕРє, С‚РѕР»СЊРєРѕ РµСЃР»Рё MEDIATOR_AI */}
+                {/* Схема — краткий блок, только если MEDIATOR_AI */}
                 {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
                   <div style={{ display: "grid", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid var(--accent)33" }}>
                     <div style={{ background: "var(--accent)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>рџ’ё</span>
-                      <span style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>РЎС…РµРјР°: РїРѕСЃСЂРµРґРЅРёРє в†’ AI в†’ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ в†’ РїСЂРёР±С‹Р»СЊ</span>
+                      <span style={{ fontSize: 16 }}>💸</span>
+                      <span style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>Схема: посредник → AI → зарплатный фонд → прибыль</span>
                     </div>
                     <div style={{ padding: "12px 16px", background: "var(--accent)06", display: "grid", gap: 10 }}>
                       <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                        РўСЂРё РїРѕР»СЏ СЂР°СЃС‡С‘С‚Р° СѓР¶Рµ РґРѕР±Р°РІР»РµРЅС‹ (РІС‹РґРµР»РµРЅС‹ С†РІРµС‚РѕРј Рё Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅС‹). Р’Р°Рј РЅСѓР¶РЅРѕ С‚РѕР»СЊРєРѕ Р·Р°РґР°С‚СЊ <strong>% Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°</strong> вЂ” СЃРєРѕР»СЊРєРѕ РїСЂРѕС†РµРЅС‚РѕРІ РѕС‚ РѕСЃС‚Р°РІС€РµР№СЃСЏ СЃСѓРјРјС‹ РёРґС‘С‚ РЅР° Р·Р°СЂРїР»Р°С‚С‹ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ.
+                        Три поля расчёта уже добавлены (выделены цветом и заблокированы). Вам нужно только задать <strong>% зарплатного фонда</strong> — сколько процентов от оставшейся суммы идёт на зарплаты сотрудников.
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>% Р·Р°СЂРїР»Р°С‚РЅРѕРіРѕ С„РѕРЅРґР°</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>% зарплатного фонда</div>
                         <input
                           className="form-input"
                           value={tplPayrollPoolPct}
@@ -5460,58 +5460,58 @@ export default function AppPage() {
                           style={{ width: 90, fontFamily: "'JetBrains Mono', monospace" }}
                         />
                         <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                          РџСЂРёРјРµСЂ: РїСЂРё 20% вЂ” РµСЃР»Рё РѕСЃС‚Р°Р»РѕСЃСЊ 70, С‚Рѕ 14 РёРґС‘С‚ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј, 56 вЂ” РїСЂРёР±С‹Р»СЊ РѕС„РёСЃР°
+                          Пример: при 20% — если осталось 70, то 14 идёт сотрудникам, 56 — прибыль офиса
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* AI-РїР°СЂСЃРµСЂ */}
+                {/* AI-парсер */}
                 <div>
                   <button
                     className="btn btn-secondary"
                     onClick={() => setAiParseOpen(p => !p)}
                     style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, width: "100%", justifyContent: "center" }}
                   >
-                    <span>рџ¤–</span> {aiParseOpen ? "РЎРєСЂС‹С‚СЊ AI-РїРѕРјРѕС‰РЅРёРєР°" : "РЎРѕР·РґР°С‚СЊ РїРѕР»СЏ С‡РµСЂРµР· AI (РІСЃС‚Р°РІРёС‚СЊ СЃС‚СЂРѕРєРё РёР· С‚Р°Р±Р»РёС†С‹)"}
+                    <span>🤖</span> {aiParseOpen ? "Скрыть AI-помощника" : "Создать поля через AI (вставить строки из таблицы)"}
                   </button>
                   {aiParseOpen && (
                     <div style={{ marginTop: 10, border: "1px solid var(--accent)44", borderRadius: 12, padding: 16, background: "var(--accent)08" }}>
                       <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 10 }}>
-                        Р’СЃС‚Р°РІСЊС‚Рµ 2вЂ“5 СЃС‚СЂРѕРє РёР· РІР°С€РµР№ С‚Р°Р±Р»РёС†С‹. AI СЃР°Рј РѕРїСЂРµРґРµР»РёС‚ РєРѕР»РѕРЅРєРё Рё С‚РёРїС‹ РїРѕР»РµР№.
+                        Вставьте 2–5 строк из вашей таблицы. AI сам определит колонки и типы полей.
                       </div>
                       <textarea
                         className="form-input"
                         value={aiParseSample}
                         onChange={e => setAiParseSample(e.target.value)}
                         style={{ height: 90, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", paddingTop: 10 }}
-                        placeholder={"21,04  Р”Рё+РѕР»С…(Рќ)  75/25  DP  eurocom  6838\n22.04  Р”Рё+Р’Р»+Р‘Рѕ  45/30/25  DP  eurocom  5809"}
+                        placeholder={"21,04  Ди+олх(Н)  75/25  DP  eurocom  6838\n22.04  Ди+Вл+Бо  45/30/25  DP  eurocom  5809"}
                       />
                       {aiParseError && <div style={{ marginTop: 6, fontSize: 12, color: "var(--red)" }}>{aiParseError}</div>}
                       <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={() => { setAiParseOpen(false); setAiParseSample(""); setAiParseError(null); }}>РћС‚РјРµРЅР°</button>
+                        <button className="btn btn-secondary" onClick={() => { setAiParseOpen(false); setAiParseSample(""); setAiParseError(null); }}>Отмена</button>
                         <button className="btn btn-primary" onClick={aiParseTemplate} disabled={aiParsing || !aiParseSample.trim()}>
-                          {aiParsing ? "РђРЅР°Р»РёР·РёСЂСѓСЋ..." : "РћРїСЂРµРґРµР»РёС‚СЊ РїРѕР»СЏ в†’"}
+                          {aiParsing ? "Анализирую..." : "Определить поля →"}
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* РЎРїРёСЃРѕРє РїРѕР»РµР№ */}
+                {/* Список полей */}
                 <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
                   <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>РџРѕР»СЏ СЃРґРµР»РєРё</span>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>Поля сделки</span>
                       {tplCalcPreset === CALC_MEDIATOR_AI_PAYROLL && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>РџРµСЂРІС‹Рµ 3 РїРѕР»СЏ вЂ” СЂР°СЃС‡С‘С‚РЅС‹Рµ (РЅРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ)</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>Первые 3 поля — расчётные (нельзя удалить)</span>
                       )}
                       {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplHasWorkers && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>РќР°Р¶РјРёС‚Рµ рџ’° Сѓ С‡РёСЃР»РѕРІРѕРіРѕ РїРѕР»СЏ вЂ” РЅР° РµРіРѕ РѕСЃРЅРѕРІРµ Р±СѓРґРµС‚ СЃС‡РёС‚Р°С‚СЊСЃСЏ Р·Р°СЂРїР»Р°С‚Р°</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>Нажмите 💰 у числового поля — на его основе будет считаться зарплата</span>
                       )}
                     </div>
-                    <button className="btn btn-secondary" onClick={addTplField}>+ Р”РѕР±Р°РІРёС‚СЊ РїРѕР»Рµ</button>
+                    <button className="btn btn-secondary" onClick={addTplField}>+ Добавить поле</button>
                   </div>
 
                   {tplFields.length === 0 ? (
@@ -5526,9 +5526,9 @@ export default function AppPage() {
                         const canBeIncome = f.type === "NUMBER" || f.type === "PERCENT";
                         const isFixed = ["fixed_gross", "fixed_mediator", "fixed_ai"].includes(f._id);
                         const fixedLabel: Record<string, string> = {
-                          fixed_gross: "РЎСѓРјРјР° Р·Р°РІРѕРґР° вЂ” С‡РёСЃР»Рѕ, СЃРєРѕР»СЊРєРѕ РґРµРЅРµРі Р·Р°С€Р»Рѕ",
-                          fixed_mediator: "% РїРѕСЃСЂРµРґРЅРёРєР° вЂ” СЃРєРѕР»СЊРєРѕ % Р·Р°Р±РёСЂР°РµС‚ РїРѕСЃСЂРµРґРЅРёРє",
-                          fixed_ai: "% AI вЂ” СЃРєРѕР»СЊРєРѕ % СѓС…РѕРґРёС‚ РЅР° AI (РѕС‚ СЃСѓРјРјС‹ РїРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР°)",
+                          fixed_gross: "Сумма завода — число, сколько денег зашло",
+                          fixed_mediator: "% посредника — сколько % забирает посредник",
+                          fixed_ai: "% AI — сколько % уходит на AI (от суммы после посредника)",
                         };
                         return (
                           <div key={f._id} style={{
@@ -5538,56 +5538,56 @@ export default function AppPage() {
                           }}>
                             {isFixed ? (
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <span style={{ fontSize: 16 }}>{f._id === "fixed_gross" ? "рџ’°" : f._id === "fixed_mediator" ? "рџЏ¦" : "рџ¤–"}</span>
+                                <span style={{ fontSize: 16 }}>{f._id === "fixed_gross" ? "💰" : f._id === "fixed_mediator" ? "🏦" : "🤖"}</span>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: 13 }}>{f.label}</div>
                                   <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{fixedLabel[f._id]}</div>
                                 </div>
-                                <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 600 }}>Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅРѕ</span>
+                                <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 600 }}>зафиксировано</span>
                               </div>
                             ) : (
                               <>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 160px auto 32px", gap: 10, alignItems: "end" }}>
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>РќР°Р·РІР°РЅРёРµ РїРѕР»СЏ</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Название поля</div>
                                     <input className="form-input" value={f.label} placeholder="Р¤РРћ, РўРµР»РµС„РѕРЅ, Р‘Р°РЅРє, РњРµС‚РѕРґвЂ¦"
                                       onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
                                   </div>
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>РўРёРї РІРІРѕРґР°</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип ввода</div>
                                     <select className="form-input" value={f.type}
                                       onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, type: e.target.value as FieldType } : x))}>
-                                      <option value="TEXT">РўРµРєСЃС‚ (Р»СЋР±РѕР№)</option>
-                                      <option value="NUMBER">Р§РёСЃР»Рѕ / СЃСѓРјРјР°</option>
-                                      <option value="PERCENT">РџСЂРѕС†РµРЅС‚ (0вЂ“100)</option>
-                                      <option value="CURRENCY">Р’Р°Р»СЋС‚Р° (USD/EUR/UAHвЂ¦)</option>
-                                      <option value="SELECT">РЎРїРёСЃРѕРє РІР°СЂРёР°РЅС‚РѕРІ</option>
-                                      <option value="DATE">Р”Р°С‚Р°</option>
-                                      <option value="CHECKBOX">Р”Р° / РќРµС‚</option>
+                                      <option value="TEXT">Текст (любой)</option>
+                                      <option value="NUMBER">Число / сумма</option>
+                                      <option value="PERCENT">Процент (0–100)</option>
+                                      <option value="CURRENCY">Валюта (USD/EUR/UAH…)</option>
+                                      <option value="SELECT">Список вариантов</option>
+                                      <option value="DATE">Дата</option>
+                                      <option value="CHECKBOX">Да / Нет</option>
                                     </select>
                                   </div>
                                   <div style={{ display: "flex", alignItems: "flex-end", gap: 6, paddingBottom: 1 }}>
                                     {tplHasWorkers && canBeIncome && tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && (
                                       <button
-                                        title="Р—Р°СЂРїР»Р°С‚Р° СЃС‡РёС‚Р°РµС‚СЃСЏ РѕС‚ СЌС‚РѕРіРѕ РїРѕР»СЏ"
+                                        title="Зарплата считается от этого поля"
                                         onClick={() => setTplIncomeFieldKey(isIncomeField ? "" : fieldKey)}
                                         style={{ height: 38, width: 38, borderRadius: 8, border: isIncomeField ? "2px solid var(--accent)" : "1px solid var(--border)", background: isIncomeField ? "var(--accent)" : "var(--bg-card)", cursor: "pointer", fontSize: 18, transition: "all 0.15s" }}
-                                      >рџ’°</button>
+                                      >💰</button>
                                     )}
                                   </div>
                                   <div style={{ height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 20, borderRadius: 8 }}
-                                    onClick={() => { setTplFields(p => p.filter((_, xi) => xi !== i)); if (isIncomeField) setTplIncomeFieldKey(""); }}>Г—</div>
+                                    onClick={() => { setTplFields(p => p.filter((_, xi) => xi !== i)); if (isIncomeField) setTplIncomeFieldKey(""); }}>×</div>
                                 </div>
                                 {f.type === "SELECT" && (
                                   <div style={{ marginTop: 8 }}>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Р’Р°СЂРёР°РЅС‚С‹ РґР»СЏ РІС‹Р±РѕСЂР° (С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ)</div>
-                                    <input className="form-input" value={f.options} placeholder="РќР°Р», Р‘РµР·РЅР°Р», РљР°СЂС‚Р°, USDTвЂ¦"
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Варианты для выбора (через запятую)</div>
+                                    <input className="form-input" value={f.options} placeholder="Нал, Безнал, Карта, USDT…"
                                       onChange={(e) => setTplFields(p => p.map((x, xi) => xi === i ? { ...x, options: e.target.value } : x))} />
                                   </div>
                                 )}
                                 {isIncomeField && (
                                   <div style={{ marginTop: 6, fontSize: 11, color: "var(--accent)" }}>
-                                    рџ’° Р—Р°СЂРїР»Р°С‚Р° СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ СЃС‡РёС‚Р°РµС‚СЃСЏ РєР°Рє % РѕС‚ СЌС‚РѕРіРѕ РїРѕР»СЏ
+                                    💰 Зарплата сотрудников считается как % от этого поля
                                   </div>
                                 )}
                               </>
@@ -5599,7 +5599,7 @@ export default function AppPage() {
                   )}
                 </div>
 
-                {/* в”Ђв”Ђ Р Р°СЃС‡С‘С‚РЅР°СЏ С†РµРїРѕС‡РєР° в”Ђв”Ђ */}
+                {/* ── Расчётная цепочка ── */}
                 {(() => {
                   const numericFields = tplFields.filter(f => f.type === "NUMBER" || f.type === "PERCENT");
                   const allFieldKeys = tplFields.map((f, i) => ({ key: f.key || slugifyFieldKey(f.label, i), label: f.label }));
@@ -5608,9 +5608,9 @@ export default function AppPage() {
                     <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
                       <div style={{ padding: "12px 16px", background: "var(--bg-metric)", borderBottom: tplCalcSteps.length > 0 ? "1px solid var(--border)" : undefined, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>рџ“Љ Р Р°СЃС‡С‘С‚РЅР°СЏ С†РµРїРѕС‡РєР°</span>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>📊 Расчётная цепочка</span>
                           <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
-                            {tplCalcSteps.length > 0 ? `${tplCalcSteps.length} С€Р°Рі(РѕРІ)` : "РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ вЂ” РґР»СЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕРіРѕ СЂР°СЃРїСЂРµРґРµР»РµРЅРёСЏ РґРµРЅРµРі"}
+                            {tplCalcSteps.length > 0 ? `${tplCalcSteps.length} шаг(ов)` : "необязательно — для автоматического распределения денег"}
                           </span>
                         </div>
                         <button
@@ -5625,12 +5625,12 @@ export default function AppPage() {
                             resultLabel: "",
                             isPayrollPool: false,
                           }])}
-                        >+ Р”РѕР±Р°РІРёС‚СЊ С€Р°Рі</button>
+                        >+ Добавить шаг</button>
                       </div>
 
                       {tplCalcSteps.length === 0 ? (
                         <div style={{ padding: "16px", fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                          Р¦РµРїРѕС‡РєР° РїРѕР·РІРѕР»СЏРµС‚ РѕРїРёСЃР°С‚СЊ РєР°Рє РґРµРЅСЊРіРё РґРµР»СЏС‚СЃСЏ РїРѕ С€Р°РіР°Рј: РєР°Р¶РґС‹Р№ С€Р°Рі Р±РµСЂС‘С‚ СЃСѓРјРјСѓ РёР· РїСЂРµРґС‹РґСѓС‰РµРіРѕ РѕСЃС‚Р°С‚РєР° РёР»Рё РёР· РїРѕР»СЏ, Рё РІС‹С‡РёС‚Р°РµС‚ % РёР»Рё С„РёРєСЃРёСЂРѕРІР°РЅРЅСѓСЋ СЃСѓРјРјСѓ. РћРґРёРЅ С€Р°Рі РјРѕР¶РЅРѕ РїРѕРјРµС‚РёС‚СЊ РєР°Рє В«Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґВ» вЂ” РѕРЅ Р±СѓРґРµС‚ СЂР°СЃРїСЂРµРґРµР»СЏС‚СЊСЃСЏ РјРµР¶РґСѓ СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё.
+                          Цепочка позволяет описать как деньги делятся по шагам: каждый шаг берёт сумму из предыдущего остатка или из поля, и вычитает % или фиксированную сумму. Один шаг можно пометить как «зарплатный фонд» — он будет распределяться между сотрудниками.
                         </div>
                       ) : (
                         <div style={{ display: "grid", gap: 0 }}>
@@ -5644,19 +5644,19 @@ export default function AppPage() {
                                     className="form-input"
                                     value={step.label}
                                     onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, label: e.target.value } : s))}
-                                    placeholder="РќР°Р·РІР°РЅРёРµ С€Р°РіР° (РєРѕРјСѓ РёРґСѓС‚ РґРµРЅСЊРіРё)"
+                                    placeholder="Название шага (кому идут деньги)"
                                     style={{ flex: 1, fontWeight: 600 }}
                                   />
                                   <button
                                     style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", fontSize: 16, color: "var(--text-tertiary)" }}
                                     onClick={() => setTplCalcSteps(p => p.filter(s => s.id !== step.id))}
-                                  >Г—</button>
+                                  >×</button>
                                 </div>
 
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                                   {/* Source */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Р’Р·СЏС‚СЊ СЃСѓРјРјСѓ РёР·</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Взять сумму из</div>
                                     <select
                                       className="form-input"
                                       value={`${step.sourceType}:${step.sourceId}`}
@@ -5669,22 +5669,22 @@ export default function AppPage() {
                                         const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
                                         return fDef?.type === "NUMBER" || fDef?.type === "PERCENT";
                                       }).map(f => (
-                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>рџ“‹ {f.label}</option>
+                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>📋 {f.label}</option>
                                       ))}
                                       {prevSteps.map(ps => (
-                                        <option key={`step:${ps.id}`} value={`step:${ps.id}`}>в†© РћСЃС‚Р°С‚РѕРє: {ps.resultLabel || ps.label || `РЁР°Рі ${tplCalcSteps.indexOf(ps) + 1}`}</option>
+                                        <option key={`step:${ps.id}`} value={`step:${ps.id}`}>↩ Остаток: {ps.resultLabel || ps.label || `Шаг ${tplCalcSteps.indexOf(ps) + 1}`}</option>
                                       ))}
                                     </select>
                                   </div>
                                   {/* Deduct field */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>Р’С‹С‡РµСЃС‚СЊ РїРѕР»Рµ</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Вычесть поле</div>
                                     <select
                                       className="form-input"
                                       value={step.deductFieldKey}
                                       onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductFieldKey: e.target.value } : s))}
                                     >
-                                      <option value="">вЂ” РІС‹Р±РµСЂРёС‚Рµ РїРѕР»Рµ вЂ”</option>
+                                      <option value="">— выберите поле —</option>
                                       {allFieldKeys.filter(f => {
                                         const fDef = tplFields.find(tf => (tf.key || slugifyFieldKey(tf.label, 0)) === f.key);
                                         return fDef?.type === "PERCENT" || fDef?.type === "NUMBER";
@@ -5695,24 +5695,24 @@ export default function AppPage() {
                                   </div>
                                   {/* Deduct type */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>РўРёРї РІС‹С‡РёС‚Р°РЅРёСЏ</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Тип вычитания</div>
                                     <select
                                       className="form-input"
                                       value={step.deductType}
                                       onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, deductType: e.target.value as "percent"|"fixed" } : s))}
                                     >
-                                      <option value="percent">% РѕС‚ РёСЃС‚РѕС‡РЅРёРєР°</option>
-                                      <option value="fixed">Р¤РёРєСЃРёСЂРѕРІР°РЅРЅР°СЏ СЃСѓРјРјР°</option>
+                                      <option value="percent">% от источника</option>
+                                      <option value="fixed">Фиксированная сумма</option>
                                     </select>
                                   </div>
                                   {/* Result label */}
                                   <div>
-                                    <div className="form-label" style={{ marginBottom: 3 }}>РќР°Р·РІР°РЅРёРµ РѕСЃС‚Р°С‚РєР°</div>
+                                    <div className="form-label" style={{ marginBottom: 3 }}>Название остатка</div>
                                     <input
                                       className="form-input"
                                       value={step.resultLabel}
                                       onChange={e => setTplCalcSteps(p => p.map(s => s.id === step.id ? { ...s, resultLabel: e.target.value } : s))}
-                                      placeholder="РќР°РїСЂРёРјРµСЂ: РџРѕСЃР»Рµ РїРѕСЃСЂРµРґРЅРёРєР° (R1)"
+                                      placeholder="Например: После посредника (R1)"
                                     />
                                   </div>
                                 </div>
@@ -5729,7 +5729,7 @@ export default function AppPage() {
                                     style={{ width: 15, height: 15, accentColor: "var(--amber)" }}
                                   />
                                   <span style={{ fontSize: 12, color: "var(--amber)", fontWeight: step.isPayrollPool ? 700 : 400 }}>
-                                    рџ‘Ґ Р­С‚Рѕ Р·Р°СЂРїР»Р°С‚РЅС‹Р№ С„РѕРЅРґ вЂ” РІС‹С‡РёС‚Р°РµРјР°СЏ СЃСѓРјРјР° СЂР°СЃРїСЂРµРґРµР»СЏРµС‚СЃСЏ РјРµР¶РґСѓ СЃРѕС‚СЂСѓРґРЅРёРєР°РјРё
+                                    👥 Это зарплатный фонд — вычитаемая сумма распределяется между сотрудниками
                                   </span>
                                 </label>
                               </div>
@@ -5741,25 +5741,25 @@ export default function AppPage() {
                   );
                 })()}
 
-                {/* Р”Р»СЏ РїСЂРѕСЃС‚РѕР№ СЃС…РµРјС‹ вЂ” РµСЃС‚СЊ Р»Рё РІРѕСЂРєРµСЂС‹ */}
+                {/* Для простой схемы — есть ли воркеры */}
                 {tplCalcPreset !== CALC_MEDIATOR_AI_PAYROLL && tplCalcSteps.length === 0 && (
                   <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                     <input type="checkbox" checked={tplHasWorkers} onChange={(e) => setTplHasWorkers(e.target.checked)}
                       style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>Р Р°СЃРїСЂРµРґРµР»СЏС‚СЊ Р·Р°СЂРїР»Р°С‚Сѓ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј РїРѕ СЌС‚РѕР№ СЃРґРµР»РєРµ</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Р•СЃР»Рё РІРєР»СЋС‡РµРЅРѕ вЂ” РїСЂРё СЃРѕР·РґР°РЅРёРё СЃРґРµР»РєРё РЅСѓР¶РЅРѕ Р±СѓРґРµС‚ СѓРєР°Р·Р°С‚СЊ РєРѕРјСѓ Рё СЃРєРѕР»СЊРєРѕ %</div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>Распределять зарплату сотрудникам по этой сделке</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>Если включено — при создании сделки нужно будет указать кому и сколько %</div>
                     </div>
                   </label>
                 )}
 
-                {/* РљРЅРѕРїРєРё */}
+                {/* Кнопки */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
                   {!templateEditing ? (
-                    <button className="btn btn-secondary" onClick={() => setTplWizardStep("type")}>в†ђ РќР°Р·Р°Рґ</button>
+                    <button className="btn btn-secondary" onClick={() => setTplWizardStep("type")}>← Назад</button>
                   ) : <div />}
                   <button className="btn btn-primary" onClick={saveTemplate}>
-                    {templateEditing ? "РЎРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ" : "РЎРѕР·РґР°С‚СЊ С€Р°Р±Р»РѕРЅ в†’"}
+                    {templateEditing ? "Сохранить изменения" : "Создать шаблон →"}
                   </button>
                 </div>
               </div>
@@ -5795,7 +5795,7 @@ export default function AppPage() {
                   <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.3 }}>{taskDetail.title}</div>
                 )}
                 <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 3 }}>
-                  РѕС‚ {taskDetail.createdBy.name || taskDetail.createdBy.email} В· {new Date(taskDetail.createdAt).toLocaleDateString("ru-RU")}
+                  от {taskDetail.createdBy.name || taskDetail.createdBy.email} · {new Date(taskDetail.createdAt).toLocaleDateString("ru-RU")}
                 </div>
               </div>
               {isManager && !taskEditMode && (
@@ -5807,15 +5807,15 @@ export default function AppPage() {
                   setTaskEditStart(taskDetail.startsAt ? taskDetail.startsAt.slice(0, 16) : "");
                   setTaskEditAssigneeId(taskDetail.assignee.id);
                   void loadTaskUserOptions();
-                }}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button>
+                }}>Редактировать</button>
               )}
               {taskEditMode && (
                 <>
-                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12 }} onClick={() => void saveTaskEdit()}>РЎРѕС…СЂР°РЅРёС‚СЊ</button>
-                  <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => setTaskEditMode(false)}>РћС‚РјРµРЅР°</button>
+                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12 }} onClick={() => void saveTaskEdit()}>Сохранить</button>
+                  <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => setTaskEditMode(false)}>Отмена</button>
                 </>
               )}
-              <button className="btn btn-ghost" style={{ height: 32, width: 32, padding: 0, fontSize: 18, flexShrink: 0 }} onClick={() => setTaskDetail(null)}>Г—</button>
+              <button className="btn btn-ghost" style={{ height: 32, width: 32, padding: 0, fontSize: 18, flexShrink: 0 }} onClick={() => setTaskDetail(null)}>×</button>
             </div>
 
             {/* Body */}
@@ -5824,22 +5824,22 @@ export default function AppPage() {
               {!taskEditMode && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   {(() => {
-                    const stLabel: Record<TaskStatus, string> = { PENDING: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ", IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ", DONE: "Р’С‹РїРѕР»РЅРµРЅРѕ", CANCELLED: "РћС‚РјРµРЅРµРЅР°" };
+                    const stLabel: Record<TaskStatus, string> = { PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена" };
                     const stClass: Record<TaskStatus, string> = { PENDING: "badge-amber", IN_PROGRESS: "badge-blue", DONE: "badge-green", CANCELLED: "badge-gray" };
                     return <span className={`badge ${stClass[taskDetail.status]}`}>{stLabel[taskDetail.status]}</span>;
                   })()}
                   {taskDetail.dueAt && (
                     <span style={{ fontSize: 12, color: new Date(taskDetail.dueAt) < new Date() && taskDetail.status !== "DONE" ? "var(--amber)" : "var(--text-tertiary)" }}>
-                      РЎСЂРѕРє: {new Date(taskDetail.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      Срок: {new Date(taskDetail.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </span>
                   )}
                   {/* Quick status actions for assignee */}
                   {user?.id === taskDetail.assignee.id && taskDetail.status !== "DONE" && taskDetail.status !== "CANCELLED" && (
                     <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                       {taskDetail.status === "PENDING" && (
-                        <button className="btn btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "IN_PROGRESS" }).then(() => setTaskDetail(prev => prev ? { ...prev, status: "IN_PROGRESS" } : null))}>Р’Р·СЏС‚СЊ РІ СЂР°Р±РѕС‚Сѓ</button>
+                        <button className="btn btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "IN_PROGRESS" }).then(() => setTaskDetail(prev => prev ? { ...prev, status: "IN_PROGRESS" } : null))}>Взять в работу</button>
                       )}
-                      <button className="btn btn-primary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "DONE" }).then(() => { setTaskDetail(prev => prev ? { ...prev, status: "DONE" } : null); void loadTaskPendingCount(); })}>Р’С‹РїРѕР»РЅРµРЅРѕ вњ“</button>
+                      <button className="btn btn-primary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "DONE" }).then(() => { setTaskDetail(prev => prev ? { ...prev, status: "DONE" } : null); void loadTaskPendingCount(); })}>Выполнено ✓</button>
                     </div>
                   )}
                 </div>
@@ -5849,8 +5849,8 @@ export default function AppPage() {
               {taskEditMode && (
                 <div style={{ display: "grid", gap: 12 }}>
                   <div>
-                    <div className="form-label">РћРїРёСЃР°РЅРёРµ</div>
-                    <textarea className="form-input" rows={3} value={taskEditDesc} onChange={e => setTaskEditDesc(e.target.value)} placeholder="Р”РµС‚Р°Р»Рё Р·Р°РґР°С‡Рё" />
+                    <div className="form-label">Описание</div>
+                    <textarea className="form-input" rows={3} value={taskEditDesc} onChange={e => setTaskEditDesc(e.target.value)} placeholder="Детали задачи" />
                   </div>
                   <div>
                     <div className="form-label">РСЃРїРѕР»РЅРёС‚РµР»СЊ</div>
@@ -5860,11 +5860,11 @@ export default function AppPage() {
                   </div>
                   <div className="g2">
                     <div>
-                      <div className="form-label">РќР°С‡Р°Р»Рѕ</div>
+                      <div className="form-label">Начало</div>
                       <input className="form-input" type="datetime-local" value={taskEditStart} onChange={e => setTaskEditStart(e.target.value)} />
                     </div>
                     <div>
-                      <div className="form-label">РЎСЂРѕРє</div>
+                      <div className="form-label">Срок</div>
                       <input className="form-input" type="datetime-local" value={taskEditDue} onChange={e => setTaskEditDue(e.target.value)} />
                     </div>
                   </div>
@@ -5874,7 +5874,7 @@ export default function AppPage() {
               {/* Description (view) */}
               {!taskEditMode && taskDetail.description && (
                 <div>
-                  <div className="form-label" style={{ marginBottom: 6 }}>РћРїРёСЃР°РЅРёРµ</div>
+                  <div className="form-label" style={{ marginBottom: 6 }}>Описание</div>
                   <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)", background: "var(--bg-metric)", borderRadius: 10, padding: "12px 14px" }}>
                     {taskDetail.description}
                   </div>
@@ -5885,19 +5885,19 @@ export default function AppPage() {
               {!taskEditMode && (
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
                   <span>рџ‘¤ РСЃРїРѕР»РЅРёС‚РµР»СЊ: <strong>{taskDetail.assignee.name || taskDetail.assignee.email}</strong></span>
-                  {taskDetail.startsAt && <span>рџ“… РќР°С‡Р°Р»Рѕ: {new Date(taskDetail.startsAt).toLocaleDateString("ru-RU")}</span>}
+                  {taskDetail.startsAt && <span>📅 Начало: {new Date(taskDetail.startsAt).toLocaleDateString("ru-RU")}</span>}
                 </div>
               )}
 
               {/* Comments */}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>
-                  РљРѕРјРјРµРЅС‚Р°СЂРёРё {taskComments.length > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({taskComments.length})</span>}
+                  Комментарии {taskComments.length > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({taskComments.length})</span>}
                 </div>
                 {taskCommentsLoading ? (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
                 ) : taskComments.length === 0 ? (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>РљРѕРјРјРµРЅС‚Р°СЂРёРµРІ РїРѕРєР° РЅРµС‚ вЂ” РЅР°РїРёС€РёС‚Рµ РїРµСЂРІС‹Рј!</div>
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Комментариев пока нет — напишите первым!</div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {taskComments.map(c => (
@@ -5926,7 +5926,7 @@ export default function AppPage() {
                 value={taskCommentInput}
                 onChange={e => setTaskCommentInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitTaskComment(); } }}
-                placeholder="РќР°РїРёСЃР°С‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№вЂ¦ (Enter вЂ” РѕС‚РїСЂР°РІРёС‚СЊ)"
+                placeholder="Написать комментарий… (Enter — отправить)"
                 rows={1}
                 style={{ flex: 1, resize: "none", minHeight: 38, maxHeight: 100, overflowY: "auto" }}
               />
