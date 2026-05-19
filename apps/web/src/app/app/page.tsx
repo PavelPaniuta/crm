@@ -3,6 +3,17 @@
 import React, { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import {
+  MEDIATOR_AI_PAYROLL as CALC_MEDIATOR_AI_PAYROLL,
+  computeChain,
+  computeMediatorAiPayroll,
+  getPayrollBaseFromChain,
+  parsePayrollPoolPct,
+  type CalcStep,
+  type CalcStepResult,
+} from "@/lib/deal-payout";
+import { MediatorFormModal } from "@/components/mediators/MediatorFormModal";
+import { MediatorsTab, type MediatorListItem } from "@/components/mediators/MediatorsTab";
 
 const AreaChart = dynamic(() => import("../../components/charts/AreaChart"), { ssr: false });
 const DonutChart = dynamic(() => import("../../components/charts/DonutChart"), { ssr: false });
@@ -230,49 +241,8 @@ type TemplateField = {
   options?: string | null;
 };
 
-const CALC_MEDIATOR_AI_PAYROLL = "MEDIATOR_AI_PAYROLL" as const;
-
 function slugifyFieldKey(label: string, i: number): string {
   return label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_а-яё]/gi, "") || `field_${i}`;
-}
-
-// ─── Universal Calc Chain ────────────────────────────────────────────────────
-type CalcStep = {
-  id: string;
-  label: string;
-  sourceType: "field" | "step";
-  sourceId: string;
-  deductType: "percent" | "fixed";
-  deductFieldKey: string;
-  resultLabel: string;
-  isPayrollPool: boolean;
-};
-
-type CalcStepResult = {
-  step: CalcStep;
-  source: number;
-  deductAmt: number;
-  result: number;
-};
-
-function computeChain(data: Record<string, string>, steps: CalcStep[]): CalcStepResult[] {
-  const results: Record<string, number> = {};
-  return steps.map((step) => {
-    const source = step.sourceType === "field"
-      ? Number(data[step.sourceId]) || 0
-      : (results[step.sourceId] ?? 0);
-    const deductVal = Number(data[step.deductFieldKey]) || 0;
-    const deductAmt = step.deductType === "percent" ? source * (deductVal / 100) : deductVal;
-    results[step.id] = source - deductAmt;
-    return { step, source, deductAmt, result: results[step.id] };
-  });
-}
-
-function getPayrollBaseFromChain(chain: CalcStepResult[]): number {
-  const payrollStep = chain.find((c) => c.step.isPayrollPool);
-  if (payrollStep) return Math.max(0, payrollStep.deductAmt);
-  const last = chain[chain.length - 1];
-  return last ? Math.max(0, last.result) : 0;
 }
 
 // ─── Template type ────────────────────────────────────────────────────────────
@@ -289,35 +259,6 @@ type DealTemplate = {
   calcAiPctKey?: string | null;
   calcSteps?: CalcStep[] | null;
 };
-
-function parsePayrollPoolPct(tpl: DealTemplate): number {
-  if (tpl.payrollPoolPct == null) return 20;
-  const n = Number(tpl.payrollPoolPct);
-  return Number.isFinite(n) ? n : 20;
-}
-
-/** % ИИ от остатка после посредника (R1). Фонд: % от R2. */
-function computeMediatorAiPayrollFront(
-  data: Record<string, string>,
-  tpl: DealTemplate,
-): { G: number; M: number; R1: number; A: number; R2: number; F: number; P: number } | null {
-  if (tpl.calcPreset !== CALC_MEDIATOR_AI_PAYROLL) return null;
-  const gk = tpl.calcGrossFieldKey;
-  const mk = tpl.calcMediatorPctKey;
-  const ak = tpl.calcAiPctKey;
-  if (!gk || !mk || !ak) return null;
-  const G = Number(data[gk]) || 0;
-  const pM = Number(data[mk]) || 0;
-  const pAi = Number(data[ak]) || 0;
-  const poolPct = parsePayrollPoolPct(tpl);
-  const M = G * (pM / 100);
-  const R1 = G - M;
-  const A = R1 * (pAi / 100);
-  const R2 = R1 - A;
-  const F = R2 * (poolPct / 100);
-  const P = R2 - F;
-  return { G, M, R1, A, R2, F, P };
-}
 
 type DealDataRow = {
   id: string;
@@ -1071,7 +1012,7 @@ export default function AppPage() {
     if (selectedMediator?.id === mediatorEditingId) void loadMediatorDetail(mediatorEditingId!);
   }
 
-  function openMediatorForm(m?: { id: string; name: string; phone?: string | null; note?: string | null; defaultPct?: number | null }) {
+  function openMediatorForm(m?: MediatorListItem) {
     if (m) {
       setMediatorEditingId(m.id);
       setMediatorForm({
@@ -2486,7 +2427,7 @@ export default function AppPage() {
     }
     // Legacy: MEDIATOR_AI_PAYROLL
     if (activeTpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && dealDataRows[0]) {
-      const c = computeMediatorAiPayrollFront(dealDataRows[0].data, activeTpl);
+      const c = computeMediatorAiPayroll(dealDataRows[0].data, activeTpl);
       if (c) return { base: c.F, label: "зарплатный фонд (F), после AI/автоматики" };
     }
     if (activeTpl.incomeFieldKey) {
@@ -3715,7 +3656,7 @@ export default function AppPage() {
                             })()}
                             {/* === Legacy MEDIATOR_AI_PAYROLL block (for old templates) === */}
                             {(!tpl.calcSteps || tpl.calcSteps.length === 0) && tpl.calcPreset === CALC_MEDIATOR_AI_PAYROLL && (() => {
-                              const c = dealDataRows[0] ? computeMediatorAiPayrollFront(dealDataRows[0].data, tpl) : null;
+                              const c = dealDataRows[0] ? computeMediatorAiPayroll(dealDataRows[0].data, tpl) : null;
                               const fmt = (n: number) => n > 0 ? n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : "0";
                               const grossField = tpl.fields.find(f => f.key === tpl.calcGrossFieldKey);
                               return (
@@ -5587,106 +5528,23 @@ export default function AppPage() {
 
           {/* ===== MEDIATORS ===== */}
           {tab === "mediators" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              {!selectedMediator ? (
-                <>
-                  <div className="page-header">
-                    <div className="page-header-left">
-                      <div className="page-header-title">Посредники</div>
-                      <div className="page-header-sub">Справочник для сделок и отчёт по доле за период (пересчёт по шаблонам)</div>
-                    </div>
-                    <button className="btn btn-primary" onClick={() => openMediatorForm()}>+ Добавить</button>
-                  </div>
-                  {mediatorsLoading ? (
-                    <div style={{ padding: "50px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
-                  ) : mediators.length === 0 ? (
-                    <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-tertiary)" }}>
-                      Нет посредников. Добавьте первого — его можно будет выбрать при создании сделки.
-                    </div>
-                  ) : (
-                    <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px auto", padding: "8px 20px", borderBottom: "1px solid var(--border-light)", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", gap: 8 }}>
-                        <span>Имя</span><span>% по умолч.</span><span>Телефон</span><span />
-                      </div>
-                      {mediators.map((m: any) => (
-                        <div key={m.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px auto", padding: "12px 20px", gap: 8, alignItems: "center", borderBottom: "1px solid var(--border-light)", opacity: m.isActive === false ? 0.5 : 1 }}>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{m.name}</div>
-                            {m.note && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{m.note}</div>}
-                          </div>
-                          <span style={{ fontSize: 13 }}>{m.defaultPct != null ? `${m.defaultPct}%` : "—"}</span>
-                          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{m.phone || "—"}</span>
-                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }}
-                              onClick={() => { setSelectedMediator(m); void loadMediatorDetail(m.id); }}>Отчёт</button>
-                            <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openMediatorForm(m)}>Изм.</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ display: "grid", gap: 16 }}>
-                  <button className="btn btn-secondary" style={{ width: "fit-content" }}
-                    onClick={() => { setSelectedMediator(null); setMediatorDetail(null); }}>← К списку</button>
-                  <div className="page-header" style={{ margin: 0 }}>
-                    <div className="page-header-left">
-                      <div className="page-header-title">{selectedMediator.name}</div>
-                      <div className="page-header-sub">
-                        {selectedMediator.defaultPct != null ? `По умолчанию ${selectedMediator.defaultPct}% · ` : ""}
-                        {selectedMediator.phone || "без телефона"}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input type="month" value={salaryPeriod} onChange={(e) => { setSalaryPeriod(e.target.value); void loadMediatorDetail(selectedMediator.id, e.target.value); }}
-                        style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--text-primary)", fontSize: 13 }} />
-                      <button className="btn btn-secondary" onClick={() => openMediatorForm(selectedMediator)}>Изменить</button>
-                      <button className="btn btn-ghost" onClick={() => deleteMediator(selectedMediator.id)}>Удалить</button>
-                    </div>
-                  </div>
-                  {mediatorDetailLoading ? (
-                    <div style={{ padding: 40, textAlign: "center", color: "var(--text-tertiary)" }}>Загрузка...</div>
-                  ) : mediatorDetail ? (
-                    <>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
-                        <div style={{ padding: "18px 22px", borderRadius: 14, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)" }}>
-                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Итого за {salaryPeriod}</div>
-                          <div style={{ fontSize: 28, fontWeight: 800, color: "#D97706" }}>${(mediatorDetail.totalUsd ?? 0).toLocaleString()}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>Сделок: {mediatorDetail.dealsCount ?? 0}</div>
-                        </div>
-                        <div style={{ padding: "18px 22px", borderRadius: 14, background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Как считается</div>
-                          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 8, lineHeight: 1.5 }}>
-                            Сумма по каждой сделке из шаблона (поле посредника или % в карточке сделки), в USD по курсу на дату сделки. Прошлые месяцы пересчитываются автоматически.
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
-                        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-light)", fontWeight: 600 }}>Сделки</div>
-                        {(mediatorDetail.deals ?? []).length === 0 ? (
-                          <div style={{ padding: 40, textAlign: "center", color: "var(--text-tertiary)" }}>Нет сделок за период</div>
-                        ) : (
-                          <>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px 100px", padding: "8px 20px", fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", gap: 8, borderBottom: "1px solid var(--border-light)" }}>
-                              <span>Сделка</span><span>Дата</span><span style={{ textAlign: "right" }}>%</span><span style={{ textAlign: "right" }}>USD</span>
-                            </div>
-                            {(mediatorDetail.deals ?? []).map((d: any) => (
-                              <div key={d.dealId} style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px 100px", padding: "10px 20px", gap: 8, alignItems: "center", borderBottom: "1px solid var(--border-light)", fontSize: 13 }}>
-                                <span style={{ fontWeight: 500 }}>{d.title || d.dealId.slice(0, 8)}</span>
-                                <span style={{ color: "var(--text-tertiary)" }}>{d.dealDate ? new Date(d.dealDate).toLocaleDateString("ru") : "—"}</span>
-                                <span style={{ textAlign: "right" }}>{d.pct}%</span>
-                                <span style={{ textAlign: "right", fontWeight: 600, color: "#D97706" }}>${(d.amountUsd ?? 0).toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </div>
+            <MediatorsTab
+              mediators={mediators}
+              mediatorsLoading={mediatorsLoading}
+              selectedMediator={selectedMediator}
+              mediatorDetail={mediatorDetail}
+              mediatorDetailLoading={mediatorDetailLoading}
+              salaryPeriod={salaryPeriod}
+              onPeriodChange={(p) => {
+                setSalaryPeriod(p);
+                if (selectedMediator) void loadMediatorDetail(selectedMediator.id, p);
+              }}
+              onAdd={() => openMediatorForm()}
+              onOpenReport={(m) => { setSelectedMediator(m); void loadMediatorDetail(m.id); }}
+              onEdit={(m) => openMediatorForm(m)}
+              onDelete={(id) => void deleteMediator(id)}
+              onBack={() => { setSelectedMediator(null); setMediatorDetail(null); }}
+            />
           ) : null}
 
           {/* ===== SALARY ===== */}
@@ -6807,24 +6665,14 @@ export default function AppPage() {
         </div>
       </div>
 
-      {mediatorFormOpen && (
-        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 75 }}
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setMediatorFormOpen(false); }}>
-          <div className="card" style={{ width: 440, maxWidth: "100%" }} onMouseDown={(e) => e.stopPropagation()}>
-            <div className="card-header"><span className="card-title">{mediatorEditingId ? "Редактировать посредника" : "Новый посредник"}</span></div>
-            <div className="card-body" style={{ display: "grid", gap: 12 }}>
-              <div><div className="form-label">Имя *</div><input className="form-input" value={mediatorForm.name} onChange={(e) => setMediatorForm((f) => ({ ...f, name: e.target.value }))} /></div>
-              <div><div className="form-label">Телефон</div><input className="form-input" value={mediatorForm.phone} onChange={(e) => setMediatorForm((f) => ({ ...f, phone: e.target.value }))} /></div>
-              <div><div className="form-label">% по умолчанию</div><input className="form-input" type="number" min={0} max={100} step="0.01" value={mediatorForm.defaultPct} onChange={(e) => setMediatorForm((f) => ({ ...f, defaultPct: e.target.value }))} /></div>
-              <div><div className="form-label">Заметка</div><textarea className="form-input" rows={2} value={mediatorForm.note} onChange={(e) => setMediatorForm((f) => ({ ...f, note: e.target.value }))} /></div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button className="btn btn-secondary" onClick={() => setMediatorFormOpen(false)}>Отмена</button>
-                <button className="btn btn-primary" onClick={() => void saveMediator()}>Сохранить</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MediatorFormModal
+        open={mediatorFormOpen}
+        editingId={mediatorEditingId}
+        form={mediatorForm}
+        setForm={setMediatorForm}
+        onClose={() => setMediatorFormOpen(false)}
+        onSave={saveMediator}
+      />
 
             {/* ===== SALARY CONFIG MODAL ===== */}
       {salaryConfigModal && (

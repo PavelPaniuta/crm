@@ -16,14 +16,21 @@ npm install
 docker compose up -d
 ```
 
-3. Push DB schema + seed:
+3. DB migrations + seed (локально):
 
 ```bash
-npm run db:push -w @biscrm/backend
+npm run db:migrate:dev -w @biscrm/backend
+# или для быстрого прототипа без файла миграции: npm run db:push -w @biscrm/backend
 npm run db:seed -w @biscrm/backend
 ```
 
-4. Run dev:
+4. Tests (backend payout math):
+
+```bash
+npm test
+```
+
+5. Run dev:
 
 ```bash
 npm run dev

@@ -55,11 +55,33 @@ newgrp docker
 docker compose up -d --build db backend web nginx
 ```
 
-### 4) Create tables + seed admin user
+### 4) Apply migrations + seed admin user
+
+Из каталога `~/crm` (где лежит `docker-compose.yml`):
 
 ```bash
-docker compose exec backend sh -lc "npm run db:generate && npm run db:push && npm run build && node dist/seed.js"
+docker compose exec backend npx prisma migrate deploy
+docker compose exec backend node dist/seed.js
 ```
+
+Если seed ещё не собран в образе, один раз после первого `up`:
+
+```bash
+docker compose exec backend sh -lc "npm run db:generate && npm run build && node dist/seed.js"
+```
+
+**Не использовать на проде:** `prisma db push`, `migrate reset`, `docker compose down -v` — см. `.cursor/rules/database-safety.mdc`.
+
+### 4b) Прод поднимали раньше через `db push`?
+
+При ошибке **P3005** на `migrate deploy` — сначала бэкап, затем baseline (подставьте число миграций, уже отражённых в БД):
+
+```bash
+docker compose exec db pg_dump -U biscrm biscrm > backup_$(date +%Y%m%d_%H%M).sql
+docker compose exec backend sh /app/apps/backend/scripts/resolve-first-n-migrations-applied.sh 8
+```
+
+Список папок: `ls apps/backend/prisma/migrations` на сервере после `git pull`.
 
 Default credentials:
 - login: `admin`
