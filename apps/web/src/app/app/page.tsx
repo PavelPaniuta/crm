@@ -44,6 +44,12 @@ import { DealFormModal } from "@/components/deals/DealFormModal";
 import { DealsTab } from "@/components/deals/DealsTab";
 import { DealTemplatesSettingsCard } from "@/components/deal-templates/DealTemplatesSettingsCard";
 import { TemplateWizardModal } from "@/components/deal-templates/TemplateWizardModal";
+import { ChatTab } from "@/components/chat/ChatTab";
+import { AssistantTab } from "@/components/assistant/AssistantTab";
+import { TasksTab } from "@/components/tasks/TasksTab";
+import { useDealForm } from "@/hooks/useDealForm";
+import { fetchChatUnreadCount } from "@/lib/chat";
+import { fetchTaskPendingCount, fetchTasks, type CrmTask } from "@/lib/tasks";
 import { deleteDealTemplate, fetchDealTemplates } from "@/lib/deal-templates";
 import { FIELD_TYPE_LABELS, FIELD_TYPES_ALL, type FieldType } from "@/lib/field-types";
 import {
@@ -84,48 +90,6 @@ type Org = {
 };
 
 type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "CANCELLED";
-
-type CrmTask = {
-  id: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  startsAt: string | null;
-  dueAt: string | null;
-  createdAt: string;
-  assignee: { id: string; email: string; name: string | null };
-  createdBy: { id: string; email: string; name: string | null };
-};
-
-type TaskComment = {
-  id: string;
-  body: string;
-  createdAt: string;
-  author: { id: string; name: string | null; email: string };
-};
-
-type ChatMessage = {
-  id: string;
-  body: string;
-  createdAt: string;
-  sender: { id: string; name: string | null; email: string };
-  receiverId?: string;
-};
-
-type ChatContact = {
-  id: string;
-  name: string | null;
-  email: string;
-  role: string;
-  position?: string | null;
-};
-
-type ChatConversation = {
-  user: ChatContact | null;
-  lastMessage: (ChatMessage & { body: string }) | null;
-  unread: number;
-  lastAt: string;
-};
 
 type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "mediators" | "olx" | "tasks" | "assistant" | "chat" | "salary";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
@@ -210,27 +174,10 @@ export default function AppPage() {
   // --- Deals ---
   const [deals, setDeals] = useState<Deal[]>([]);
   const [dealsLoading, setDealsLoading] = useState(false);
-  const [dealModalOpen, setDealModalOpen] = useState(false);
-  const [dealEditingId, setDealEditingId] = useState<string | null>(null);
   const [dealFilter, setDealFilter] = useState<"ALL" | DealStatus>("ALL");
   const [legacyImportYear, setLegacyImportYear] = useState("2026");
   const [legacyImporting, setLegacyImporting] = useState(false);
   const legacyImportInputRef = useRef<HTMLInputElement>(null);
-  const [dealDate, setDealDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [dealStatus, setDealStatus] = useState<DealStatus>("NEW");
-  const [dealClientSearch, setDealClientSearch] = useState("");
-  const [dealClientId, setDealClientId] = useState<string | null>(null);
-  const [dealClientSkip, setDealClientSkip] = useState(false);
-  const [dealClients, setDealClients] = useState<ClientListItem[]>([]);
-  const [dealWorkers, setDealWorkers] = useState<DealWorker[]>([]);
-  const [dealAmounts, setDealAmounts] = useState<DealAmtRow[]>([]);
-  const [dealParticipants, setDealParticipants] = useState<DealParticipantRow[]>([]);
-  const [dealComment, setDealComment] = useState("");
-
-  // --- Deal Templates (for deal modal) ---
-  const [dealTemplateId, setDealTemplateId] = useState<string | null>(null);
-  const [dealTemplateStep, setDealTemplateStep] = useState<"pick" | "form">("pick");
-  const [dealDataRows, setDealDataRows] = useState<Array<{ _id: string; data: Record<string, string> }>>([]);
 
   // --- Template Management ---
   const [templates, setTemplates] = useState<DealTemplate[]>([]);
@@ -258,10 +205,12 @@ export default function AppPage() {
   const [olxFormOpen, setOlxFormOpen] = useState(false);
   const [olxForm, setOlxForm] = useState({ name: "", phone: "", note: "", defaultPct: "" });
   const [olxEditingId, setOlxEditingId] = useState<string | null>(null);
-  const [dealOlxId, setDealOlxId] = useState<string>("");
-  const [dealOlxPct, setDealOlxPct] = useState<string>("");
-  const [dealInfoPct, setDealInfoPct] = useState<string>("");
   const [repWorkers, setRepWorkers] = useState<WorkersReport | null>(null);
+
+  const [taskPendingCount, setTaskPendingCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
+  const [tasks, setTasks] = useState<CrmTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
 
   // --- Profile ---
   const [profile, setProfile] = useState<any>(null);
@@ -282,16 +231,6 @@ export default function AppPage() {
   const [pwdSaving, setPwdSaving] = useState(false);
 
   // --- AI Agent ---
-  const [agentHistory, setAgentHistory] = useState<{ role: "user" | "assistant"; content: string; pendingAction?: any }[]>([]);
-  const [agentInput, setAgentInput] = useState("");
-  const [agentLoading, setAgentLoading] = useState(false);
-  const [agentPending, setAgentPending] = useState<{ type: string; params: any; workersMap?: Record<string, string> } | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const agentEndRef = typeof window !== "undefined" ? null : null;
-
-  // --- AI ---
-  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
-  // --- Staff ---
   const [staffData, setStaffData] = useState<any>(null);
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffMember, setStaffMember] = useState<any>(null);
@@ -309,56 +248,22 @@ export default function AppPage() {
   const [mediatorFormOpen, setMediatorFormOpen] = useState(false);
   const [mediatorForm, setMediatorForm] = useState({ name: "", phone: "", note: "", defaultPct: "" });
   const [mediatorEditingId, setMediatorEditingId] = useState<string | null>(null);
-  const [dealMediatorId, setDealMediatorId] = useState<string>("");
-  const [dealMediatorPct, setDealMediatorPct] = useState<string>("");
   const [salaryPeriod, setSalaryPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [selectedSalaryEmp, setSelectedSalaryEmp] = useState<any | null>(null);
+
+  const dealForm = useDealForm({
+    templates,
+    setTemplates,
+    mediators,
+    setMediators,
+    olxList,
+    setOlxList,
+    onSaved: loadDeals,
+  });
   const [salaryConfigModal, setSalaryConfigModal] = useState<{ userId: string; name: string; config: any } | null>(null);
   const [salaryPaymentModal, setSalaryPaymentModal] = useState<{ userId: string; name: string; orgId: string; currency: string } | null>(null);
 
   // --- Tasks ---
-  const [tasks, setTasks] = useState<CrmTask[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  const [taskPendingCount, setTaskPendingCount] = useState(0);
-  const [taskFilter, setTaskFilter] = useState<"all" | "active" | "done">("active");
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [taskFormTitle, setTaskFormTitle] = useState("");
-  const [taskFormDesc, setTaskFormDesc] = useState("");
-  const [taskFormAssigneeId, setTaskFormAssigneeId] = useState("");
-  const [taskFormDue, setTaskFormDue] = useState("");
-  const [taskFormStart, setTaskFormStart] = useState("");
-  const [taskUsersForSelect, setTaskUsersForSelect] = useState<AppUser[]>([]);
-
-  // --- Task detail drawer ---
-  const [taskDetail, setTaskDetail] = useState<CrmTask | null>(null);
-  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
-  const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
-  const [taskCommentInput, setTaskCommentInput] = useState("");
-  const [taskCommentSending, setTaskCommentSending] = useState(false);
-  const [taskEditMode, setTaskEditMode] = useState(false);
-  const [taskEditTitle, setTaskEditTitle] = useState("");
-  const [taskEditDesc, setTaskEditDesc] = useState("");
-  const [taskEditDue, setTaskEditDue] = useState("");
-  const [taskEditStart, setTaskEditStart] = useState("");
-  const [taskEditAssigneeId, setTaskEditAssigneeId] = useState("");
-
-  // --- Chat (DM) ---
-  const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
-  const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
-  const [chatActiveUser, setChatActiveUser] = useState<ChatContact | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatSending, setChatSending] = useState(false);
-  const [chatUnread, setChatUnread] = useState(0);
-  const [chatShowContacts, setChatShowContacts] = useState(false);
-  const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement | null>(null);
-  // Ref keeps the latest chatActiveUser for the polling interval (avoids stale closure)
-  const chatActiveUserRef = useRef<ChatContact | null>(null);
-  // AbortController for task comment loading — cancels previous request on rapid clicks
-  const taskCommentAbortRef = useRef<AbortController | null>(null);
-
   // --- Sessions & Audit ---
   type SessionInfo = {
     id: string;
@@ -433,18 +338,14 @@ export default function AppPage() {
 
   useEffect(() => {
     if (user) {
-      void loadTaskPendingCount();
-      void loadChatUnread();
-      const unreadTimer = setInterval(() => void loadChatUnread(), 30000);
+      void fetchTaskPendingCount().then(setTaskPendingCount);
+      void fetchChatUnreadCount().then(setChatUnread);
+      const unreadTimer = setInterval(() => void fetchChatUnreadCount().then(setChatUnread), 30000);
       return () => clearInterval(unreadTimer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // Scroll chat to bottom when messages arrive on chat tab
-  useEffect(() => {
-    if (tab === "chat") setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
-  }, [chatMessages, tab]);
 
   useEffect(() => {
     if (tab === "clients") {
@@ -472,19 +373,7 @@ export default function AppPage() {
     if (tab === "mediators") { void loadMediators(); setSelectedMediator(null); setMediatorDetail(null); }
     if (tab === "olx") { void loadOlxList(); setSelectedOlx(null); setOlxDetail(null); }
     if (tab === "salary") loadSalary();
-    if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if (tab === "assistant") void loadClientStatuses();
-    if ((tab === "reports" || tab === "assistant") && aiConfigured === null) {
-      fetch("/api/ai/status", { credentials: "include" }).then(r => r.json()).then(j => setAiConfigured(j.configured));
-    }
-    if (tab === "chat") {
-      void loadChatContacts();
-      void loadChatConversations();
-      if (chatPollRef.current) clearInterval(chatPollRef.current);
-      chatPollRef.current = setInterval(() => { void pollChatMessages(); void loadChatUnread(); }, 5000);
-    } else {
-      if (chatPollRef.current) { clearInterval(chatPollRef.current); chatPollRef.current = null; }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, user?.role]);
 
@@ -849,230 +738,13 @@ export default function AppPage() {
         const member = await memberRes.json();
         const memberships = membershipsRes.ok ? await membershipsRes.json() : [];
         setStaffMember({ ...member, extraMemberships: memberships });
-        if (isAdmin) void loadSalary();
-        if (tasks.length === 0) loadTasks();
+        if (isAdmin) {
+          void loadSalary();
+          setTasksLoading(true);
+          void fetchTasks().then((list) => { setTasks(list); setTasksLoading(false); });
+        }
       }
     } finally { setStaffMemberLoading(false); }
-  }
-
-  async function loadTaskPendingCount() {
-    try {
-      const res = await fetch("/api/tasks/pending-count", { credentials: "include" });
-      if (res.ok) {
-        const j = await res.json();
-        setTaskPendingCount(j.count ?? 0);
-      }
-    } catch { /* ignore */ }
-  }
-
-  async function loadTasks() {
-    setTasksLoading(true);
-    try {
-      const res = await fetch("/api/tasks", { credentials: "include" });
-      if (res.status === 401) { router.replace("/login"); return; }
-      if (!res.ok) { setTasks([]); return; }
-      const j = await res.json();
-      setTasks(Array.isArray(j) ? j : []);
-    } finally {
-      setTasksLoading(false);
-    }
-    await loadTaskPendingCount();
-  }
-
-  async function loadTaskUserOptions() {
-    if (!isManager) return;
-    // MANAGER нет доступа к GET /api/users — используем public (тот же org, что в activeOrganization)
-    const res = await fetch("/api/users/public", { credentials: "include" });
-    if (res.ok) {
-      const j = await res.json();
-      setTaskUsersForSelect(Array.isArray(j) ? j : []);
-    }
-  }
-
-  async function createTaskFromModal() {
-    if (!taskFormTitle.trim() || !taskFormAssigneeId) return;
-    const res = await fetch("/api/tasks", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: taskFormTitle.trim(),
-        description: taskFormDesc.trim() || null,
-        assigneeId: taskFormAssigneeId,
-        dueAt: taskFormDue || null,
-        startsAt: taskFormStart || null,
-      }),
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      return alert((e as { message?: string }).message ?? "Ошибка");
-    }
-    setTaskModalOpen(false);
-    setTaskFormTitle(""); setTaskFormDesc(""); setTaskFormAssigneeId("");
-    setTaskFormDue(""); setTaskFormStart("");
-    await loadTasks();
-  }
-
-  async function patchTask(id: string, body: Record<string, unknown>): Promise<boolean> {
-    const res = await fetch(`/api/tasks/${id}`, {
-      method: "PATCH", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      const updated = await res.json() as CrmTask;
-      // Sync task list
-      setTasks(prev => prev.map(t => t.id === id ? updated : t));
-      // Sync open drawer if it's the same task
-      setTaskDetail(prev => prev?.id === id ? updated : prev);
-      void loadTaskPendingCount();
-      return true;
-    }
-    const e = await res.json().catch(() => ({}));
-    alert((e as { message?: string }).message ?? "Ошибка");
-    return false;
-  }
-
-  async function deleteTaskById(id: string) {
-    if (!confirm("Удалить задачу?")) return;
-    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE", credentials: "include" });
-    if (res.ok) { if (taskDetail?.id === id) setTaskDetail(null); await loadTasks(); }
-  }
-
-  async function openTaskDetail(t: CrmTask) {
-    // Cancel any in-flight comment request from a previous task
-    taskCommentAbortRef.current?.abort();
-    const controller = new AbortController();
-    taskCommentAbortRef.current = controller;
-
-    setTaskDetail(t);
-    setTaskEditMode(false);
-    setTaskComments([]);
-    setTaskCommentInput("");
-    setTaskCommentsLoading(true);
-    try {
-      const res = await fetch(`/api/tasks/${t.id}/comments`, {
-        credentials: "include",
-        signal: controller.signal,
-      });
-      if (res.ok) setTaskComments(await res.json());
-    } catch (e) {
-      if ((e as { name?: string }).name !== "AbortError") throw e;
-    } finally { setTaskCommentsLoading(false); }
-  }
-
-  async function submitTaskComment() {
-    if (!taskDetail || !taskCommentInput.trim() || taskCommentSending) return;
-    setTaskCommentSending(true);
-    try {
-      const res = await fetch(`/api/tasks/${taskDetail.id}/comments`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: taskCommentInput.trim() }),
-      });
-      if (res.ok) {
-        const c = await res.json();
-        setTaskComments(prev => [...prev, c]);
-        setTaskCommentInput("");
-      }
-    } finally { setTaskCommentSending(false); }
-  }
-
-  async function saveTaskEdit() {
-    if (!taskDetail || !taskEditTitle.trim()) return;
-    const ok = await patchTask(taskDetail.id, {
-      title: taskEditTitle.trim(),
-      description: taskEditDesc.trim() || null,
-      dueAt: taskEditDue || null,
-      startsAt: taskEditStart || null,
-      assigneeId: taskEditAssigneeId || undefined,
-    });
-    // patchTask already syncs taskDetail on success; only close edit mode if successful
-    if (ok) setTaskEditMode(false);
-  }
-
-  // --- Chat (DM) functions ---
-  async function loadChatContacts() {
-    const res = await fetch("/api/chat/users", { credentials: "include" });
-    if (res.ok) setChatContacts(await res.json());
-  }
-
-  async function loadChatConversations() {
-    const res = await fetch("/api/chat/conversations", { credentials: "include" });
-    if (res.ok) setChatConversations(await res.json());
-  }
-
-  async function openChatWith(contact: ChatContact) {
-    // Update ref immediately so the polling interval sees the new partner right away
-    chatActiveUserRef.current = contact;
-    setChatActiveUser(contact);
-    setChatMessages([]);
-    setChatShowContacts(false);
-    setChatLoading(true);
-    try {
-      const res = await fetch(`/api/chat/messages?with=${contact.id}&limit=50`, { credentials: "include" });
-      if (res.ok) setChatMessages(await res.json());
-      // mark as read
-      await fetch("/api/chat/read", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ otherUserId: contact.id }),
-      });
-      setChatConversations(prev => prev.map(c => c.user?.id === contact.id ? { ...c, unread: 0 } : c));
-    } finally { setChatLoading(false); }
-    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "instant" }), 80);
-  }
-
-  async function pollChatMessages() {
-    // Read from ref — always current even inside a stale setInterval closure
-    const active = chatActiveUserRef.current;
-    if (!active) return;
-    try {
-      const res = await fetch(`/api/chat/messages?with=${active.id}&limit=20`, { credentials: "include" });
-      if (res.ok) {
-        const msgs: ChatMessage[] = await res.json();
-        setChatMessages(prev => {
-          if (prev.length === 0) return msgs;
-          const existIds = new Set(prev.map(m => m.id));
-          const newOnes = msgs.filter(m => !existIds.has(m.id));
-          if (!newOnes.length) return prev;
-          void fetch("/api/chat/read", {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ otherUserId: active.id }),
-          });
-          return [...prev, ...newOnes];
-        });
-      }
-    } catch { /* ignore */ }
-    void loadChatConversations();
-  }
-
-  async function sendChatMessage() {
-    const text = chatInput.trim();
-    if (!text || chatSending || !chatActiveUser) return;
-    setChatSending(true);
-    setChatInput("");
-    try {
-      const res = await fetch("/api/chat/messages", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, receiverId: chatActiveUser.id }),
-      });
-      if (res.ok) {
-        const msg: ChatMessage = await res.json();
-        setChatMessages(prev => [...prev, msg]);
-        void loadChatConversations();
-        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-      }
-    } finally { setChatSending(false); }
-  }
-
-  async function loadChatUnread() {
-    try {
-      const res = await fetch("/api/chat/unread", { credentials: "include" });
-      if (res.ok) { const j = await res.json(); setChatUnread(j.count ?? 0); }
-    } catch { /* ignore */ }
   }
 
   async function addMembership(userId: string, organizationId: string) {
@@ -1088,162 +760,6 @@ export default function AppPage() {
   async function removeMembership(userId: string, orgId: string) {
     const res = await fetch(`/api/memberships/${userId}/${orgId}`, { method: "DELETE", credentials: "include" });
     if (res.ok) loadStaffMember(userId);
-  }
-
-  async function sendAgentMessage(msg?: string) {
-    const text = (msg ?? agentInput).trim();
-    if (!text || agentLoading) return;
-    const newHistory = [...agentHistory, { role: "user" as const, content: text }];
-    setAgentHistory(newHistory);
-    setAgentInput("");
-    setAgentPending(null);
-    setAgentLoading(true);
-    try {
-      const res = await fetch("/api/ai/agent", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: agentHistory.map(h => ({ role: h.role, content: h.content })),
-        }),
-      });
-      if (!res.ok) {
-        const errText = await res.text().catch(() => `HTTP ${res.status}`);
-        setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сервера (${res.status}): ${errText.slice(0, 200)}` }]);
-        return;
-      }
-      const j = await res.json();
-      const content = j.text || j.answer || j.message || j.error || "Нет ответа от AI";
-      const assistantMsg = { role: "assistant" as const, content, pendingAction: j.pendingAction };
-      setAgentHistory(h => [...h, assistantMsg]);
-      if (j.pendingAction) setAgentPending(j.pendingAction);
-    } catch (e: any) {
-      setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка сети: ${e.message}` }]);
-    } finally { setAgentLoading(false); }
-  }
-
-  async function confirmAgentAction() {
-    if (!agentPending) return;
-    setAgentPending(null);
-    try {
-      if (agentPending.type === "create_deal") {
-        const p = agentPending.params;
-        // Step 1: create deal
-        const res = await fetch("/api/deals", {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: p.title ?? "",
-            dealDate: p.date,
-            status: p.status ?? "NEW",
-            comment: p.comment ?? "",
-            templateId: p.templateId ?? null,
-            dataRows: (p.dataRows ?? []).map((r: any, i: number) => ({ data: r, order: i })),
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка создания сделки: ${err.message ?? res.status}` }]);
-          return;
-        }
-        const deal = await res.json();
-        // Step 2: set participants
-        const parts = (p.participants ?? []).filter((x: any) => x.userId);
-        if (parts.length > 0) {
-          await fetch(`/api/deals/${deal.id}/participants`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ participants: parts }),
-          });
-        }
-        // Step 3: set amounts (classic deal)
-        const amounts = (p.amounts ?? []).filter((a: any) => a.amountOut);
-        if (amounts.length > 0) {
-          await fetch(`/api/deals/${deal.id}/amounts`, {
-            method: "PUT", credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ amounts: amounts.map((a: any) => ({
-              amountIn: a.amountIn ?? 0, currencyIn: a.currencyIn ?? "USD",
-              amountOut: a.amountOut, currencyOut: a.currencyOut ?? "USD",
-              bank: a.bank ?? "", operationType: a.operationType ?? "ATM",
-            })) }),
-          });
-        }
-        const wMap = agentPending.workersMap ?? {};
-        const partsText = parts.map((x: any) => `${wMap[x.userId] ?? x.userId} (${x.pct}%)`).join(" + ");
-        setAgentHistory(h => [...h, { role: "assistant", content: `✅ Сделка создана!\n${partsText ? `👥 ${partsText}` : ""}\nОткройте вкладку «Сделки» чтобы посмотреть.` }]);
-      } else if (agentPending.type === "create_expense") {
-        const p = agentPending.params;
-        const res = await fetch("/api/expenses", {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: p.title || p.description || "Расход",
-            amount: p.amount,
-            currency: p.currency ?? "USD",
-            payMethod: p.payMethod ?? "Наличные",
-          }),
-        });
-        if (res.ok) {
-          setAgentHistory(h => [...h, { role: "assistant", content: "✅ Расход записан!" }]);
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setAgentHistory(h => [...h, { role: "assistant", content: `❌ Ошибка записи расхода: ${err.message ?? res.status}` }]);
-        }
-      } else if (agentPending.type === "create_client") {
-        const p = agentPending.params;
-        const slug = typeof p.statusSlug === "string" ? p.statusSlug.trim().toLowerCase() : "";
-        const status = slug ? clientStatuses.find((x) => x.slug.toLowerCase() === slug) : undefined;
-        const res = await fetch("/api/clients", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: String(p.name ?? "").trim(),
-            phone: String(p.phone ?? "").trim(),
-            bank: p.bank != null && String(p.bank).trim() ? String(p.bank).trim() : null,
-            assistantName: p.assistantName != null && String(p.assistantName).trim() ? String(p.assistantName).trim() : null,
-            callSummary: p.callSummary != null && String(p.callSummary).trim() ? String(p.callSummary).trim() : null,
-            callStartedAt: p.callStartedAt != null && String(p.callStartedAt).trim() ? String(p.callStartedAt).trim() : null,
-            note: p.note != null && String(p.note).trim() ? String(p.note).trim() : null,
-            statusId: status?.id ?? undefined,
-          }),
-        });
-        if (res.ok) {
-          const name = String(p.name ?? "").trim();
-          void loadClients();
-          setAgentHistory((h) => [
-            ...h,
-            { role: "assistant", content: `✅ Карточка клиента создана${name ? `: ${name}` : ""}.\nСписок во вкладке «Клиенты» обновлён; при необходимости откройте её или «Редактировать» в карточке.` },
-          ]);
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setAgentHistory((h) => [
-            ...h,
-            { role: "assistant", content: `❌ Не удалось создать клиента: ${err.message ?? res.status}` },
-          ]);
-        }
-      }
-    } catch (e: any) {
-      setAgentHistory(h => [...h, { role: "assistant", content: `❌ ${e.message}` }]);
-    }
-  }
-
-  function startVoice() {
-    if (typeof window === "undefined") return;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("Браузер не поддерживает голосовой ввод. Используйте Chrome или Edge."); return; }
-    const rec = new SR();
-    rec.lang = "ru-RU";
-    rec.interimResults = false;
-    rec.onstart = () => setIsListening(true);
-    rec.onend = () => setIsListening(false);
-    rec.onerror = () => setIsListening(false);
-    rec.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      setAgentInput(transcript);
-    };
-    rec.start();
   }
 
   async function loadTemplates() {
@@ -1601,277 +1117,6 @@ export default function AppPage() {
     router.replace("/login");
   }
 
-  // ---- deal modal helpers ----
-  function newAmtRow(): DealAmtRow {
-    return {
-      id: crypto.randomUUID(),
-      bank: "ING",
-      operationType: "ATM",
-      amountIn: "",
-      currencyIn: "PLN",
-      amountOut: "",
-      currencyOut: "PLN",
-      shopName: "",
-    };
-  }
-
-  /** Синхронизирует % посредника в блоке выбора и в данных строки шаблона (от этого считается выплата). */
-  function applyDealMediatorPct(pct: string, tplId?: string | null) {
-    setDealMediatorPct(pct);
-    const tpl = templates.find((t) => t.id === (tplId ?? dealTemplateId));
-    const mk = mediatorPctFieldKey(tpl);
-    if (!mk) return;
-    setDealDataRows((prev) => {
-      if (prev.length === 0) return [{ _id: crypto.randomUUID(), data: { [mk]: pct } }];
-      return prev.map((row, i) =>
-        i === 0 ? { ...row, data: { ...row.data, [mk]: pct } } : row,
-      );
-    });
-  }
-
-  function setDealMediatorSelection(mediatorId: string) {
-    setDealMediatorId(mediatorId);
-    if (!mediatorId) {
-      applyDealMediatorPct("");
-      return;
-    }
-    const m = mediators.find((x: { id: string; defaultPct?: number | string | null }) => x.id === mediatorId);
-    const pct =
-      m?.defaultPct != null && m.defaultPct !== ""
-        ? String(m.defaultPct)
-        : dealMediatorPct;
-    applyDealMediatorPct(pct);
-  }
-
-  function setDealOlxSelection(olxId: string) {
-    setDealOlxId(olxId);
-    if (!olxId) {
-      setDealOlxPct("");
-      return;
-    }
-    const o = olxList.find((x: { id: string; defaultPct?: number | string | null }) => x.id === olxId);
-    if (o?.defaultPct != null && o.defaultPct !== "") setDealOlxPct(String(o.defaultPct));
-  }
-
-  async function openDealModal() {
-    const tRes = await fetch("/api/deal-templates", { credentials: "include" });
-    if (!tRes.ok) {
-      alert("Не удалось загрузить шаблоны");
-      return;
-    }
-    const list: DealTemplate[] = await tRes.json();
-    setTemplates(list);
-    if (list.length === 0) {
-      alert("Не удалось удалить сделку");
-      return;
-    }
-    setDealModalOpen(true);
-    setDealEditingId(null);
-    setDealDate(new Date().toISOString().slice(0, 10));
-    setDealStatus("NEW");
-    setDealClientSearch("");
-    setDealClientId(null);
-    setDealClientSkip(false);
-    setDealComment("");
-    setDealAmounts([newAmtRow()]);
-    setDealParticipants([{ id: crypto.randomUUID(), userId: "", pct: "100" }]);
-    if (list.length === 1) {
-      setDealTemplateId(list[0].id);
-      setDealTemplateStep("form");
-    } else {
-      setDealTemplateId(list[0].id);
-      setDealTemplateStep("pick");
-    }
-    setDealDataRows([{ _id: crypto.randomUUID(), data: {} }]);
-    setDealMediatorId("");
-    setDealMediatorPct("");
-    setDealOlxId("");
-    setDealOlxPct("");
-    setDealInfoPct("");
-    fetchDealDropdowns();
-  }
-
-  function openDealEditModal(deal: Deal) {
-    setDealModalOpen(true); setDealEditingId(deal.id);
-    setDealDate((deal.dealDate ?? new Date().toISOString()).slice(0, 10));
-    setDealStatus(deal.status); setDealClientSearch("");
-    setDealClientId(deal.clientId ?? null);
-    setDealClientSkip(!deal.clientId);
-    setDealComment(deal.comment ?? "");
-    setDealTemplateId(deal.templateId ?? null);
-    setDealTemplateStep("form");
-    const linkPct = deal.mediatorLink ? String(deal.mediatorLink.pct) : "";
-    const mk = deal.template?.calcMediatorPctKey ?? null;
-    setDealDataRows(
-      (deal.dataRows ?? []).length > 0
-        ? deal.dataRows!.map((r, i) => {
-            const data = Object.fromEntries(Object.entries(r.data).map(([k, v]) => [k, String(v ?? "")]));
-            if (i === 0 && mk && linkPct && !data[mk]) data[mk] = linkPct;
-            return { _id: r.id, data };
-          })
-        : [{ _id: crypto.randomUUID(), data: mk && linkPct ? { [mk]: linkPct } : {} }],
-    );
-    setDealAmounts(
-      (deal.amounts ?? []).map((a) => ({
-        id: a.id,
-        bank: a.bank,
-        operationType: a.operationType,
-        amountIn: String(a.amountIn ?? ""),
-        currencyIn: a.currencyIn,
-        amountOut: String(a.amountOut ?? ""),
-        currencyOut: a.currencyOut,
-        shopName: a.shopName ?? "",
-      })),
-    );
-    setDealParticipants(
-      (deal.participants ?? []).map((p) => ({ id: p.id, userId: p.user.id, pct: String(p.pct) })),
-    );
-    setDealMediatorId(deal.mediatorLink?.mediatorId ?? "");
-    setDealMediatorPct(linkPct);
-    setDealOlxId(deal.olxLink?.olxId ?? "");
-    setDealOlxPct(deal.olxLink ? String(deal.olxLink.pct) : "");
-    setDealInfoPct(deal.infoPct != null && deal.infoPct !== "" ? String(deal.infoPct) : "");
-    fetchDealDropdowns();
-  }
-
-  function fetchDealDropdowns() {
-    Promise.all([
-      fetch("/api/clients", { credentials: "include" }),
-      fetch("/api/users/public", { credentials: "include" }),
-      fetch("/api/mediators", { credentials: "include" }),
-      fetch("/api/olx", { credentials: "include" }),
-    ]).then(async ([cRes, wRes, mRes, oRes]) => {
-      if (cRes.ok) setDealClients(await cRes.json());
-      if (wRes.ok) setDealWorkers(await wRes.json());
-      if (mRes.ok) setMediators(await mRes.json());
-      if (oRes.ok) setOlxList(await oRes.json());
-    });
-  }
-
-  function closeDealModal() { setDealModalOpen(false); }
-
-  async function saveDeal() {
-    const activeTpl = dealTemplateId ? templates.find((t) => t.id === dealTemplateId) : null;
-    if (!dealEditingId && !activeTpl) {
-      alert("Выберите шаблон сделки");
-      return;
-    }
-    const needWorkers = activeTpl ? activeTpl.hasWorkers : true;
-
-    const parts = dealParticipants.filter((p) => p.userId).map((p) => ({ userId: p.userId, pct: Number(p.pct) || 0 }));
-    if (needWorkers && parts.length > 0) {
-      const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-      if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
-    }
-
-    const selectedClient = dealClientId ? dealClients.find((c) => c.id === dealClientId) : null;
-    const tplName2 = activeTpl ? ` [${activeTpl.name}]` : "";
-    const titleText = selectedClient ? `Сделка — ${selectedClient.name}${tplName2}` : `Сделка${tplName2}`;
-
-    const basePayload = {
-      title: titleText,
-      status: dealStatus,
-      clientId: dealClientSkip ? null : (dealClientId ?? null),
-      dealDate,
-      comment: dealComment || null,
-    };
-
-    if (activeTpl) {
-      // Template-based deal
-      const mk = mediatorPctFieldKey(activeTpl);
-      const rowsPayload = dealDataRows.map((r, i) => {
-        const data = { ...r.data };
-        if (i === 0 && mk && dealMediatorPct !== "") data[mk] = dealMediatorPct;
-        return { data, order: i };
-      });
-      const mediatorPayload = {
-        mediatorId: dealMediatorId || null,
-        mediatorPct: dealMediatorPct ? Number(dealMediatorPct) : null,
-        olxId: dealOlxId || null,
-        olxPct: dealOlxPct ? Number(dealOlxPct) : null,
-        infoPct: dealInfoPct !== "" ? Number(dealInfoPct) : null,
-      };
-      const payload = { ...basePayload, templateId: activeTpl.id, dataRows: rowsPayload, ...mediatorPayload };
-
-      if (!dealEditingId) {
-        const dRes = await fetch("/api/deals", {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-        });
-        if (!dRes.ok) return alert("Не удалось создать сделку");
-        const deal = await dRes.json();
-        if (needWorkers && parts.length > 0) {
-          await fetch(`/api/deals/${deal.id}/participants`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
-          });
-        }
-      } else {
-        const upd = await fetch(`/api/deals/${dealEditingId}`, {
-          method: "PATCH", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-        });
-        if (!upd.ok) return alert("Не удалось обновить сделку");
-        if (needWorkers) {
-          await fetch(`/api/deals/${dealEditingId}/participants`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
-          });
-        }
-      }
-    } else {
-      // Classic deal
-      if (parts.length > 0) {
-        const totalPct = parts.reduce((s, p) => s + p.pct, 0);
-        if (totalPct !== 100) return alert("Проценты участников должны суммарно быть 100%");
-      }
-      const amountsPayload = dealAmounts.map((r) => ({
-        amountIn: Number(r.amountIn) || 0, currencyIn: r.currencyIn,
-        amountOut: Number(r.amountOut) || 0, currencyOut: r.currencyOut,
-        bank: r.bank, operationType: r.operationType,
-        shopName: r.operationType === "PURCHASE" ? (r.shopName || null) : null,
-      }));
-
-      if (!dealEditingId) {
-        const dRes = await fetch("/api/deals", {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
-        });
-        if (!dRes.ok) return alert("Не удалось создать сделку");
-        const deal = await dRes.json();
-        for (const a of amountsPayload) {
-          await fetch(`/api/deals/${deal.id}/amounts`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" }, body: JSON.stringify(a),
-          });
-        }
-        if (parts.length > 0) {
-          await fetch(`/api/deals/${deal.id}/participants`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
-          });
-        }
-      } else {
-        const upd = await fetch(`/api/deals/${dealEditingId}`, {
-          method: "PATCH", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(basePayload),
-        });
-        if (!upd.ok) return alert("Не удалось обновить сделку");
-        await fetch(`/api/deals/${dealEditingId}/amounts`, {
-          method: "PUT", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amounts: amountsPayload }),
-        });
-        await fetch(`/api/deals/${dealEditingId}/participants`, {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: parts }),
-        });
-      }
-    }
-
-    closeDealModal();
-    await loadDeals();
-  }
-
   // =========================================================
   // RENDER
   // =========================================================
@@ -2114,10 +1359,10 @@ export default function AppPage() {
               dealsInPeriod={dashDealsInPeriod}
               expenses={expenses}
               onNavigateToDeals={() => setTab("deals")}
-              onNavigateToDealsNew={() => { setTab("deals"); setTimeout(openDealModal, 50); }}
+              onNavigateToDealsNew={() => { setTab("deals"); setTimeout(() => void dealForm.openDealModal(), 50); }}
               onNavigateToClientsNew={() => { setTab("clients"); setPendingClientCreate(true); }}
               onNavigateToExpenses={() => setTab("expenses")}
-              onOpenDealEdit={(d) => { setTab("deals"); setTimeout(() => openDealEditModal(d as Deal), 50); }}
+              onOpenDealEdit={(d) => { setTab("deals"); setTimeout(() => dealForm.openDealEditModal(d as Deal), 50); }}
               onOpenMediator={(mediatorId) => {
                 setTab("mediators");
                 void loadMediators().then(() => {
@@ -2160,53 +1405,53 @@ export default function AppPage() {
               onLegacyImportYearChange={setLegacyImportYear}
               legacyImporting={legacyImporting}
               onLegacyImport={(f) => void importLegacyDeals(f)}
-              onOpenNew={() => void openDealModal()}
-              onOpenEdit={openDealEditModal}
+              onOpenNew={() => void dealForm.openDealModal()}
+              onOpenEdit={dealForm.openDealEditModal}
               onDelete={(id) => void deleteDeal(id)}
               modal={
                 <DealFormModal
-                  open={dealModalOpen}
-                  editingId={dealEditingId}
+                  open={dealForm.dealModalOpen}
+                  editingId={dealForm.dealEditingId}
                   templates={templates}
-                  templateId={dealTemplateId}
-                  templateStep={dealTemplateStep}
-                  onTemplateIdChange={setDealTemplateId}
-                  onTemplateStepChange={setDealTemplateStep}
-                  dealDate={dealDate}
-                  onDealDateChange={setDealDate}
-                  dealStatus={dealStatus}
-                  onDealStatusChange={setDealStatus}
-                  dealClientSearch={dealClientSearch}
-                  onDealClientSearchChange={setDealClientSearch}
-                  dealClientId={dealClientId}
-                  onDealClientIdChange={setDealClientId}
-                  dealClientSkip={dealClientSkip}
-                  onDealClientSkipChange={setDealClientSkip}
-                  dealClients={dealClients}
-                  dealComment={dealComment}
-                  onDealCommentChange={setDealComment}
-                  dealDataRows={dealDataRows}
-                  onDealDataRowsChange={setDealDataRows}
-                  dealAmounts={dealAmounts}
-                  onDealAmountsChange={setDealAmounts}
-                  dealParticipants={dealParticipants}
-                  onDealParticipantsChange={setDealParticipants}
-                  dealWorkers={dealWorkers}
-                  dealMediatorId={dealMediatorId}
-                  dealMediatorPct={dealMediatorPct}
-                  dealOlxId={dealOlxId}
-                  dealOlxPct={dealOlxPct}
-                  onDealOlxPctChange={setDealOlxPct}
-                  dealInfoPct={dealInfoPct}
-                  onDealInfoPctChange={setDealInfoPct}
+                  templateId={dealForm.dealTemplateId}
+                  templateStep={dealForm.dealTemplateStep}
+                  onTemplateIdChange={dealForm.setDealTemplateId}
+                  onTemplateStepChange={dealForm.setDealTemplateStep}
+                  dealDate={dealForm.dealDate}
+                  onDealDateChange={dealForm.setDealDate}
+                  dealStatus={dealForm.dealStatus}
+                  onDealStatusChange={dealForm.setDealStatus}
+                  dealClientSearch={dealForm.dealClientSearch}
+                  onDealClientSearchChange={dealForm.setDealClientSearch}
+                  dealClientId={dealForm.dealClientId}
+                  onDealClientIdChange={dealForm.setDealClientId}
+                  dealClientSkip={dealForm.dealClientSkip}
+                  onDealClientSkipChange={dealForm.setDealClientSkip}
+                  dealClients={dealForm.dealClients}
+                  dealComment={dealForm.dealComment}
+                  onDealCommentChange={dealForm.setDealComment}
+                  dealDataRows={dealForm.dealDataRows}
+                  onDealDataRowsChange={dealForm.setDealDataRows}
+                  dealAmounts={dealForm.dealAmounts}
+                  onDealAmountsChange={dealForm.setDealAmounts}
+                  dealParticipants={dealForm.dealParticipants}
+                  onDealParticipantsChange={dealForm.setDealParticipants}
+                  dealWorkers={dealForm.dealWorkers}
+                  dealMediatorId={dealForm.dealMediatorId}
+                  dealMediatorPct={dealForm.dealMediatorPct}
+                  dealOlxId={dealForm.dealOlxId}
+                  dealOlxPct={dealForm.dealOlxPct}
+                  onDealOlxPctChange={dealForm.setDealOlxPct}
+                  dealInfoPct={dealForm.dealInfoPct}
+                  onDealInfoPctChange={dealForm.setDealInfoPct}
                   mediators={mediators}
                   olxList={olxList}
-                  onClose={closeDealModal}
-                  onSave={() => void saveDeal()}
-                  onMediatorSelect={setDealMediatorSelection}
-                  onMediatorPctChange={applyDealMediatorPct}
-                  onOlxSelect={setDealOlxSelection}
-                  newAmtRow={newAmtRow}
+                  onClose={dealForm.closeDealModal}
+                  onSave={() => void dealForm.saveDeal()}
+                  onMediatorSelect={dealForm.setDealMediatorSelection}
+                  onMediatorPctChange={dealForm.applyDealMediatorPct}
+                  onOlxSelect={dealForm.setDealOlxSelection}
+                  newAmtRow={dealForm.newAmtRow}
                 />
               }
             />
@@ -2240,517 +1485,20 @@ export default function AppPage() {
             />
           ) : null}
 
-          {tab === "tasks" ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div className="page-header">
-                <div className="page-header-left">
-                  <div className="page-header-title">Задачи</div>
-                  <div className="page-header-sub">Назначайте сроки, отслеживайте статусы. Исполнители получают письмо о новой задаче.</div>
-                </div>
-                {isManager && (
-                  <div className="page-header-actions">
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => { setTaskModalOpen(true); void loadTaskUserOptions(); }}
-                    >+ Новая задача</button>
-                  </div>
-                )}
-              </div>
-              <div className="filter-tabs" style={{ width: "fit-content" }}>
-                {([
-                  { id: "active" as const, label: "Активные" },
-                  { id: "all" as const, label: "Все" },
-                  { id: "done" as const, label: "Архив" },
-                ]).map((f) => (
-                  <button key={f.id} type="button" className={`filter-tab ${taskFilter === f.id ? "active" : ""}`} onClick={() => setTaskFilter(f.id)}>{f.label}</button>
-                ))}
-              </div>
-              {tasksLoading ? (
-                <div style={{ color: "var(--text-secondary)" }}>Загрузка…</div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
-                  {tasks
-                    .filter((t) => {
-                      if (taskFilter === "active") return t.status === "PENDING" || t.status === "IN_PROGRESS";
-                      if (taskFilter === "done") return t.status === "DONE" || t.status === "CANCELLED";
-                      return true;
-                    })
-                    .map((t) => {
-                      const isMine = user?.id === t.assignee.id;
-                      const due = t.dueAt ? new Date(t.dueAt) : null;
-                      const overdue = !!(due && due < new Date() && t.status !== "DONE" && t.status !== "CANCELLED");
-                      const stLabel: Record<TaskStatus, string> = {
-                        PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена",
-                      };
-                      return (
-                        <div
-                          key={t.id}
-                          className={`task-card${isMine && t.status !== "DONE" && t.status !== "CANCELLED" ? " task-card--mine" : ""}${overdue ? " task-card--due" : ""}${t.status === "DONE" ? " task-card--done" : ""}`}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => void openTaskDetail(t)}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                            <h3 style={{ margin: 0, flex: 1 }}>{t.title}</h3>
-                            <span className={`badge ${t.status === "DONE" ? "badge-green" : t.status === "IN_PROGRESS" ? "badge-blue" : t.status === "CANCELLED" ? "badge-gray" : "badge-amber"}`}>
-                              {stLabel[t.status]}
-                            </span>
-                          </div>
-                          {t.description && <div className="task-card-desc">{t.description}</div>}
-                          <div className="task-card-meta">
-                            <span>👤 {t.assignee.name || t.assignee.email}</span>
-                            <span>·</span>
-                            <span>от {t.createdBy.name || t.createdBy.email}</span>
-                            {t.dueAt && (
-                              <>
-                                <span>·</span>
-                                <span className="mono" style={overdue ? { color: "var(--amber)" } : {}}>до {new Date(t.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                              </>
-                            )}
-                          </div>
-                          <div className="task-card-actions" onClick={e => e.stopPropagation()}>
-                            {isMine && t.status !== "DONE" && t.status !== "CANCELLED" && (
-                              <>
-                                {t.status === "PENDING" && (
-                                  <button className="btn btn-secondary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "IN_PROGRESS" })}>Взять в работу</button>
-                                )}
-                                <button className="btn btn-primary" style={{ height: 30, fontSize: 12 }} onClick={() => void patchTask(t.id, { status: "DONE" })}>Выполнено</button>
-                              </>
-                            )}
-                            {isManager && (
-                              <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, color: "var(--red-text)" }} onClick={() => void deleteTaskById(t.id)}>Удалить</button>
-                            )}
-                            <button className="btn btn-ghost" style={{ height: 30, fontSize: 12, marginLeft: "auto" }}>Открыть →</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-              {!tasksLoading && tasks.filter((t) => taskFilter === "active" ? t.status === "PENDING" || t.status === "IN_PROGRESS" : taskFilter === "done" ? t.status === "DONE" || t.status === "CANCELLED" : true).length === 0 && (
-                <div className="empty-state" style={{ padding: 32 }}>
-                  <div className="empty-state-icon">
-                    <svg width="24" height="24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                  </div>
-                  <div className="empty-state-title">Нет задач</div>
-                  <div className="empty-state-desc">{isManager ? "Создайте задачу для сотрудника — он получит письмо" : "Вам пока ничего не назначили"}</div>
-                </div>
-              )}
-              {taskModalOpen && isManager && (
-                <div
-                  className="modal-backdrop"
-                  style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60, backdropFilter: "blur(2px)" }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) setTaskModalOpen(false); }}
-                >
-                  <div className="card" style={{ width: 480, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
-                    <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span className="card-title">Новая задача</span>
-                      <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>×</button>
-                    </div>
-                    <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                      <div>
-                        <div className="form-label">Название *</div>
-                        <input className="form-input" value={taskFormTitle} onChange={(e) => setTaskFormTitle(e.target.value)} placeholder="Кратко, что сделать" />
-                      </div>
-                      <div>
-                        <div className="form-label">Описание</div>
-                        <textarea className="form-input" value={taskFormDesc} onChange={(e) => setTaskFormDesc(e.target.value)} rows={3} placeholder="Детали" />
-                      </div>
-                      <div>
-                        <div className="form-label">Исполнитель *</div>
-                        <select className="form-input" value={taskFormAssigneeId} onChange={(e) => setTaskFormAssigneeId(e.target.value)}>
-                          <option value="">Выберите</option>
-                          {taskUsersForSelect.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name || u.email} ({u.email})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="g2">
-                        <div>
-                          <div className="form-label">Начало</div>
-                          <input className="form-input" type="datetime-local" value={taskFormStart} onChange={(e) => setTaskFormStart(e.target.value)} />
-                        </div>
-                        <div>
-                          <div className="form-label">Срок</div>
-                          <input className="form-input" type="datetime-local" value={taskFormDue} onChange={(e) => setTaskFormDue(e.target.value)} />
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button className="btn btn-secondary" onClick={() => setTaskModalOpen(false)}>Отмена</button>
-                        <button className="btn btn-primary" onClick={() => void createTaskFromModal()} disabled={!taskFormTitle.trim() || !taskFormAssigneeId}>Создать</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
+                    <TasksTab
+            active={tab === "tasks"}
+            userId={user?.id}
+            isManager={isManager}
+            onPendingCountChange={setTaskPendingCount}
+          />
 
-          {/* ===== CHAT (DM) ===== */}
-          {tab === "chat" ? (
-            <div className="chat-container">
+                    <ChatTab active={tab === "chat"} userId={user?.id} onUnreadChange={setChatUnread} />
 
-              {/* Left: contacts / conversations */}
-              <div className={`chat-sidebar${chatActiveUser ? " chat-sidebar--hidden" : ""}`}>
-                <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>Сообщения</div>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ height: 28, fontSize: 11, padding: "0 10px" }}
-                    onClick={() => setChatShowContacts(v => !v)}
-                    title="Новый чат"
-                  >+ Новый</button>
-                </div>
-
-                {/* New chat: pick a contact */}
-                {chatShowContacts && (
-                  <div style={{ borderBottom: "1px solid var(--border)", maxHeight: 220, overflowY: "auto" }}>
-                    <div style={{ padding: "8px 12px 4px", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Сотрудники</div>
-                    {chatContacts.map(c => (
-                      <div
-                        key={c.id}
-                        onClick={() => void openChatWith(c)}
-                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", transition: "background 0.15s" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}
-                      >
-                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                          {(c.name || c.email)[0].toUpperCase()}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name || c.email}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{c.position || c.role}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Existing conversations */}
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  {chatConversations.length === 0 && !chatShowContacts && (
-                    <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
-                      <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
-                      Нажмите «+ Новый» чтобы начать переписку
-                    </div>
-                  )}
-                  {chatConversations.map(conv => {
-                    if (!conv.user) return null;
-                    const isActive = chatActiveUser?.id === conv.user.id;
-                    return (
-                      <div
-                        key={conv.user.id}
-                        onClick={() => void openChatWith(conv.user!)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer",
-                          background: isActive ? "var(--accent-light)" : "transparent",
-                          borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
-                          transition: "background 0.15s",
-                        }}
-                      >
-                        <div style={{ position: "relative", flexShrink: 0 }}>
-                          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--bg-hover)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>
-                            {(conv.user.name || conv.user.email)[0].toUpperCase()}
-                          </div>
-                          {conv.unread > 0 && (
-                            <div style={{ position: "absolute", top: -2, right: -2, width: 16, height: 16, borderRadius: "50%", background: "#ef4444", color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                              {conv.unread > 9 ? "9+" : conv.unread}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: conv.unread > 0 ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {conv.user.name || conv.user.email}
-                          </div>
-                          {conv.lastMessage && (
-                            <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                              {conv.lastMessage.sender.id === user?.id ? "Вы: " : ""}{conv.lastMessage.body}
-                            </div>
-                          )}
-                        </div>
-                        {conv.lastMessage && (
-                          <div style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>
-                            {new Date(conv.lastMessage.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Right: message area */}
-              <div className={`chat-main${chatActiveUser ? " chat-main--visible" : ""}`}>
-                {!chatActiveUser ? (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-tertiary)", gap: 12 }}>
-                    <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.2" viewBox="0 0 24 24" style={{ opacity: 0.3 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <div style={{ fontWeight: 600, fontSize: 15, opacity: 0.6 }}>Выберите собеседника</div>
-                    <div style={{ fontSize: 13, opacity: 0.5 }}>Все сообщения шифруются AES-256</div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Chat header */}
-                    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                      <button className="chat-back-btn" onClick={() => { chatActiveUserRef.current = null; setChatActiveUser(null); }}>
-                        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-                      </button>
-                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
-                        {(chatActiveUser.name || chatActiveUser.email)[0].toUpperCase()}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chatActiveUser.name || chatActiveUser.email}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{chatActiveUser.position || chatActiveUser.role}</div>
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                        <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        AES-256
-                      </div>
-                    </div>
-
-                    {/* Messages */}
-                    <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
-                      {chatLoading && chatMessages.length === 0 ? (
-                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>Загрузка…</div>
-                      ) : chatMessages.length === 0 ? (
-                        <div style={{ textAlign: "center", color: "var(--text-tertiary)", paddingTop: 40 }}>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>👋</div>
-                          <div style={{ fontWeight: 600, marginBottom: 4 }}>Начните общение</div>
-                          <div style={{ fontSize: 13 }}>Напишите {chatActiveUser.name || chatActiveUser.email}</div>
-                        </div>
-                      ) : chatMessages.map((m, i) => {
-                        const isMe = m.sender.id === user?.id;
-                        const prev = chatMessages[i - 1];
-                        const msgDate = new Date(m.createdAt);
-                        const prevDate = prev ? new Date(prev.createdAt) : null;
-                        const showDate = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
-                        const grouped = prev && prev.sender.id === m.sender.id && !showDate;
-                        return (
-                          <div key={m.id}>
-                            {showDate && (
-                              <div style={{ textAlign: "center", fontSize: 11, color: "var(--text-tertiary)", margin: "10px 0 6px", display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
-                                {msgDate.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
-                                <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
-                              </div>
-                            )}
-                            <div style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", gap: 8, alignItems: "flex-end", marginTop: grouped ? 2 : 8 }}>
-                              <div style={{ maxWidth: "75%", minWidth: 40 }}>
-                                <div style={{
-                                  background: isMe ? "var(--accent)" : "var(--bg-hover)",
-                                  color: isMe ? "#fff" : "var(--text-primary)",
-                                  borderRadius: isMe
-                                    ? (grouped ? "16px 4px 4px 16px" : "16px 16px 4px 16px")
-                                    : (grouped ? "4px 16px 16px 4px" : "16px 16px 16px 4px"),
-                                  padding: "9px 14px",
-                                  fontSize: 14, lineHeight: 1.5,
-                                  wordBreak: "break-word",
-                                  boxShadow: isMe ? "0 2px 6px rgba(99,102,241,0.2)" : "var(--shadow-sm)",
-                                }}>
-                                  {m.body}
-                                </div>
-                                <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2, textAlign: isMe ? "right" : "left", paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
-                                  {msgDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div ref={chatBottomRef} />
-                    </div>
-
-                    {/* Input */}
-                    <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0 }}>
-                      <textarea
-                        className="form-input"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); } }}
-                        placeholder={`Написать ${chatActiveUser.name || chatActiveUser.email}… (Enter — отправить)`}
-                        rows={1}
-                        style={{ flex: 1, resize: "none", minHeight: 40, maxHeight: 120, overflowY: "auto", lineHeight: 1.5 }}
-                      />
-                      <button
-                        className="btn btn-primary"
-                        style={{ height: 40, minWidth: 44, padding: "0 14px" }}
-                        disabled={!chatInput.trim() || chatSending}
-                        onClick={() => void sendChatMessage()}
-                      >
-                        <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {/* ===== AI ASSISTANT ===== */}
-          {tab === "assistant" ? (
-            <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", maxWidth: 820, margin: "0 auto", gap: 0 }}>
-
-              {/* Not configured banner */}
-              {aiConfigured === false && (
-                <div style={{ marginBottom: 12, padding: "12px 16px", borderRadius: 12, background: "#f59e0b22", border: "1px solid #f59e0b55", fontSize: 13, color: "#f59e0b", flexShrink: 0 }}>
-                  ⚠️ <strong>AI не настроен.</strong> На сервере нет OPENAI_API_KEY. Добавьте в файл <code>.env</code> на VPS:<br/>
-                  <code style={{ display: "block", marginTop: 6, padding: "4px 8px", background: "#0005", borderRadius: 6, fontFamily: "monospace" }}>OPENAI_API_KEY=sk-proj-...</code>
-                  Затем: <code>docker compose up -d backend</code>
-                </div>
-              )}
-
-              {/* Header */}
-              <div className="card" style={{ padding: "16px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>✦</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>AI Ассистент</div>
-                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                    Сделки, расходы и карточки клиентов из текста или голоса — в том числе вставка уведомления о звонке
-                  </div>
-                </div>
-                {agentHistory.length > 0 && (
-                  <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { setAgentHistory([]); setAgentPending(null); }}>
-                    Очистить
-                  </button>
-                )}
-              </div>
-
-              {/* Messages */}
-              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingBottom: 8 }}>
-                {agentHistory.length === 0 ? (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "40px 20px" }}>
-                    <div style={{ fontSize: 48 }}>✦</div>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Чем могу помочь?</div>
-                      <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 20 }}>Надиктуйте или напишите — или вставьте готовое уведомление о звонке: подготовлю карточку клиента на подтверждение</div>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 600 }}>
-                      {(
-                        [
-                          "Запиши сделку: вчера Ди и олх взяли 6838 от eurocom 75/25, закрыл Ант",
-                          "Кто топ воркер этого месяца?",
-                          "Запиши расход: аренда офиса 500$",
-                          "Покажи статистику за неделю",
-                          "Какой доход за апрель?",
-                          {
-                            label: "✅ Клиент из уведомления о звонке (пример)",
-                            text: "✅ Новый звонок\n\n👤Ассистент: Robert Nowak PKO BP\n\n🏦Банк: PKO BP\n\n🧍‍♀️Клиент: Marta Rusowicz\n\n☎️Телефон: +48503703469\n\n📝 Summary: клиентка заявила, что не имеет счёта в PKO BP.\n⏰ Время начала звонка: 04.05.2026, 11:31",
-                          },
-                        ] as const
-                      ).map((q) => {
-                        const label = typeof q === "string" ? q : q.label;
-                        const message = typeof q === "string" ? q : q.text;
-                        return (
-                        <button key={label} className="btn btn-secondary" style={{ fontSize: 12, padding: "8px 14px", textAlign: "left", lineHeight: 1.4 }}
-                          onClick={() => sendAgentMessage(message)} disabled={agentLoading}>
-                          {label}
-                        </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  agentHistory.map((m, i) => (
-                    <div key={i} style={{
-                      display: "flex",
-                      justifyContent: m.role === "user" ? "flex-end" : "flex-start",
-                    }}>
-                      {m.role === "assistant" && (
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, marginRight: 8, marginTop: 2 }}>✦</div>
-                      )}
-                      <div style={{
-                        maxWidth: "75%",
-                        padding: "12px 16px",
-                        borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                        background: m.role === "user" ? "var(--accent)" : "var(--bg-card)",
-                        border: m.role === "assistant" ? "1px solid var(--border-light)" : "none",
-                        color: m.role === "user" ? "#fff" : "var(--text-primary)",
-                        fontSize: 14,
-                        lineHeight: 1.6,
-                        whiteSpace: "pre-wrap",
-                      }}>
-                        {m.content}
-                        {/* Confirm buttons */}
-                        {m.role === "assistant" && m.pendingAction && agentPending && i === agentHistory.length - 1 && (
-                          <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-light)" }}>
-                            <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={confirmAgentAction}>
-                              ✅ Подтвердить
-                            </button>
-                            <button className="btn btn-secondary" style={{ fontSize: 13 }}
-                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено. Что нужно изменить?" }]); }}>
-                              ✏️ Изменить
-                            </button>
-                            <button className="btn btn-secondary" style={{ fontSize: 13, color: "var(--red)" }}
-                              onClick={() => { setAgentPending(null); setAgentHistory(h => [...h, { role: "assistant", content: "Отменено." }]); }}>
-                              ✕ Отмена
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-                {agentLoading && (
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✦</div>
-                    <div style={{ padding: "12px 16px", borderRadius: "18px 18px 18px 4px", background: "var(--bg-card)", border: "1px solid var(--border-light)", fontSize: 14, color: "var(--text-tertiary)" }}>
-                      <span style={{ display: "inline-flex", gap: 4 }}>
-                        <span style={{ animation: "pulse 1s ease-in-out infinite" }}>●</span>
-                        <span style={{ animation: "pulse 1s ease-in-out 0.2s infinite" }}>●</span>
-                        <span style={{ animation: "pulse 1s ease-in-out 0.4s infinite" }}>●</span>
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Input */}
-              <div className="card" style={{ padding: "12px 16px", flexShrink: 0, marginTop: 8 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                  <textarea
-                    className="form-input"
-                    value={agentInput}
-                    onChange={e => setAgentInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAgentMessage(); } }}
-                    placeholder="Напишите или надиктуйте... (Enter — отправить, Shift+Enter — новая строка)"
-                    disabled={agentLoading}
-                    rows={2}
-                    style={{ flex: 1, resize: "none", lineHeight: 1.5, paddingTop: 10 }}
-                  />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <button
-                      onClick={startVoice}
-                      disabled={agentLoading}
-                      title="Голосовой ввод (Chrome/Edge)"
-                      style={{
-                        width: 44, height: 44, borderRadius: 12, border: "none",
-                        background: isListening ? "#ef4444" : "var(--bg-hover)",
-                        cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "all 0.2s",
-                        boxShadow: isListening ? "0 0 0 4px #ef444433" : "none",
-                      }}
-                    >
-                      {isListening ? "⏹" : "🎤"}
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => sendAgentMessage()}
-                      disabled={agentLoading || !agentInput.trim()}
-                      style={{ width: 44, height: 44, padding: 0, borderRadius: 12, fontSize: 18 }}
-                    >→</button>
-                  </div>
-                </div>
-                {isListening && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: "#ef4444", display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1s ease-in-out infinite" }} />
-                    Говорите... (Chrome слушает)
-                  </div>
-                )}
-                <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-tertiary)" }}>
-                  Можно вставить уведомление о звонке (клиент, телефон, банк, summary) — после подтверждения появится карточка в «Клиентах»
-                </div>
-              </div>
-
-            </div>
-          ) : null}
+                    <AssistantTab
+            active={tab === "assistant"}
+            clientStatuses={clientStatuses}
+            onClientCreated={() => void loadClients()}
+          />
 
           {/* ===== STAFF ===== */}
           {tab === "staff" ? (
@@ -2966,7 +1714,7 @@ export default function AppPage() {
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                   {empTasks.slice(0, 10).map((t: any) => (
                                     <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "var(--bg-hover)", borderRadius: 8, fontSize: 13, cursor: "pointer" }}
-                                      onClick={() => { setTab("tasks"); setTaskDetail(t); }}>
+                                      onClick={() => setTab("tasks")}>
                                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                                       <span style={{ marginLeft: 12, padding: "2px 8px", borderRadius: 10, fontSize: 11, flexShrink: 0,
                                         background: t.status === "DONE" ? "#22c55e22" : t.status === "CANCELLED" ? "#ef444422" : t.status === "IN_PROGRESS" ? "#3b82f622" : "#f59e0b22",
@@ -4243,180 +2991,6 @@ export default function AppPage() {
         }}
       />
 
-      {/* ===== TASK DETAIL DRAWER ===== */}
-      {taskDetail && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 70, backdropFilter: "blur(2px)" }}
-            onClick={() => setTaskDetail(null)}
-          />
-          <div style={{
-            position: "fixed", top: 0, right: 0, bottom: 0, width: "min(500px, 100vw)", zIndex: 71,
-            background: "var(--bg-card)", boxShadow: "-8px 0 40px rgba(0,0,0,0.2)",
-            display: "flex", flexDirection: "column", overflow: "hidden",
-          }}>
-            {/* Header */}
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {taskEditMode ? (
-                  <input
-                    className="form-input"
-                    value={taskEditTitle}
-                    onChange={e => setTaskEditTitle(e.target.value)}
-                    style={{ fontWeight: 700, fontSize: 16 }}
-                    autoFocus
-                  />
-                ) : (
-                  <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.3 }}>{taskDetail.title}</div>
-                )}
-                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 3 }}>
-                  от {taskDetail.createdBy.name || taskDetail.createdBy.email} · {new Date(taskDetail.createdAt).toLocaleDateString("ru-RU")}
-                </div>
-              </div>
-              {isManager && !taskEditMode && (
-                <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => {
-                  setTaskEditMode(true);
-                  setTaskEditTitle(taskDetail.title);
-                  setTaskEditDesc(taskDetail.description ?? "");
-                  setTaskEditDue(taskDetail.dueAt ? taskDetail.dueAt.slice(0, 16) : "");
-                  setTaskEditStart(taskDetail.startsAt ? taskDetail.startsAt.slice(0, 16) : "");
-                  setTaskEditAssigneeId(taskDetail.assignee.id);
-                  void loadTaskUserOptions();
-                }}>Редактировать</button>
-              )}
-              {taskEditMode && (
-                <>
-                  <button className="btn btn-primary" style={{ height: 32, fontSize: 12 }} onClick={() => void saveTaskEdit()}>Сохранить</button>
-                  <button className="btn btn-secondary" style={{ height: 32, fontSize: 12 }} onClick={() => setTaskEditMode(false)}>Отмена</button>
-                </>
-              )}
-              <button className="btn btn-ghost" style={{ height: 32, width: 32, padding: 0, fontSize: 18, flexShrink: 0 }} onClick={() => setTaskDetail(null)}>×</button>
-            </div>
-
-            {/* Body */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Status + badge */}
-              {!taskEditMode && (
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  {(() => {
-                    const stLabel: Record<TaskStatus, string> = { PENDING: "К выполнению", IN_PROGRESS: "В работе", DONE: "Выполнено", CANCELLED: "Отменена" };
-                    const stClass: Record<TaskStatus, string> = { PENDING: "badge-amber", IN_PROGRESS: "badge-blue", DONE: "badge-green", CANCELLED: "badge-gray" };
-                    return <span className={`badge ${stClass[taskDetail.status]}`}>{stLabel[taskDetail.status]}</span>;
-                  })()}
-                  {taskDetail.dueAt && (
-                    <span style={{ fontSize: 12, color: new Date(taskDetail.dueAt) < new Date() && taskDetail.status !== "DONE" ? "var(--amber)" : "var(--text-tertiary)" }}>
-                      Срок: {new Date(taskDetail.dueAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  )}
-                  {/* Quick status actions for assignee */}
-                  {user?.id === taskDetail.assignee.id && taskDetail.status !== "DONE" && taskDetail.status !== "CANCELLED" && (
-                    <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-                      {taskDetail.status === "PENDING" && (
-                        <button className="btn btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "IN_PROGRESS" }).then(() => setTaskDetail(prev => prev ? { ...prev, status: "IN_PROGRESS" } : null))}>Взять в работу</button>
-                      )}
-                      <button className="btn btn-primary" style={{ height: 28, fontSize: 11 }} onClick={() => void patchTask(taskDetail.id, { status: "DONE" }).then(() => { setTaskDetail(prev => prev ? { ...prev, status: "DONE" } : null); void loadTaskPendingCount(); })}>Выполнено ✓</button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Edit form */}
-              {taskEditMode && (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div>
-                    <div className="form-label">Описание</div>
-                    <textarea className="form-input" rows={3} value={taskEditDesc} onChange={e => setTaskEditDesc(e.target.value)} placeholder="Детали задачи" />
-                  </div>
-                  <div>
-                    <div className="form-label">Исполнитель</div>
-                    <select className="form-input" value={taskEditAssigneeId} onChange={e => setTaskEditAssigneeId(e.target.value)}>
-                      {taskUsersForSelect.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-                    </select>
-                  </div>
-                  <div className="g2">
-                    <div>
-                      <div className="form-label">Начало</div>
-                      <input className="form-input" type="datetime-local" value={taskEditStart} onChange={e => setTaskEditStart(e.target.value)} />
-                    </div>
-                    <div>
-                      <div className="form-label">Срок</div>
-                      <input className="form-input" type="datetime-local" value={taskEditDue} onChange={e => setTaskEditDue(e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Description (view) */}
-              {!taskEditMode && taskDetail.description && (
-                <div>
-                  <div className="form-label" style={{ marginBottom: 6 }}>Описание</div>
-                  <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)", background: "var(--bg-metric)", borderRadius: 10, padding: "12px 14px" }}>
-                    {taskDetail.description}
-                  </div>
-                </div>
-              )}
-
-              {/* Info row */}
-              {!taskEditMode && (
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
-                  <span>👤 Исполнитель: <strong>{taskDetail.assignee.name || taskDetail.assignee.email}</strong></span>
-                  {taskDetail.startsAt && <span>📅 Начало: {new Date(taskDetail.startsAt).toLocaleDateString("ru-RU")}</span>}
-                </div>
-              )}
-
-              {/* Comments */}
-              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>
-                  Комментарии {taskComments.length > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({taskComments.length})</span>}
-                </div>
-                {taskCommentsLoading ? (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Загрузка…</div>
-                ) : taskComments.length === 0 ? (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Комментариев пока нет — напишите первым!</div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {taskComments.map(c => (
-                      <div key={c.id} style={{ display: "flex", gap: 10 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--accent-light)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>
-                          {(c.author.name || c.author.email)[0].toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 3 }}>
-                            {c.author.name || c.author.email}
-                            <span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 8 }}>{new Date(c.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
-                          <div style={{ fontSize: 13, lineHeight: 1.5, background: "var(--bg-hover)", borderRadius: 10, padding: "8px 12px" }}>{c.body}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Comment input */}
-            <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0 }}>
-              <textarea
-                className="form-input"
-                value={taskCommentInput}
-                onChange={e => setTaskCommentInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitTaskComment(); } }}
-                placeholder="%"
-                rows={1}
-                style={{ flex: 1, resize: "none", minHeight: 38, maxHeight: 100, overflowY: "auto" }}
-              />
-              <button
-                className="btn btn-primary"
-                style={{ height: 38, minWidth: 38, padding: "0 12px" }}
-                disabled={!taskCommentInput.trim() || taskCommentSending}
-                onClick={() => void submitTaskComment()}
-              >
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              </button>
-            </div>
           </div>
-        </>
-      )}
-    </div>
   );
 }
