@@ -14,6 +14,9 @@ import {
 } from "@/lib/deal-payout";
 import { MediatorFormModal } from "@/components/mediators/MediatorFormModal";
 import { MediatorsTab, type MediatorListItem } from "@/components/mediators/MediatorsTab";
+import { ExchangeRatesModal } from "@/components/modals/ExchangeRatesModal";
+import { StaffTable } from "@/components/staff/StaffTable";
+import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
 
 const AreaChart = dynamic(() => import("../../components/charts/AreaChart"), { ssr: false });
 const DonutChart = dynamic(() => import("../../components/charts/DonutChart"), { ssr: false });
@@ -314,7 +317,6 @@ const OP_LABELS: Record<OperationType, string> = {
   TRANSFER: "Перевод",
 };
 
-const CURRENCIES = ["USD", "EUR", "UAH", "PLN", "CHF"];
 const SALARY_PAYMENT_TYPES: Record<string, string> = {
   BASE: "Ставка",
   DEAL_BONUS: "Бонус по сделкам",
@@ -323,62 +325,6 @@ const SALARY_PAYMENT_TYPES: Record<string, string> = {
   MANUAL: "Ручная",
 };
 const SALARY_PAY_DAY_PRESETS = [1, 5, 10, 15, 25, 31] as const;
-const CURRENCY_META: Record<string, { symbol: string; name: string }> = {
-  USD: { symbol: "$",  name: "US Dollar" },
-  EUR: { symbol: "€",  name: "Euro" },
-  UAH: { symbol: "₴",  name: "Ukrainian Hryvnia" },
-  PLN: { symbol: "zł", name: "Polish Zloty" },
-  CHF: { symbol: "Fr", name: "Swiss Franc" },
-};
-
-function StaffTable({ members, onSelect }: { members: any[]; onSelect: (id: string) => void }) {
-  const ROLE_MAP: Record<string, string> = { SUPER_ADMIN: "Супер Админ", ADMIN: "Админ", MANAGER: "Менеджер", WORKER: "Работник" };
-  if (!members || members.length === 0) return <div style={{ padding: "30px 0", textAlign: "center", color: "var(--text-tertiary)" }}>Нет сотрудников</div>;
-  return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-            {["Сотрудник", "Должность", "Роль", "Сделок", "Выплаты"].map(h => (
-              <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "var(--text-tertiary)", fontWeight: 500, fontSize: 11 }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {members.map((m: any) => (
-            <tr key={m.id} style={{ borderBottom: "1px solid var(--border-color)", cursor: "pointer" }}
-              onClick={() => onSelect(m.id)}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "")}>
-              <td style={{ padding: "10px 8px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                    {(m.name || m.email)?.[0]?.toUpperCase() ?? "?"}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{m.name || m.email}</div>
-                    {m.name && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{m.email}</div>}
-                  </div>
-                </div>
-              </td>
-              <td style={{ padding: "10px 8px", color: "var(--text-secondary)" }}>{m.position || "—"}</td>
-              <td style={{ padding: "10px 8px" }}>
-                <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: "var(--accent)22", color: "var(--accent)" }}>
-                  {ROLE_MAP[m.role] ?? m.role}
-                </span>
-              </td>
-              <td style={{ padding: "10px 8px", color: "var(--text-tertiary)" }}>{m.dealsCount}</td>
-              <td style={{ padding: "10px 8px", fontWeight: 600, color: m.totalPayout > 0 ? "var(--accent)" : "var(--text-tertiary)" }}>
-                {m.totalPayout > 0 ? `$${m.totalPayout}` : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export default function AppPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -446,7 +392,6 @@ export default function AppPage() {
     USD: 1, EUR: 0.92, UAH: 41.5, PLN: 4.0, CHF: 0.88,
   });
   const [ratesModalOpen, setRatesModalOpen] = useState(false);
-  const [ratesEditing, setRatesEditing] = useState<Record<string, string>>({});
   const [ratesSyncing, setRatesSyncing] = useState(false);
   const [ratesLastSync, setRatesLastSync] = useState<string | null>(null);
 
@@ -1892,28 +1837,6 @@ export default function AppPage() {
     if (!confirm(`Удалить шаблон "${name}"? Существующие сделки не будут затронуты.`)) return;
     await fetch(`/api/deal-templates/${id}`, { method: "DELETE", credentials: "include" });
     loadTemplates();
-  }
-
-  async function saveExchangeRates() {
-    for (const code of CURRENCIES) {
-      const raw = ratesEditing[code];
-      if (raw === undefined) continue;
-      const val = Number(raw);
-      if (!Number.isFinite(val) || val <= 0) { alert(`Некорректный курс для ${code}`); return; }
-    }
-    for (const code of CURRENCIES) {
-      const raw = ratesEditing[code];
-      if (raw === undefined) continue;
-      const val = Number(raw);
-      await fetch(`/api/exchange-rates/${code}`, {
-        method: "PUT", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rateToUsd: val, symbol: CURRENCY_META[code]?.symbol, name: CURRENCY_META[code]?.name }),
-      });
-    }
-    await loadExchangeRates();
-    setRatesModalOpen(false);
-    setRatesEditing({});
   }
 
   async function loadDashboard(from?: string, to?: string) {
@@ -5991,12 +5914,7 @@ export default function AppPage() {
                           {ratesSyncing ? "Обновление…" : "Авто-обновить"}
                         </button>
                       )}
-                      <button className="btn btn-secondary" onClick={() => {
-                        const init: Record<string, string> = {};
-                        for (const c of CURRENCIES) init[c] = String(exchangeRates[c] ?? "");
-                        setRatesEditing(init);
-                        setRatesModalOpen(true);
-                      }}>Изменить вручную</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => setRatesModalOpen(true)}>Изменить вручную</button>
                     </div>
                   </div>
                   <div className="card-body" style={{ padding: "10px 16px" }}>
@@ -6833,43 +6751,12 @@ export default function AppPage() {
         </div>
       )}
 
-      {/* ===== EXCHANGE RATES MODAL ===== */}
-      {ratesModalOpen && (
-        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 70 }}
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setRatesModalOpen(false); }}>
-          <div className="card" style={{ width: 420, maxWidth: "100%" }}>
-            <div className="card-header">
-              <span className="card-title">Курсы валют (к USD)</span>
-              <button className="btn btn-ghost" onClick={() => setRatesModalOpen(false)}>✕</button>
-            </div>
-            <div className="card-body" style={{ display: "grid", gap: 12 }}>
-              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 4 }}>
-                Укажите сколько единиц каждой валюты равно 1 USD.<br/>
-                Пример: 1 USD = 41.5 UAH → значение для UAH = 41.5
-              </div>
-              {CURRENCIES.map(c => (
-                <div key={c} style={{ display: "grid", gridTemplateColumns: "60px 1fr", alignItems: "center", gap: 10 }}>
-                  <div style={{ fontWeight: 700 }}>{CURRENCY_META[c]?.symbol} {c}</div>
-                  <input
-                    className="form-input"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={ratesEditing[c] ?? ""}
-                    onChange={(e) => setRatesEditing(p => ({ ...p, [c]: e.target.value }))}
-                    placeholder={String(exchangeRates[c] ?? "")}
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  />
-                </div>
-              ))}
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-                <button className="btn btn-secondary" onClick={() => setRatesModalOpen(false)}>Отмена</button>
-                <button className="btn btn-primary" onClick={saveExchangeRates}>Сохранить</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ExchangeRatesModal
+        open={ratesModalOpen}
+        exchangeRates={exchangeRates}
+        onClose={() => setRatesModalOpen(false)}
+        onSaved={() => loadExchangeRates()}
+      />
 
       {/* ===== TEMPLATE MODAL (WIZARD) ===== */}
       {templateModalOpen ? (
