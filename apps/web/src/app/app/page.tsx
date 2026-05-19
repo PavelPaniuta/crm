@@ -29,6 +29,7 @@ import {
 import { ClientsKanbanBoard } from "@/components/clients/ClientsKanbanBoard";
 import { ReportsTab } from "@/components/reports/ReportsTab";
 import { downloadAccountingExport, fetchWorkersReport, importAccountingXlsx, type WorkersReport } from "@/lib/reports";
+import { OfficeInfoSettingsCard } from "@/components/office-info/OfficeInfoSettingsCard";
 import { OlxFormModal } from "@/components/olx/OlxFormModal";
 import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
@@ -640,7 +641,7 @@ export default function AppPage() {
     }
     if (tab === "staff") loadStaff();
     if (tab === "mediators") { void loadMediators(); setSelectedMediator(null); setMediatorDetail(null); }
-    if (tab === "olx") { void loadOlxList(); setSelectedOlx(null); setOlxDetail(null); }
+    if (tab === "olx") { void loadOlxList(); void loadOfficeInfo(); setSelectedOlx(null); setOlxDetail(null); }
     if (tab === "settings" && isManager) void loadOfficeInfo();
     if (tab === "salary") loadSalary();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
@@ -1014,7 +1015,6 @@ export default function AppPage() {
     });
     if (!res.ok) return alert("Не удалось сохранить");
     await loadOfficeInfo();
-    alert("Сохранено");
   }
 
   async function loadStaff() {
@@ -5387,6 +5387,13 @@ export default function AppPage() {
           {/* ===== MEDIATORS ===== */}
           {tab === "olx" ? (
             <OlxTab
+              infoSettings={{
+                infoName: officeInfo?.name ?? "Инфо",
+                infoPct: officeInfoPct,
+                onInfoNameChange: (v) => setOfficeInfo((x) => ({ name: v, defaultPct: x?.defaultPct ?? null })),
+                onInfoPctChange: setOfficeInfoPct,
+                onInfoSave: saveOfficeInfo,
+              }}
               olxList={olxList}
               olxLoading={olxLoading}
               selectedOlx={selectedOlx}
