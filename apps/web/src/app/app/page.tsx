@@ -5307,9 +5307,18 @@ export default function AppPage() {
                       { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
                       { label: isInDebt ? "К выплате" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: "Счёт ИИ привязан к офису", color: isInDebt ? "#DC2626" : "#059669" },
                     ] : [
-                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: `Ставка $${fmt(emp.baseUsd ?? 0)} + Сделки $${fmtDec(emp.dealEarningsUsd ?? 0)}`, color: "#6366F1" },
-                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат`, color: "#059669" },
-                      { label: isInDebt ? "Долг (не выплачено)" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? "Требует выплаты" : "Переплата или ровно", color: isInDebt ? "#DC2626" : "#059669" },
+                      { label: "Начислено", value: `$${fmt(emp.totalAccrued ?? 0)}`, sub: (() => {
+                          const baseFull = emp.baseUsd ?? 0;
+                          const basePart = emp.baseAccruedUsd ?? 0;
+                          const pending = Math.max(0, baseFull - basePart);
+                          const dealPart = emp.dealEarningsUsd ?? 0;
+                          if (cfg && pending > 0 && salaryPeriod === new Date().toISOString().slice(0, 7)) {
+                            return `Ставка $${fmt(basePart)} (ещё $${fmt(pending)} с ${cfg.payDay}-го) + сделки $${fmtDec(dealPart)}`;
+                          }
+                          return `Ставка $${fmt(basePart || baseFull)} + сделки $${fmtDec(dealPart)}`;
+                        })(), color: "#6366F1" },
+                      { label: "Выплачено", value: `$${fmt(emp.paidUsd ?? 0)}`, sub: `${emp.payments.filter((p: any) => p.isPaid).length} подтв. выплат за ${salaryPeriod}`, color: "#059669" },
+                      { label: isInDebt ? "Долг (не выплачено)" : "Баланс", value: `${isInDebt ? "−" : "+"}$${fmt(Math.abs(debt))}`, sub: isInDebt ? ((debt > Math.max(0, (emp.totalAccrued ?? 0) - (emp.paidUsd ?? 0)) + 0.01) ? "С учётом прошлых месяцев" : "Требует выплаты") : "Переплата или ровно", color: isInDebt ? "#DC2626" : "#059669" },
                     ]).map(m => (
                       <div key={m.label} style={{ background: "var(--bg-card)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6 }}>{m.label}</div>
@@ -5349,6 +5358,9 @@ export default function AppPage() {
                               <div>
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>День выплаты</div>
                                 <div style={{ fontSize: 18, fontWeight: 700 }}>{cfg.payDay}-е</div>
+                                {salaryPeriod === new Date().toISOString().slice(0, 7) && !(emp.baseAccrued || (emp.baseAccruedUsd ?? 0) > 0) && (
+                                  <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}>Ставка войдёт в начисление {cfg.payDay}-го числа</div>
+                                )}
                               </div>
                               <div>
                                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 3 }}>Валюта</div>

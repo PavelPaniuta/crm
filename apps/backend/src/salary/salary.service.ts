@@ -9,6 +9,15 @@ import {
 } from '../deals/deal-payout.util';
 import { OfficeAiService } from '../office-ai/office-ai.service';
 import { Role } from '@prisma/client';
+import {
+  comparePeriods,
+  isBaseSalaryAccruedForPeriod,
+  listPeriodsInclusive,
+  periodBounds,
+  periodLte,
+  salaryPeriodFromDate,
+  type SalaryPeriod,
+} from './salary-accrual.util';
 
 function toUsd(amount: number, currency: string, rates: Record<string, number>): number {
   if (!amount) return 0;
@@ -55,10 +64,9 @@ export class SalaryService {
 
   /** Get salary overview for an org: all employees with accrued/paid/balance */
   async getOrgOverview(organizationId: string, period: string) {
-    // period = "2026-04"
-    const [year, month] = period.split('-').map(Number);
-    const fromDate = new Date(Date.UTC(year, month - 1, 1));
-    const toDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    const throughPeriod = period as SalaryPeriod;
+    const { to: periodTo } = periodBounds(throughPeriod);
+    const now = new Date();
 
     const [users, rates, aiPartnerRecord, orgDeals] = await Promise.all([
       this.prisma.user.findMany({
@@ -67,7 +75,7 @@ export class SalaryService {
           id: true, email: true, name: true, role: true, position: true,
           salaryConfig: true,
           dealParticipants: {
-            where: { deal: { dealDate: { gte: fromDate, lte: toDate } } },
+            where: { deal: { dealDate: { lte: periodTo } } },
             select: {
               pct: true,
               deal: {
@@ -81,7 +89,7 @@ export class SalaryService {
             },
           },
           salaryPayments: {
-            where: { organizationId, period },
+            where: { organizationId },
             orderBy: { createdAt: 'desc' },
           },
         },
@@ -90,8 +98,9 @@ export class SalaryService {
       this.loadRates(),
       this.officeAi.getForOrganization(organizationId).catch(() => null),
       this.prisma.deal.findMany({
-        where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
+        where: { organizationId, dealDate: { lte: periodTo } },
         select: {
+          dealDate: true,
           rateSnapshot: true,
           amounts: { select: { amountOut: true, currencyOut: true } },
           dataRows: { select: { data: true } },
@@ -100,45 +109,71 @@ export class SalaryService {
       }),
     ]);
 
-    let aiDealEarningsUsd = 0;
+    const aiDealByPeriod = new Map<SalaryPeriod, number>();
     for (const deal of orgDeals) {
+      if (!deal.dealDate) continue;
+      const dealPeriod = salaryPeriodFromDate(new Date(deal.dealDate));
+      if (!periodLte(dealPeriod, throughPeriod)) continue;
       const tpl = deal.template as any;
       const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
       const currency = getDealCurrency(tpl, first);
       const effectiveRates = getEffectiveRates(deal, rates);
       const split = breakdownToUsd(getDealPayoutBreakdown(deal as any), currency, effectiveRates);
-      aiDealEarningsUsd += split.ai;
+      aiDealByPeriod.set(dealPeriod, (aiDealByPeriod.get(dealPeriod) ?? 0) + split.ai);
     }
-    aiDealEarningsUsd = Math.round(aiDealEarningsUsd * 100) / 100;
 
     const employees = users.map((u) => {
-      // Deal earnings in USD
-      let dealEarningsUsd = 0;
+      const cfg = u.salaryConfig;
+      const baseUsd = cfg ? toUsd(Number(cfg.baseAmount), cfg.currency, rates) : 0;
+      const configStart: SalaryPeriod = cfg
+        ? salaryPeriodFromDate(cfg.createdAt)
+        : throughPeriod;
+
+      const dealEarningsByPeriod = new Map<SalaryPeriod, number>();
       for (const dp of u.dealParticipants) {
         const deal = dp.deal;
+        if (!deal.dealDate) continue;
+        const dealPeriod = salaryPeriodFromDate(new Date(deal.dealDate));
+        if (!periodLte(dealPeriod, throughPeriod)) continue;
+        if (comparePeriods(dealPeriod, configStart) < 0) continue;
+
         const tpl = deal.template as any;
         const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
         const currency = getDealCurrency(tpl, first);
         const { base } = getPayrollBaseForTemplateDeal(deal as any);
-        if (base > 0) {
-          const effectiveRates = getEffectiveRates(deal, rates);
-          dealEarningsUsd += toUsd((base * dp.pct) / 100, currency, effectiveRates);
-        }
+        if (base <= 0) continue;
+        const effectiveRates = getEffectiveRates(deal, rates);
+        const usd = toUsd((base * dp.pct) / 100, currency, effectiveRates);
+        dealEarningsByPeriod.set(
+          dealPeriod,
+          (dealEarningsByPeriod.get(dealPeriod) ?? 0) + usd,
+        );
       }
 
-      // Base salary in USD
-      const cfg = u.salaryConfig;
-      const baseUsd = cfg ? toUsd(Number(cfg.baseAmount), cfg.currency, rates) : 0;
+      let cumulativeAccrued = 0;
+      for (const p of listPeriodsInclusive(configStart, throughPeriod)) {
+        const dealPart = dealEarningsByPeriod.get(p) ?? 0;
+        const basePart =
+          cfg && isBaseSalaryAccruedForPeriod(p, cfg.payDay, now) ? baseUsd : 0;
+        cumulativeAccrued += dealPart + basePart;
+      }
 
-      // Total accrued = base + deal earnings
-      const totalAccrued = Math.round((baseUsd + dealEarningsUsd) * 100) / 100;
+      let cumulativePaid = 0;
+      let periodPaidUsd = 0;
+      for (const p of u.salaryPayments) {
+        if (!periodLte(p.period, throughPeriod)) continue;
+        if (!p.isPaid) continue;
+        const usd = toUsd(Number(p.amount), p.currency, rates);
+        cumulativePaid += usd;
+        if (p.period === throughPeriod) periodPaidUsd += usd;
+      }
 
-      // Paid: sum of isPaid payments in USD
-      const paidUsd = u.salaryPayments
-        .filter((p) => p.isPaid)
-        .reduce((s, p) => s + toUsd(Number(p.amount), p.currency, rates), 0);
-
-      const balance = Math.round((totalAccrued - paidUsd) * 100) / 100;
+      const dealEarningsUsd = dealEarningsByPeriod.get(throughPeriod) ?? 0;
+      const baseAccruedUsd =
+        cfg && isBaseSalaryAccruedForPeriod(throughPeriod, cfg.payDay, now) ? baseUsd : 0;
+      const totalAccrued = Math.round((dealEarningsUsd + baseAccruedUsd) * 100) / 100;
+      const balance = Math.round((cumulativeAccrued - cumulativePaid) * 100) / 100;
+      const periodPayments = u.salaryPayments.filter((p) => p.period === throughPeriod);
 
       return {
         userId: u.id,
@@ -154,10 +189,12 @@ export class SalaryService {
         } : null,
         dealEarningsUsd: Math.round(dealEarningsUsd * 100) / 100,
         baseUsd: Math.round(baseUsd * 100) / 100,
+        baseAccruedUsd: Math.round(baseAccruedUsd * 100) / 100,
+        baseAccrued: baseAccruedUsd > 0,
         totalAccrued,
-        paidUsd: Math.round(paidUsd * 100) / 100,
+        paidUsd: Math.round(periodPaidUsd * 100) / 100,
         balance,
-        payments: u.salaryPayments.map((p) => ({
+        payments: periodPayments.map((p) => ({
           id: p.id,
           amount: Number(p.amount),
           currency: p.currency,
@@ -196,27 +233,49 @@ export class SalaryService {
 
     if (aiPartnerRecord?.user) {
       const aiPayments = await this.prisma.salaryPayment.findMany({
-        where: { organizationId, period, userId: aiPartnerRecord.userId },
+        where: { organizationId, userId: aiPartnerRecord.userId },
         orderBy: { createdAt: 'desc' },
       });
       const cfg = await this.prisma.employeeSalaryConfig.findUnique({
         where: { userId: aiPartnerRecord.userId },
       });
       const baseUsd = cfg ? toUsd(Number(cfg.baseAmount), cfg.currency, rates) : 0;
-      const totalAccrued = Math.round((baseUsd + aiDealEarningsUsd) * 100) / 100;
-      const paidUsd = aiPayments
-        .filter((p) => p.isPaid)
-        .reduce((s, p) => s + toUsd(Number(p.amount), p.currency, rates), 0);
+      const aiConfigStart = salaryPeriodFromDate(aiPartnerRecord.createdAt);
+
+      let aiCumulativeAccrued = 0;
+      for (const p of listPeriodsInclusive(aiConfigStart, throughPeriod)) {
+        const dealPart = aiDealByPeriod.get(p) ?? 0;
+        const basePart =
+          cfg && isBaseSalaryAccruedForPeriod(p, cfg.payDay, now) ? baseUsd : 0;
+        aiCumulativeAccrued += dealPart + basePart;
+      }
+
+      let aiCumulativePaid = 0;
+      let aiPeriodPaidUsd = 0;
+      for (const p of aiPayments) {
+        if (!periodLte(p.period, throughPeriod)) continue;
+        if (!p.isPaid) continue;
+        const usd = toUsd(Number(p.amount), p.currency, rates);
+        aiCumulativePaid += usd;
+        if (p.period === throughPeriod) aiPeriodPaidUsd += usd;
+      }
+
+      const aiDealEarningsUsd = aiDealByPeriod.get(throughPeriod) ?? 0;
+      const aiBaseAccruedUsd =
+        cfg && isBaseSalaryAccruedForPeriod(throughPeriod, cfg.payDay, now) ? baseUsd : 0;
+      const totalAccrued = Math.round((aiDealEarningsUsd + aiBaseAccruedUsd) * 100) / 100;
+      const periodAiPayments = aiPayments.filter((p) => p.period === throughPeriod);
+
       aiPartner = {
         userId: aiPartnerRecord.userId,
         name: aiPartnerRecord.name,
-        dealEarningsUsd: aiDealEarningsUsd,
+        dealEarningsUsd: Math.round(aiDealEarningsUsd * 100) / 100,
         baseUsd: Math.round(baseUsd * 100) / 100,
         totalAccrued,
-        paidUsd: Math.round(paidUsd * 100) / 100,
-        balance: Math.round((totalAccrued - paidUsd) * 100) / 100,
+        paidUsd: Math.round(aiPeriodPaidUsd * 100) / 100,
+        balance: Math.round((aiCumulativeAccrued - aiCumulativePaid) * 100) / 100,
         salaryConfig: null,
-        payments: aiPayments.map((p) => ({
+        payments: periodAiPayments.map((p) => ({
           id: p.id,
           amount: Number(p.amount),
           currency: p.currency,
