@@ -81,6 +81,8 @@ export class DealsController {
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
       mediatorId?: string | null;
       mediatorPct?: number | null;
+      olxId?: string | null;
+      olxPct?: number | null;
     },
   ) {
     return this.deals.create(req.user.activeOrganizationId, body);
@@ -107,6 +109,8 @@ export class DealsController {
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
       mediatorId?: string | null;
       mediatorPct?: number | null;
+      olxId?: string | null;
+      olxPct?: number | null;
     },
   ) {
     return this.deals.update(req.user.activeOrganizationId, id, body);

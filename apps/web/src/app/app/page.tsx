@@ -28,7 +28,9 @@ import {
 } from "@/lib/clients";
 import { ClientsKanbanBoard } from "@/components/clients/ClientsKanbanBoard";
 import { ReportsTab } from "@/components/reports/ReportsTab";
-import { downloadAccountingExport, fetchWorkersReport, type WorkersReport } from "@/lib/reports";
+import { downloadAccountingExport, fetchWorkersReport, importAccountingXlsx, type WorkersReport } from "@/lib/reports";
+import { OlxFormModal } from "@/components/olx/OlxFormModal";
+import { OlxTab, type OlxListItem } from "@/components/olx/OlxTab";
 import { CURRENCIES, CURRENCY_META } from "@/lib/currencies";
 import { SALARY_PAYMENT_TYPES } from "@/lib/salary-constants";
 
@@ -153,7 +155,7 @@ type ChatConversation = {
   lastAt: string;
 };
 
-type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "mediators" | "tasks" | "assistant" | "chat" | "salary";
+type Tab = "dashboard" | "deals" | "clients" | "expenses" | "reports" | "settings" | "profile" | "staff" | "mediators" | "olx" | "tasks" | "assistant" | "chat" | "salary";
 type DealStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 type OperationType = "PURCHASE" | "ATM" | "TRANSFER";
 type FieldType = "TEXT" | "NUMBER" | "SELECT" | "DATE" | "PERCENT" | "CHECKBOX" | "CURRENCY";
@@ -237,6 +239,7 @@ type Deal = {
   }>;
   dataRows?: DealDataRow[];
   mediatorLink?: { mediatorId: string; pct: string | number; mediator: { id: string; name: string } } | null;
+  olxLink?: { olxId: string; pct: string | number; olx: { id: string; name: string } } | null;
   participants: Array<{
     id: string;
     pct: number;
@@ -405,6 +408,19 @@ export default function AppPage() {
   const [repTo, setRepTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [repLoading, setRepLoading] = useState(false);
   const [accountingExporting, setAccountingExporting] = useState(false);
+  const [accountingImporting, setAccountingImporting] = useState(false);
+  const [olxList, setOlxList] = useState<any[]>([]);
+  const [olxLoading, setOlxLoading] = useState(false);
+  const [selectedOlx, setSelectedOlx] = useState<any | null>(null);
+  const [olxDetail, setOlxDetail] = useState<any | null>(null);
+  const [olxDetailLoading, setOlxDetailLoading] = useState(false);
+  const [olxFormOpen, setOlxFormOpen] = useState(false);
+  const [olxForm, setOlxForm] = useState({ name: "", phone: "", note: "", defaultPct: "" });
+  const [olxEditingId, setOlxEditingId] = useState<string | null>(null);
+  const [dealOlxId, setDealOlxId] = useState<string>("");
+  const [dealOlxPct, setDealOlxPct] = useState<string>("");
+  const [officeInfo, setOfficeInfo] = useState<{ name: string; defaultPct: number | null } | null>(null);
+  const [officeInfoPct, setOfficeInfoPct] = useState("");
   const [repWorkers, setRepWorkers] = useState<WorkersReport | null>(null);
 
   // --- Profile ---
@@ -563,6 +579,7 @@ export default function AppPage() {
     if (tab === "profile") return "Мой профиль";
     if (tab === "staff") return "Сотрудники";
     if (tab === "mediators") return "Посредники";
+    if (tab === "olx") return "ОЛХ";
     if (tab === "tasks") return "Задачи";
     if (tab === "chat") return "Чат";
     if (tab === "assistant") return "AI Ассистент";
@@ -618,10 +635,13 @@ export default function AppPage() {
       if (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") {
         void loadAuditLog(0); void loadExchangeRates();
         void loadClientStatuses(); void loadClientFieldDefinitions();
+        void loadOfficeInfo();
       }
     }
     if (tab === "staff") loadStaff();
     if (tab === "mediators") { void loadMediators(); setSelectedMediator(null); setMediatorDetail(null); }
+    if (tab === "olx") { void loadOlxList(); setSelectedOlx(null); setOlxDetail(null); }
+    if (tab === "settings" && isManager) void loadOfficeInfo();
     if (tab === "salary") loadSalary();
     if (tab === "tasks") { void loadTasks(); if (isManager) void loadTaskUserOptions(); }
     if (tab === "assistant") void loadClientStatuses();
@@ -910,6 +930,91 @@ export default function AppPage() {
     if (!res.ok) return alert("Не удалось удалить");
     if (selectedMediator?.id === id) { setSelectedMediator(null); setMediatorDetail(null); }
     await loadMediators();
+  }
+
+  async function loadOlxList() {
+    setOlxLoading(true);
+    try {
+      const res = await fetch("/api/olx", { credentials: "include" });
+      if (res.ok) setOlxList(await res.json());
+    } finally { setOlxLoading(false); }
+  }
+
+  async function loadOlxDetail(id: string, period?: string) {
+    setOlxDetailLoading(true);
+    try {
+      const p = period ?? salaryPeriod;
+      const res = await fetch(`/api/olx/${id}?period=${p}`, { credentials: "include" });
+      if (res.ok) setOlxDetail(await res.json());
+    } finally { setOlxDetailLoading(false); }
+  }
+
+  async function saveOlx() {
+    if (!olxForm.name.trim()) return alert("Укажите имя");
+    const body = {
+      name: olxForm.name.trim(),
+      phone: olxForm.phone.trim() || undefined,
+      note: olxForm.note.trim() || undefined,
+      defaultPct: olxForm.defaultPct ? Number(olxForm.defaultPct) : undefined,
+    };
+    const res = await fetch(olxEditingId ? `/api/olx/${olxEditingId}` : "/api/olx", {
+      method: olxEditingId ? "PATCH" : "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return alert("Не удалось сохранить");
+    setOlxFormOpen(false);
+    setOlxEditingId(null);
+    await loadOlxList();
+    if (selectedOlx?.id === olxEditingId) void loadOlxDetail(olxEditingId!);
+  }
+
+  function openOlxForm(m?: OlxListItem) {
+    if (m) {
+      setOlxEditingId(m.id);
+      setOlxForm({
+        name: m.name,
+        phone: m.phone ?? "",
+        note: m.note ?? "",
+        defaultPct: m.defaultPct != null ? String(m.defaultPct) : "",
+      });
+    } else {
+      setOlxEditingId(null);
+      setOlxForm({ name: "", phone: "", note: "", defaultPct: "" });
+    }
+    setOlxFormOpen(true);
+  }
+
+  async function deleteOlx(id: string) {
+    if (!confirm("Удалить ОЛХ? Если есть сделки — будет деактивирован.")) return;
+    const res = await fetch(`/api/olx/${id}`, { method: "DELETE", credentials: "include" });
+    if (!res.ok) return alert("Не удалось удалить");
+    if (selectedOlx?.id === id) { setSelectedOlx(null); setOlxDetail(null); }
+    await loadOlxList();
+  }
+
+  async function loadOfficeInfo() {
+    const res = await fetch("/api/office-info", { credentials: "include" });
+    if (!res.ok) return;
+    const j = await res.json();
+    setOfficeInfo(j);
+    setOfficeInfoPct(j?.defaultPct != null ? String(j.defaultPct) : "");
+  }
+
+  async function saveOfficeInfo() {
+    const res = await fetch("/api/office-info", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: officeInfo?.name ?? "Инфо",
+        defaultPct: officeInfoPct ? Number(officeInfoPct) : null,
+      }),
+    });
+    if (!res.ok) return alert("Не удалось сохранить");
+    await loadOfficeInfo();
+    alert("Сохранено");
   }
 
   async function loadStaff() {
@@ -1737,6 +1842,25 @@ export default function AppPage() {
     }
   }
 
+  async function handleAccountingImport(file: File) {
+    if (!confirm("Импортировать сделки из Excel? Существующие строки не удаляются.")) return;
+    setAccountingImporting(true);
+    try {
+      const result = await importAccountingXlsx(file);
+      if (!result.ok) {
+        if (result.unauthorized) { router.replace("/login"); return; }
+        alert(result.message);
+        return;
+      }
+      const { created, skipped, errors } = result.result;
+      const errText = errors.length ? `\n\nОшибки:\n${errors.slice(0, 8).join("\n")}` : "";
+      alert(`Импорт завершён.\nСоздано: ${created}\nПропущено: ${skipped}${errText}`);
+      if (created > 0) { void loadDeals(); void loadDashboard(); }
+    } finally {
+      setAccountingImporting(false);
+    }
+  }
+
   // ---- orgs ----
   async function loadOrgs() {
     const res = await fetch("/api/orgs", { credentials: "include" });
@@ -2133,6 +2257,16 @@ export default function AppPage() {
     applyDealMediatorPct(pct);
   }
 
+  function setDealOlxSelection(olxId: string) {
+    setDealOlxId(olxId);
+    if (!olxId) {
+      setDealOlxPct("");
+      return;
+    }
+    const o = olxList.find((x: { id: string; defaultPct?: number | string | null }) => x.id === olxId);
+    if (o?.defaultPct != null && o.defaultPct !== "") setDealOlxPct(String(o.defaultPct));
+  }
+
   async function openDealModal() {
     const tRes = await fetch("/api/deal-templates", { credentials: "include" });
     if (!tRes.ok) {
@@ -2165,6 +2299,8 @@ export default function AppPage() {
     setDealDataRows([{ _id: crypto.randomUUID(), data: {} }]);
     setDealMediatorId("");
     setDealMediatorPct("");
+    setDealOlxId("");
+    setDealOlxPct("");
     fetchDealDropdowns();
   }
 
@@ -2205,6 +2341,8 @@ export default function AppPage() {
     );
     setDealMediatorId(deal.mediatorLink?.mediatorId ?? "");
     setDealMediatorPct(linkPct);
+    setDealOlxId(deal.olxLink?.olxId ?? "");
+    setDealOlxPct(deal.olxLink ? String(deal.olxLink.pct) : "");
     fetchDealDropdowns();
   }
 
@@ -2213,10 +2351,12 @@ export default function AppPage() {
       fetch("/api/clients", { credentials: "include" }),
       fetch("/api/users/public", { credentials: "include" }),
       fetch("/api/mediators", { credentials: "include" }),
-    ]).then(async ([cRes, wRes, mRes]) => {
+      fetch("/api/olx", { credentials: "include" }),
+    ]).then(async ([cRes, wRes, mRes, oRes]) => {
       if (cRes.ok) setDealClients(await cRes.json());
       if (wRes.ok) setDealWorkers(await wRes.json());
       if (mRes.ok) setMediators(await mRes.json());
+      if (oRes.ok) setOlxList(await oRes.json());
     });
   }
 
@@ -2307,6 +2447,8 @@ export default function AppPage() {
       const mediatorPayload = {
         mediatorId: dealMediatorId || null,
         mediatorPct: dealMediatorPct ? Number(dealMediatorPct) : null,
+        olxId: dealOlxId || null,
+        olxPct: dealOlxPct ? Number(dealOlxPct) : null,
       };
       const payload = { ...basePayload, templateId: activeTpl.id, dataRows: rowsPayload, ...mediatorPayload };
 
@@ -2458,7 +2600,7 @@ export default function AppPage() {
               dashboard: isWorker ? "Мой кабинет" : "Дашборд",
               deals: "Сделки", clients: "Клиенты",
               expenses: "Расходы", reports: "Отчёты",
-              staff: "Сотрудники", mediators: "Посредники", salary: "Зарплата", tasks: "Задачи", chat: "Чат",
+              staff: "Сотрудники", mediators: "Посредники", olx: "ОЛХ", salary: "Зарплата", tasks: "Задачи", chat: "Чат",
               assistant: "AI Ассистент", settings: "Настройки", profile: "Профиль"
             };
             const NAV_SVG: Record<string, ReactElement> = {
@@ -2469,6 +2611,7 @@ export default function AppPage() {
               reports: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>,
               staff: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
               mediators: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-2-2m0 0l-2 2m2-2v6"/></svg>,
+              olx: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h6"/></svg>,
               tasks: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
               chat: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
               assistant: <svg fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 10 4a2 2 0 0 1 2-2z"/></svg>,
@@ -2524,6 +2667,7 @@ export default function AppPage() {
               <div className="nav-section">Команда</div>
               {isAdmin && renderItem("staff")}
               {isManager && renderItem("mediators")}
+              {isManager && renderItem("olx")}
               {renderItem("tasks")}
               {renderItem("chat")}
               <div className="nav-divider" />
@@ -2756,6 +2900,24 @@ export default function AppPage() {
                         iconBg: "rgba(139,92,246,0.12)",
                         trend: null,
                         icon: <span style={{ fontSize: 18 }}>🤖</span>,
+                      },
+                      {
+                        label: "ОЛХ",
+                        value: `$${(dash.partners?.totalOlxUsd ?? 0).toLocaleString()}`,
+                        sub: `Сделок с ОЛХ: ${dash.partners?.dealsWithOlx ?? 0}`,
+                        iconColor: "#0EA5E9",
+                        iconBg: "rgba(14,165,233,0.12)",
+                        trend: null,
+                        icon: <span style={{ fontSize: 18 }}>📋</span>,
+                      },
+                      {
+                        label: "Инфо",
+                        value: `$${(dash.partners?.totalInfoUsd ?? 0).toLocaleString()}`,
+                        sub: "% от зарплатного фонда",
+                        iconColor: "#64748B",
+                        iconBg: "rgba(100,116,139,0.12)",
+                        trend: null,
+                        icon: <span style={{ fontSize: 18 }}>ℹ️</span>,
                       },
                     ];
                     return (
@@ -3054,6 +3216,8 @@ export default function AppPage() {
               showAccountingExport={isManager}
               onRefresh={loadReportsWorkers}
               onExportAccounting={() => void handleAccountingExport()}
+              accountingImporting={accountingImporting}
+              onImportAccounting={(f) => void handleAccountingImport(f)}
             />
           ) : null}
 
@@ -3333,6 +3497,29 @@ export default function AppPage() {
                                 value={dealMediatorPct}
                                 onChange={(e) => applyDealMediatorPct(e.target.value)}
                               />
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {dealTemplateId && (() => {
+                        const tplM = templates.find((t) => t.id === dealTemplateId);
+                        const show = tplM?.calcPreset === CALC_MEDIATOR_AI_PAYROLL || (tplM?.calcSteps && (tplM.calcSteps as CalcStep[]).length > 0);
+                        if (!show) return null;
+                        return (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, padding: "12px 14px", background: "var(--bg-metric)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
+                            <div>
+                              <div className="form-label">ОЛХ</div>
+                              <select className="form-input" value={dealOlxId} onChange={(e) => setDealOlxSelection(e.target.value)}>
+                                <option value="">— не выбран —</option>
+                                {olxList.filter((o: any) => o.isActive !== false).map((o: any) => (
+                                  <option key={o.id} value={o.id}>{o.name}{o.defaultPct != null ? ` (${o.defaultPct}%)` : ""}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <div className="form-label">% по сделке</div>
+                              <input className="form-input" type="number" min={0} max={100} step="0.01" placeholder="%" value={dealOlxPct} onChange={(e) => setDealOlxPct(e.target.value)} />
                             </div>
                           </div>
                         );
@@ -5198,6 +5385,26 @@ export default function AppPage() {
           ) : null}
 
           {/* ===== MEDIATORS ===== */}
+          {tab === "olx" ? (
+            <OlxTab
+              olxList={olxList}
+              olxLoading={olxLoading}
+              selectedOlx={selectedOlx}
+              olxDetail={olxDetail}
+              olxDetailLoading={olxDetailLoading}
+              salaryPeriod={salaryPeriod}
+              onPeriodChange={(p) => {
+                setSalaryPeriod(p);
+                if (selectedOlx) void loadOlxDetail(selectedOlx.id, p);
+              }}
+              onAdd={() => openOlxForm()}
+              onOpenReport={(m) => { setSelectedOlx(m); void loadOlxDetail(m.id); }}
+              onEdit={(m) => openOlxForm(m)}
+              onDelete={(id) => void deleteOlx(id)}
+              onBack={() => { setSelectedOlx(null); setOlxDetail(null); }}
+            />
+          ) : null}
+
           {tab === "mediators" ? (
             <MediatorsTab
               mediators={mediators}
@@ -5646,6 +5853,27 @@ export default function AppPage() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {isManager ? (
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">Партнёр «Инфо»</span>
+                  </div>
+                  <div className="card-body g2">
+                      <div>
+                      <div className="form-label">Название</div>
+                      <input className="form-input" value={officeInfo?.name ?? "Инфо"} onChange={(e) => setOfficeInfo((x) => ({ name: e.target.value, defaultPct: x?.defaultPct ?? null }))} />
+                    </div>
+                    <div>
+                      <div className="form-label">% от ЗП фонда по умолчанию</div>
+                      <input className="form-input" type="number" min={0} max={100} step="0.01" value={officeInfoPct} onChange={(e) => setOfficeInfoPct(e.target.value)} placeholder="например 5" />
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <button type="button" className="btn btn-primary" onClick={() => void saveOfficeInfo()}>Сохранить</button>
                     </div>
                   </div>
                 </div>
@@ -6342,6 +6570,15 @@ export default function AppPage() {
 
         </div>
       </div>
+
+      <OlxFormModal
+        open={olxFormOpen}
+        editingId={olxEditingId}
+        form={olxForm}
+        setForm={setOlxForm}
+        onClose={() => { setOlxFormOpen(false); setOlxEditingId(null); }}
+        onSave={() => void saveOlx()}
+      />
 
       <MediatorFormModal
         open={mediatorFormOpen}

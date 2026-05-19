@@ -1,11 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  getDealPayoutBreakdown,
-  getEffectiveRates,
-  parseCalcSteps,
-  type CalcStep,
-} from '../deals/deal-payout.util';
+import { getDealPayoutBreakdown, getEffectiveRates, breakdownToUsd } from '../deals/deal-payout.util';
 import * as XLSX from 'xlsx';
 
 const TEMPLATE_SHEET = 'Учет сделок';
@@ -127,20 +122,6 @@ function asFraction(n: number | null): number {
   return n / 100;
 }
 
-function payrollPoolPctFromTemplate(tpl: {
-  payrollPoolPct?: unknown;
-  calcSteps?: unknown;
-} | null): number {
-  if (!tpl) return 20;
-  if (tpl.payrollPoolPct != null) {
-    const n = Number(tpl.payrollPoolPct);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  const steps = parseCalcSteps(tpl.calcSteps);
-  const pool = steps.find((s: CalcStep) => s.isPayrollPool);
-  return 20;
-}
-
 type DealRow = {
   dealDate: Date;
   dataRows: Array<{ data: unknown }>;
@@ -156,6 +137,7 @@ type DealRow = {
     user: { name: string | null; email: string };
   }>;
   mediatorLink?: { pct: unknown; mediator: { name: string } } | null;
+  olxLink?: { pct: unknown; olx: { name: string } } | null;
   rateSnapshot?: unknown;
 };
 
@@ -170,7 +152,7 @@ export class AccountingExportService {
       : startOfDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
     const toDate = to ? endOfDay(new Date(to)) : endOfDay(now);
 
-    const [deals, rateRows] = await Promise.all([
+    const [deals, rateRows, infoPartner] = await Promise.all([
       this.prisma.deal.findMany({
         where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
         include: {
@@ -182,18 +164,23 @@ export class AccountingExportService {
             orderBy: { pct: 'desc' },
           },
           mediatorLink: { include: { mediator: true } },
+          olxLink: { include: { olx: true } },
         },
         orderBy: { dealDate: 'asc' },
       }),
       this.prisma.exchangeRate.findMany(),
+      this.prisma.organizationInfoPartner.findUnique({ where: { organizationId } }),
     ]);
+
+    const orgInfoPct =
+      infoPartner?.defaultPct != null ? Number(infoPartner.defaultPct) : null;
 
     const currentRates: Record<string, number> = {};
     for (const r of rateRows) currentRates[r.code] = Number(r.rateToUsd);
 
     const dataRows: unknown[][] = [HEADER_ROW_1, HEADER_ROW_2];
     for (const deal of deals) {
-      dataRows.push(this.dealToRow(deal as DealRow, currentRates));
+      dataRows.push(this.dealToRow(deal as DealRow, currentRates, orgInfoPct));
     }
 
     // Пустые строки как в шаблоне (до ~900 строк для привычного вида)
@@ -210,7 +197,11 @@ export class AccountingExportService {
     );
   }
 
-  private dealToRow(deal: DealRow, currentRates: Record<string, number>): unknown[] {
+  private dealToRow(
+    deal: DealRow,
+    currentRates: Record<string, number>,
+    organizationInfoPct: number | null,
+  ): unknown[] {
     const row: unknown[] = new Array(HEADER_ROW_1.length).fill(null);
     const first = deal.dataRows[0]?.data as Record<string, unknown> | undefined;
     const tpl = deal.template;
@@ -218,35 +209,30 @@ export class AccountingExportService {
     const effectiveRates = getEffectiveRates(deal, currentRates);
     const rateToUsd = effectiveRates[currency] ?? currentRates[currency] ?? 1;
 
-    const breakdown = getDealPayoutBreakdown(deal as Parameters<typeof getDealPayoutBreakdown>[0]);
+    const breakdown = getDealPayoutBreakdown({
+      ...(deal as Parameters<typeof getDealPayoutBreakdown>[0]),
+      organizationInfoPct,
+    });
+    const usd = breakdownToUsd(breakdown, currency, effectiveRates);
     const grossLocal = breakdown.gross;
-    const grossUsd = toUsd(grossLocal, currency, effectiveRates);
-    const mediatorLocal = breakdown.mediator;
-    const mediatorUsd = toUsd(mediatorLocal, currency, effectiveRates);
-    const aiUsd = toUsd(breakdown.ai, currency, effectiveRates);
+    const grossUsd = usd.gross;
+    const mediatorUsd = usd.mediator;
+    const aiUsdFinal = usd.ai;
+    const olxUsd = usd.olx;
+    const infoUsd = usd.info;
+    const receiptUsd = usd.receipt;
+    const payrollUsd = usd.payrollPool;
+    const workerFundUsd = usd.workerPool;
+    const officeRemainderUsd = usd.office;
 
-    const mediatorPctFrac =
-      grossUsd > 0
-        ? mediatorUsd / grossUsd
-        : deal.mediatorLink
-          ? Number(deal.mediatorLink.pct) / 100
-          : 0;
-
-    const receiptUsd = Math.max(0, grossUsd - mediatorUsd);
-    const olxPct = asFraction(dataFieldNumber(first ?? {}, /олх/i));
-    const olxUsd = round2(receiptUsd * olxPct);
-
-    const aiUsdFinal = aiUsd > 0 ? aiUsd : round2(receiptUsd * asFraction(dataFieldNumber(first ?? {}, /аи|ии|ai/i)));
-
-    const afterPartnersUsd = Math.max(0, receiptUsd - olxUsd - aiUsdFinal);
-    const poolPct = payrollPoolPctFromTemplate(tpl);
-    const payrollUsd = round2(afterPartnersUsd * (poolPct / 100));
-
-    const infoPct = asFraction(dataFieldNumber(first ?? {}, /инфо/i));
-    const infoUsd = round2(payrollUsd * infoPct);
-    const workerFundUsd = Math.max(0, payrollUsd - infoUsd);
-
-    const officeRemainderUsd = round2(afterPartnersUsd - payrollUsd);
+    const mediatorPctFrac = grossUsd > 0 ? mediatorUsd / grossUsd : 0;
+    const olxPct =
+      receiptUsd > 0 && olxUsd > 0
+        ? olxUsd / receiptUsd
+        : deal.olxLink
+          ? Number(deal.olxLink.pct) / 100
+          : asFraction(dataFieldNumber(first ?? {}, /олх/i));
+    const infoPct = payrollUsd > 0 && infoUsd > 0 ? infoUsd / payrollUsd : 0;
 
     // A — дата
     row[0] = deal.dealDate;
@@ -261,8 +247,8 @@ export class AccountingExportService {
     // F–H подписи партнёров
     row[5] = infoPct > 0 ? 'Инфо' : null;
     row[6] =
-      olxPct > 0
-        ? String(first?.['supplier'] ?? first?.['посредник'] ?? 'ОЛХ').slice(0, 40) || 'ОЛХ'
+      olxUsd > 0
+        ? (deal.olxLink?.olx?.name ?? String(first?.['supplier'] ?? 'ОЛХ').slice(0, 40))
         : null;
     row[7] = aiUsdFinal > 0 ? 'ИИ' : null;
 

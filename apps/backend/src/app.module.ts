@@ -24,6 +24,8 @@ import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { SalaryModule } from './salary/salary.module';
 import { MediatorsModule } from './mediators/mediators.module';
 import { OfficeAiModule } from './office-ai/office-ai.module';
+import { OlxModule } from './olx/olx.module';
+import { OfficeInfoModule } from './office-info/office-info.module';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { OfficeAiModule } from './office-ai/office-ai.module';
     SalaryModule,
     MediatorsModule,
     OfficeAiModule,
+    OlxModule,
+    OfficeInfoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

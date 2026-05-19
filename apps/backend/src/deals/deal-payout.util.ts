@@ -116,10 +116,81 @@ export type DealPayoutBreakdown = {
   gross: number;
   mediator: number;
   ai: number;
+  olx: number;
+  info: number;
+  /** Поступление после посредника */
+  receipt: number;
+  /** ЗП фонд (до вычета Инфо) */
   payrollPool: number;
+  /** Фонд для долей менеджеров (после Инфо) */
+  workerPool: number;
   office: number;
   mode: 'classic' | 'incomeField' | 'mediatorAiPayroll' | 'calcChain' | 'none';
 };
+
+export function payrollPoolPctFromTemplate(
+  tpl: { payrollPoolPct?: unknown; calcSteps?: unknown } | null | undefined,
+): number {
+  if (!tpl) return 20;
+  if (tpl.payrollPoolPct != null) {
+    const n = Number(tpl.payrollPoolPct);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const steps = parseCalcSteps(tpl.calcSteps);
+  if (steps.some((s) => s.isPayrollPool)) return 20;
+  return 20;
+}
+
+function resolveInfoPct(deal: DealForPayout): number {
+  if (deal.infoPctOverride != null && Number.isFinite(deal.infoPctOverride)) {
+    return Math.max(0, Math.min(100, deal.infoPctOverride));
+  }
+  if (deal.organizationInfoPct != null && Number.isFinite(deal.organizationInfoPct)) {
+    return Math.max(0, Math.min(100, deal.organizationInfoPct));
+  }
+  return 0;
+}
+
+/** ОЛХ/Инфо и пересчёт фонда после внешних ссылок (DealOlx, OrganizationInfoPartner). */
+function finalizePayout(deal: DealForPayout, base: DealPayoutBreakdown): DealPayoutBreakdown {
+  const receipt = Math.max(0, base.gross - base.mediator);
+  let ai = base.ai;
+  let olx = base.olx;
+
+  if (olx <= 0 && deal.olxLink) {
+    const p = Number(deal.olxLink.pct);
+    if (Number.isFinite(p) && p > 0) olx = (receipt * p) / 100;
+  }
+
+  const afterPartners = Math.max(0, receipt - ai - olx);
+  const poolPct = payrollPoolPctFromTemplate(deal.template);
+
+  let payrollPool = base.payrollPool;
+  let office = base.office;
+
+  const olxFromLink = olx > 0 && !!deal.olxLink;
+  const simpleModes = base.mode === 'incomeField' || base.mode === 'none';
+
+  if (simpleModes || olxFromLink) {
+    payrollPool = (afterPartners * poolPct) / 100;
+    office = afterPartners - payrollPool;
+  }
+
+  const infoPct = resolveInfoPct(deal);
+  const info = (payrollPool * infoPct) / 100;
+  const workerPool = Math.max(0, payrollPool - info);
+
+  return {
+    ...base,
+    ai,
+    olx,
+    info,
+    receipt,
+    payrollPool,
+    workerPool,
+    office,
+  };
+}
 
 function dealAmounts(deal: { amounts?: { amountOut: unknown }[] | null }) {
   return deal.amounts ?? [];
@@ -133,6 +204,9 @@ export type DealForPayout = {
   amounts?: { amountOut: unknown }[] | null;
   dataRows?: { data: unknown }[] | null;
   mediatorLink?: { pct: unknown } | null;
+  olxLink?: { pct: unknown } | null;
+  infoPctOverride?: number | null;
+  organizationInfoPct?: number | null;
   template:
     | (MediatorAiPayrollKeys & {
         incomeFieldKey: string | null;
@@ -149,7 +223,11 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
     gross: 0,
     mediator: 0,
     ai: 0,
+    olx: 0,
+    info: 0,
+    receipt: 0,
     payrollPool: 0,
+    workerPool: 0,
     office: 0,
     mode: 'none',
   };
@@ -157,45 +235,66 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
   const dataRows = dealDataRows(deal);
   if (amounts.length > 0) {
     const gross = amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-    return withMediatorLink(deal, {
-      gross,
-      mediator: 0,
-      ai: 0,
-      payrollPool: gross,
-      office: 0,
-      mode: 'classic',
-    });
+    return finalizePayout(
+      deal,
+      withMediatorLink(deal, {
+        gross,
+        mediator: 0,
+        ai: 0,
+        olx: 0,
+        info: 0,
+        receipt: gross,
+        payrollPool: gross,
+        workerPool: gross,
+        office: 0,
+        mode: 'classic',
+      }),
+    );
   }
   const t = deal.template;
-  if (!t || dataRows.length === 0) return withMediatorLink(deal, empty);
+  if (!t || dataRows.length === 0) return finalizePayout(deal, withMediatorLink(deal, empty));
   const first = dataRows[0]?.data as Record<string, unknown> | undefined;
-  if (!first) return withMediatorLink(deal, empty);
+  if (!first) return finalizePayout(deal, withMediatorLink(deal, empty));
 
   const steps = parseCalcSteps(t.calcSteps);
   if (steps.length > 0) {
     const chain = computeChain(first, steps);
     const gross = chain[0]?.source ?? 0;
     const office = chain.length > 0 ? Math.max(0, chain[chain.length - 1].result) : 0;
-    return withMediatorLink(deal, {
-      gross,
-      mediator: getMediatorShareFromChain(chain),
-      ai: getAiShareFromChain(chain),
-      payrollPool: getPayrollBaseFromChain(chain),
-      office,
-      mode: 'calcChain',
-    });
+    return finalizePayout(
+      deal,
+      withMediatorLink(deal, {
+        gross,
+        mediator: getMediatorShareFromChain(chain),
+        ai: getAiShareFromChain(chain),
+        olx: 0,
+        info: 0,
+        receipt: Math.max(0, gross - getMediatorShareFromChain(chain)),
+        payrollPool: getPayrollBaseFromChain(chain),
+        workerPool: getPayrollBaseFromChain(chain),
+        office,
+        mode: 'calcChain',
+      }),
+    );
   }
 
   const calc = computeMediatorAiPayroll(first, t);
   if (calc) {
-    return withMediatorLink(deal, {
-      gross: calc.G,
-      mediator: calc.M,
-      ai: calc.A,
-      payrollPool: calc.F,
-      office: calc.P,
-      mode: 'mediatorAiPayroll',
-    });
+    return finalizePayout(
+      deal,
+      withMediatorLink(deal, {
+        gross: calc.G,
+        mediator: calc.M,
+        ai: calc.A,
+        olx: 0,
+        info: 0,
+        receipt: calc.R1,
+        payrollPool: calc.F,
+        workerPool: calc.F,
+        office: calc.P,
+        mode: 'mediatorAiPayroll',
+      }),
+    );
   }
 
   if (t.incomeFieldKey) {
@@ -203,16 +302,23 @@ export function getDealPayoutBreakdown(deal: DealForPayout): DealPayoutBreakdown
       const d = r.data as Record<string, unknown>;
       return s + (Number(d[t.incomeFieldKey!]) || 0);
     }, 0);
-    return withMediatorLink(deal, {
-      gross,
-      mediator: 0,
-      ai: 0,
-      payrollPool: gross,
-      office: 0,
-      mode: 'incomeField',
-    });
+    return finalizePayout(
+      deal,
+      withMediatorLink(deal, {
+        gross,
+        mediator: 0,
+        ai: 0,
+        olx: 0,
+        info: 0,
+        receipt: gross,
+        payrollPool: gross,
+        workerPool: gross,
+        office: 0,
+        mode: 'incomeField',
+      }),
+    );
   }
-  return withMediatorLink(deal, empty);
+  return finalizePayout(deal, withMediatorLink(deal, empty));
 }
 
 export function breakdownToUsd(
@@ -225,7 +331,11 @@ export function breakdownToUsd(
     gross: f(breakdown.gross),
     mediator: f(breakdown.mediator),
     ai: f(breakdown.ai),
+    olx: f(breakdown.olx),
+    info: f(breakdown.info),
+    receipt: f(breakdown.receipt),
     payrollPool: f(breakdown.payrollPool),
+    workerPool: f(breakdown.workerPool),
     office: f(breakdown.office),
     mode: breakdown.mode,
   };
@@ -315,35 +425,9 @@ export function getPayrollBaseForTemplateDeal(
       | null;
   },
 ): { base: number; mode: 'classic' | 'incomeField' | 'mediatorAiPayroll' | 'calcChain' } {
-  const amounts = dealAmounts(deal);
-  const dataRows = dealDataRows(deal);
-  if (amounts.length > 0) {
-    const totalOut = amounts.reduce((s, a) => s + Number(a.amountOut || 0), 0);
-    return { base: totalOut, mode: 'classic' };
-  }
-  const t = deal.template;
-  if (!t || dataRows.length === 0) return { base: 0, mode: 'incomeField' };
-  const first = dataRows[0]?.data as Record<string, unknown>;
-  if (!first) return { base: 0, mode: 'incomeField' };
-
-  // New: universal calcSteps chain takes priority
-  const steps = parseCalcSteps(t.calcSteps);
-  if (steps.length > 0) {
-    const chain = computeChain(first, steps);
-    return { base: getPayrollBaseFromChain(chain), mode: 'calcChain' };
-  }
-
-  // Legacy: MEDIATOR_AI_PAYROLL preset
-  const calc = computeMediatorAiPayroll(first, t);
-  if (calc) return { base: Math.max(0, calc.F), mode: 'mediatorAiPayroll' };
-
-  if (t.incomeFieldKey) {
-    const key = t.incomeFieldKey;
-    const rowSum = dataRows.reduce((s, r) => {
-      const d = r.data as Record<string, unknown>;
-      return s + (Number(d[key]) || 0);
-    }, 0);
-    return { base: rowSum, mode: 'incomeField' };
+  const full = getDealPayoutBreakdown(deal as DealForPayout);
+  if (full.workerPool > 0 || full.payrollPool > 0) {
+    return { base: full.workerPool, mode: full.mode === 'none' ? 'incomeField' : full.mode };
   }
   return { base: 0, mode: 'incomeField' };
 }

@@ -70,7 +70,9 @@ model Organization {
   clientStatuses         ClientStatus[]
   clientFieldDefinitions ClientFieldDefinition[]
   mediators              Mediator[]
+  olxPartners            Olx[]
   aiPartner              OrganizationAiPartner?
+  infoPartner            OrganizationInfoPartner?
 }
 
 model User {
@@ -247,6 +249,7 @@ model Deal {
   rateSnapshot  Json?  // { "EUR": 1.08, "PLN": 4.1, ... } — rates at the time of deal creation
 
   mediatorLink  DealMediator?
+  olxLink       DealOlx?
 
   @@index([organizationId])
   @@index([clientId])
@@ -282,6 +285,48 @@ model DealMediator {
   updatedAt  DateTime @updatedAt
 
   @@index([mediatorId])
+}
+
+/// ОЛХ офиса — как посредник, % от суммы после посредника
+model Olx {
+  id             String   @id @default(cuid())
+  name           String
+  phone          String?
+  note           String?
+  defaultPct     Decimal? @db.Decimal(5, 2)
+  isActive       Boolean  @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dealLinks      DealOlx[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+/// Привязка ОЛХ к сделке
+model DealOlx {
+  id     String @id @default(cuid())
+  dealId String @unique
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  olxId  String
+  olx    Olx    @relation(fields: [olxId], references: [id], onDelete: Restrict)
+  pct    Decimal @db.Decimal(5, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([olxId])
+}
+
+/// Партнёр «Инфо» — один на офис, % от зарплатного фонда сделки
+model OrganizationInfoPartner {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String       @default("Инфо")
+  defaultPct     Decimal?     @db.Decimal(5, 2)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 /// Партнёр ИИ офиса — один на организацию, начисления как у сотрудника (User AI_PARTNER)

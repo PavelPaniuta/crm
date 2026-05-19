@@ -51,3 +51,34 @@ export async function downloadAccountingExport(
   URL.revokeObjectURL(url);
   return { ok: true, filename };
 }
+
+export type AccountingImportResult = {
+  created: number;
+  skipped: number;
+  errors: string[];
+};
+
+export async function importAccountingXlsx(
+  file: File,
+  opts?: { dryRun?: boolean; templateId?: string },
+): Promise<
+  | { ok: true; result: AccountingImportResult }
+  | { ok: false; message: string; unauthorized?: boolean }
+> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const q = new URLSearchParams();
+  if (opts?.dryRun) q.set("dryRun", "1");
+  if (opts?.templateId) q.set("templateId", opts.templateId);
+  const res = await fetch(`/api/reports/accounting/import?${q}`, {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (res.status === 401) return { ok: false, message: "Требуется вход", unauthorized: true };
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, message: (j as { message?: string }).message ?? "Ошибка импорта" };
+  }
+  return { ok: true, result: j as AccountingImportResult };
+}

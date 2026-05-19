@@ -35,6 +35,7 @@ export class DealsService {
       },
     },
     mediatorLink: { include: { mediator: true } },
+    olxLink: { include: { olx: true } },
   };
 
   private async upsertDealMediator(
@@ -71,6 +72,35 @@ export class DealsService {
     });
   }
 
+  private async upsertDealOlx(
+    dealId: string,
+    organizationId: string,
+    olxId: string | null | undefined,
+    olxPct: number | null | undefined,
+  ) {
+    if (olxId === undefined) return;
+    if (!olxId) {
+      await this.prisma.dealOlx.deleteMany({ where: { dealId } });
+      return;
+    }
+    const olx = await this.prisma.olx.findFirst({
+      where: { id: olxId, organizationId, isActive: true },
+    });
+    if (!olx) throw new BadRequestException('ОЛХ не найден');
+
+    let pct = olxPct;
+    if (pct == null || !Number.isFinite(pct)) {
+      pct = olx.defaultPct != null ? Number(olx.defaultPct) : 0;
+    }
+    if (pct < 0 || pct > 100) throw new BadRequestException('Процент ОЛХ должен быть от 0 до 100');
+
+    await this.prisma.dealOlx.upsert({
+      where: { dealId },
+      create: { dealId, olxId, pct },
+      update: { olxId, pct },
+    });
+  }
+
   list(organizationId: string) {
     return this.prisma.deal.findMany({
       where: { organizationId },
@@ -100,6 +130,8 @@ export class DealsService {
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
       mediatorId?: string | null;
       mediatorPct?: number | null;
+      olxId?: string | null;
+      olxPct?: number | null;
     },
   ) {
     const rateSnapshot = await loadRateSnapshot(this.prisma);
@@ -135,8 +167,11 @@ export class DealsService {
         template,
         data.dataRows,
       );
-      return this.get(organizationId, deal.id);
     }
+    if (data.olxId) {
+      await this.upsertDealOlx(deal.id, organizationId, data.olxId, data.olxPct ?? null);
+    }
+    if (data.mediatorId || data.olxId) return this.get(organizationId, deal.id);
     return deal;
   }
 
@@ -147,6 +182,7 @@ export class DealsService {
     await this.prisma.dealAmount.deleteMany({ where: { dealId: id } });
     await this.prisma.dealParticipant.deleteMany({ where: { dealId: id } });
     await this.prisma.dealMediator.deleteMany({ where: { dealId: id } });
+    await this.prisma.dealOlx.deleteMany({ where: { dealId: id } });
     await this.prisma.deal.delete({ where: { id } });
     return { ok: true };
   }
@@ -164,6 +200,8 @@ export class DealsService {
       dataRows?: Array<{ data: Record<string, unknown>; order?: number }>;
       mediatorId?: string | null;
       mediatorPct?: number | null;
+      olxId?: string | null;
+      olxPct?: number | null;
     },
   ) {
     const existing = await this.prisma.deal.findFirst({
@@ -194,6 +232,7 @@ export class DealsService {
       include: this.dealInclude,
     });
 
+    let reload = false;
     if (data.mediatorId !== undefined) {
       const rows =
         data.dataRows ??
@@ -208,8 +247,13 @@ export class DealsService {
         existing.template,
         rows,
       );
-      return this.get(organizationId, id);
+      reload = true;
     }
+    if (data.olxId !== undefined) {
+      await this.upsertDealOlx(id, organizationId, data.olxId, data.olxPct ?? null);
+      reload = true;
+    }
+    if (reload) return this.get(organizationId, id);
     return updated;
   }
 

@@ -234,7 +234,18 @@ describe('getDealPayoutBreakdown', () => {
 describe('breakdownToUsd', () => {
   it('converts non-USD via rateToUsd', () => {
     const usd = breakdownToUsd(
-      { gross: 100, mediator: 10, ai: 5, payrollPool: 20, office: 65, mode: 'mediatorAiPayroll' },
+      {
+        gross: 100,
+        mediator: 10,
+        ai: 5,
+        olx: 0,
+        info: 0,
+        receipt: 90,
+        payrollPool: 20,
+        workerPool: 20,
+        office: 65,
+        mode: 'mediatorAiPayroll',
+      },
       'PLN',
       { PLN: 4 },
     );

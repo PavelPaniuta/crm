@@ -12,6 +12,7 @@ import {
   MEDIATOR_AI_PAYROLL,
 } from '../deals/deal-payout.util';
 import { MediatorsService } from '../mediators/mediators.service';
+import { OlxService } from '../olx/olx.service';
 
 function startOfDay(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
@@ -42,6 +43,7 @@ const TEMPLATE_SELECT = {
 } as const;
 
 const EMPTY_MEDIATORS_SUMMARY = { totalUsd: 0, rows: [] as Array<{ mediatorId: string; name: string; totalUsd: number; dealsCount: number }>, dealsWithMediator: 0 };
+const EMPTY_OLX_SUMMARY = { totalUsd: 0, rows: [] as Array<{ olxId: string; name: string; totalUsd: number; dealsCount: number }>, dealsWithOlx: 0 };
 
 @Injectable()
 export class DashboardService {
@@ -50,6 +52,7 @@ export class DashboardService {
   constructor(
     private prisma: PrismaService,
     private mediators: MediatorsService,
+    private olx: OlxService,
   ) {}
 
   private async loadRates(): Promise<Record<string, number>> {
@@ -143,7 +146,7 @@ export class DashboardService {
     const toDate =
       parsedTo && !isNaN(parsedTo.getTime()) ? endOfDay(parsedTo) : endOfDay(now);
 
-    const [deals, rates] = await Promise.all([
+    const [deals, rates, infoPartner] = await Promise.all([
       this.prisma.deal.findMany({
         where: { organizationId, dealDate: { gte: fromDate, lte: toDate } },
         include: {
@@ -152,11 +155,15 @@ export class DashboardService {
           template: { select: TEMPLATE_SELECT },
           participants: true,
           mediatorLink: { select: { pct: true } },
-          // rateSnapshot is a scalar Json field — included automatically
+          olxLink: { select: { pct: true } },
         },
       }),
       this.loadRates(),
+      this.prisma.organizationInfoPartner.findUnique({ where: { organizationId } }),
     ]);
+
+    const orgInfoPct =
+      infoPartner?.defaultPct != null ? Number(infoPartner.defaultPct) : null;
 
     const dealsCount = deals.length;
     const dealsByStatus = deals.reduce(
@@ -172,6 +179,8 @@ export class DashboardService {
     let totalWorkersPayoutUsdt = 0;
     let totalMediatorUsd = 0;
     let totalAiUsd = 0;
+    let totalOlxUsd = 0;
+    let totalInfoUsd = 0;
 
     for (const d of deals) {
       try {
@@ -184,11 +193,20 @@ export class DashboardService {
         totalAmountOut += gross;
         totalOfficeIncome += officeIncome;
 
-        const split = breakdownToUsd(getDealPayoutBreakdown(d as any), currency, effectiveRates);
+        const split = breakdownToUsd(
+          getDealPayoutBreakdown({ ...(d as any), organizationInfoPct: orgInfoPct }),
+          currency,
+          effectiveRates,
+        );
         totalMediatorUsd += split.mediator;
         totalAiUsd += split.ai;
+        totalOlxUsd += split.olx;
+        totalInfoUsd += split.info;
 
-        const { base: payrollBase } = getPayrollBaseForTemplateDeal(d as any);
+        const { base: payrollBase } = getPayrollBaseForTemplateDeal({
+          ...(d as any),
+          organizationInfoPct: orgInfoPct,
+        });
         for (const p of d.participants) {
           const pct = Number(p.pct);
           if (payrollBase > 0 && Number.isFinite(pct)) {
@@ -201,6 +219,7 @@ export class DashboardService {
     }
 
     let mediatorsSummary = EMPTY_MEDIATORS_SUMMARY;
+    let olxSummary = EMPTY_OLX_SUMMARY;
     try {
       mediatorsSummary = await this.mediators.getOrgSummary(organizationId, fromDate, toDate);
     } catch (err) {
@@ -214,6 +233,18 @@ export class DashboardService {
       } else {
         this.log.error('Dashboard: getOrgSummary failed', err instanceof Error ? err.stack : err);
         throw err;
+      }
+    }
+    try {
+      olxSummary = await this.olx.getOrgSummary(organizationId, fromDate, toDate);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        (err.code === 'P2021' || err.code === 'P2022')
+      ) {
+        this.log.warn('Dashboard: DealOlx/Olx tables missing — run prisma migrate deploy');
+      } else {
+        this.log.error('Dashboard: olx getOrgSummary failed', err instanceof Error ? err.stack : err);
       }
     }
 
@@ -252,8 +283,12 @@ export class DashboardService {
         totalMediatorUsd:
           Math.round(Math.max(totalMediatorUsd, mediatorsSummary.totalUsd) * 100) / 100,
         totalAiUsd: Math.round(totalAiUsd * 100) / 100,
+        totalOlxUsd: Math.round(Math.max(totalOlxUsd, olxSummary.totalUsd) * 100) / 100,
+        totalInfoUsd: Math.round(totalInfoUsd * 100) / 100,
         mediators: mediatorsSummary.rows,
         dealsWithMediator: mediatorsSummary.dealsWithMediator,
+        olx: olxSummary.rows,
+        dealsWithOlx: olxSummary.dealsWithOlx,
       },
     };
   }

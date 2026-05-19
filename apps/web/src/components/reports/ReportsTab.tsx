@@ -13,6 +13,8 @@ type Props = {
   showAccountingExport: boolean;
   onRefresh: () => void;
   onExportAccounting: () => void;
+  accountingImporting: boolean;
+  onImportAccounting: (file: File) => void;
 };
 
 export function ReportsTab({
@@ -26,6 +28,8 @@ export function ReportsTab({
   showAccountingExport,
   onRefresh,
   onExportAccounting,
+  accountingImporting,
+  onImportAccounting,
 }: Props) {
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -39,14 +43,30 @@ export function ReportsTab({
             ↻ Обновить
           </button>
           {showAccountingExport ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={accountingExporting}
-              onClick={onExportAccounting}
-            >
-              {accountingExporting ? "Формируем…" : "Скачать Excel (учёт сделок)"}
-            </button>
+            <>
+              <label className="btn btn-secondary" style={{ cursor: "pointer", margin: 0 }}>
+                {accountingImporting ? "Импорт…" : "Импорт Excel"}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  style={{ display: "none" }}
+                  disabled={accountingImporting}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onImportAccounting(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={accountingExporting}
+                onClick={onExportAccounting}
+              >
+                {accountingExporting ? "Формируем…" : "Скачать Excel (учёт сделок)"}
+              </button>
+            </>
           ) : null}
         </div>
       </div>
