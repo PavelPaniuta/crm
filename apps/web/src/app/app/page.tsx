@@ -400,6 +400,7 @@ export default function AppPage() {
   const [repFrom, setRepFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [repTo, setRepTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [repLoading, setRepLoading] = useState(false);
+  const [accountingExporting, setAccountingExporting] = useState(false);
   const [repWorkers, setRepWorkers] = useState<any>(null);
 
   // --- Profile ---
@@ -1738,6 +1739,34 @@ export default function AppPage() {
     } finally { setRepLoading(false); }
   }
 
+  async function downloadAccountingExport() {
+    setAccountingExporting(true);
+    try {
+      const res = await fetch(
+        `/api/reports/accounting/export?from=${encodeURIComponent(repFrom)}&to=${encodeURIComponent(repTo)}`,
+        { credentials: "include" },
+      );
+      if (res.status === 401) { router.replace("/login"); return; }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert((j as { message?: string }).message ?? "Не удалось сформировать отчёт");
+        return;
+      }
+      const blob = await res.blob();
+      const disp = res.headers.get("Content-Disposition");
+      const match = disp?.match(/filename="?([^";]+)"?/);
+      const filename = match?.[1] ?? `uchet-sdelok_${repFrom}_${repTo}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setAccountingExporting(false);
+    }
+  }
+
   // ---- orgs ----
   async function loadOrgs() {
     const res = await fetch("/api/orgs", { credentials: "include" });
@@ -3052,6 +3081,16 @@ export default function AppPage() {
                 </div>
                 <div className="page-header-actions">
                   <button className="btn btn-secondary" onClick={loadReportsWorkers}>↻ Обновить</button>
+                  {isManager ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={accountingExporting}
+                      onClick={() => void downloadAccountingExport()}
+                    >
+                      {accountingExporting ? "Формируем…" : "Скачать Excel (учёт сделок)"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <div className="card">
